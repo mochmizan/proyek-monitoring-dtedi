@@ -23,6 +23,8 @@ class hub_table(Base):
     room = Column(String, nullable=True)                      # Lokasi/Ruangan Hub
     is_active = Column(Boolean, default=True, nullable=False)   # [V5 SECURITY] Status pendaftaran/blokir Hub
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    last_seen = Column(DateTime(timezone=True), nullable=True)   # [V5 PRESENCE] Heartbeat terakhir Hub
+    status = Column(String, default="offline", nullable=True)    # [V5 PRESENCE] Status koneksi Hub ('online'/'offline')
 
 
 class rooms(Base):

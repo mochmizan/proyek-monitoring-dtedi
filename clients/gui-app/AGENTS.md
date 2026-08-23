@@ -32,6 +32,7 @@ React 19 + TypeScript 6.0 + Vite 8 SPA for IoT smart-building monitoring. **Conn
 | `/login` | `login.tsx` | `redirect` | Argon2id session authentication |
 | `/alerts` | `alerts.tsx` | `rooms[]`, `devices[]`, `severity`, `timeRange` | Multi-filter alert log |
 | `/map` | `map.tsx` | — | Interactive floor plan markers |
+| `/hubs` | `hubs.tsx` | — | Edge hub presence grid: live online/offline cards, device roster per hub, admin approve/revoke actions |
 | `/settings` | `settings.tsx` | `tab` | Rooms CRUD & live unapproved device pairing |
 | `/room/$roomId` | `room.$roomId.tsx` | `range` | Room telemetry aggregate & device list |
 | `/device/$deviceId` | `device.$deviceId.tsx` | `range` | Time-scaled telemetry chart (TS/AC/ATS) across 6h/24h/7d/30d in Jakarta Time (WIB) & dynamic Command Dispatch (AC IR / ATS) |
@@ -44,7 +45,7 @@ src/
 ├── App.tsx               ← TanStack Router + QueryClientProvider setup
 ├── index.css             ← Tailwind 4 @import + @theme vars (dark)
 ├── routeTree.gen.ts      ← AUTO-GENERATED — never edit
-├── routes/               ← 8 page components (see table above)
+├── routes/               ← 9 page components (see table above)
 ├── store/
 │   └── appStore.ts       ← minimal Zustand store (sidebarOpen, selectedRoomId)
 ├── types/

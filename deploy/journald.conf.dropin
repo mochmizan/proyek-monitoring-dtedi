@@ -1,0 +1,12 @@
+# ==============================================================================
+# journald.conf.dropin — cap systemd-journal disk usage on the 1 GB VPS
+# ==============================================================================
+# Install instructions (VPS, as root):
+#   1. sudo mkdir -p /etc/systemd/journald.conf.d
+#   2. sudo cp deploy/journald.conf.dropin /etc/systemd/journald.conf.d/99-smsb-size.conf
+#   3. sudo systemctl restart systemd-journald
+# Verify with:  journalctl --disk-usage
+# ==============================================================================
+
+[Journal]
+SystemMaxUse=100M

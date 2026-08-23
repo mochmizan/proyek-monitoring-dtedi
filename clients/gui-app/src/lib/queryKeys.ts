@@ -21,4 +21,8 @@ export const queryKeys = {
     all: ['alerts'] as const,
     list: (filters?: Record<string, unknown>) => [...queryKeys.alerts.all, 'list', filters] as const,
   },
+  hubs: {
+    all: ['hubs'] as const,
+    list: () => [...queryKeys.hubs.all, 'list'] as const,
+  },
 };

@@ -13,6 +13,7 @@ load_dotenv()
 from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Header, Query, Request, Response, status, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -33,7 +34,8 @@ from schemasv5 import (
     DeviceResponse, DevicePairResponse, ThresholdConfigSchema,
     RoomMapMarker, RoomMapResponse, FloorPlanUploadResponse,
     ThresholdUpdateRequest, AlertResponse, AlertListResponse,
-    TelemetryHistoryPoint, DeviceHistoryResponse
+    TelemetryHistoryPoint, DeviceHistoryResponse,
+    HubDeviceSummary, HubResponse, HubPairRequest
 )
 
 # IMPORT AUTH MODULE V5
@@ -159,6 +161,10 @@ def verify_hub_identity(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Akses Ditolak: API Key Hub tidak cocok!"
         )
+
+    # [V5 PRESENCE] Perbarui heartbeat terakhir Hub pada setiap permintaan berhasil
+    registered_hub.last_seen = datetime.now(UTC)
+    db.commit()
 
     return registered_hub
 
@@ -897,6 +903,10 @@ def get_devices(
                 detail="Akses Ditolak: API Key Hub tidak cocok!"
             )
 
+        # [V5 PRESENCE] Perbarui heartbeat terakhir Hub pada whitelist sync berhasil
+        registered_hub.last_seen = datetime.now(UTC)
+        db.commit()
+
         devices = db.query(dev_table).filter(
             dev_table.is_active == True,
             dev_table.hub_id == registered_hub.hub_id
@@ -1595,6 +1605,155 @@ def mark_command_delivered(
     cmd.delivered_at = datetime.now(UTC)
     db.commit()
     return {"status": "marked_delivered", "command_id": command_id}
+
+
+# ==========================================
+# HUB ENTITIES & PAIRING API (V5)
+# ==========================================
+
+HUB_ONLINE_WINDOW_SECONDS = 25
+
+
+@api.get("/api/hubs", response_model=list[HubResponse])
+@limiter.limit("60/minute")
+def list_hubs(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """[V5] Menampilkan daftar semua Hub beserta agregasi perangkat dan status kehadiran (online/offline)."""
+    now_utc = datetime.now(UTC)
+    cutoff = now_utc - timedelta(seconds=HUB_ONLINE_WINDOW_SECONDS)
+
+    all_devices = db.query(dev_table).all()
+    devices_by_hub: dict[str, list] = {}
+    for d in all_devices:
+        devices_by_hub.setdefault(d.hub_id, []).append(d)
+
+    all_hubs = db.query(hub_table).all()
+    results = []
+    for h in all_hubs:
+        h_seen = h.last_seen if (h.last_seen and h.last_seen.tzinfo is not None) else (h.last_seen.replace(tzinfo=UTC) if h.last_seen else None)
+        hub_status = "online" if (h_seen and h_seen >= cutoff) else "offline"
+
+        hub_devices = devices_by_hub.get(h.hub_id, [])
+        results.append(
+            HubResponse(
+                hub_id=h.hub_id,
+                hub_name=h.hub_name,
+                room=h.room,
+                status=hub_status,
+                last_seen=h.last_seen,
+                device_count=len(hub_devices),
+                devices=[
+                    HubDeviceSummary(
+                        dev_id=d.dev_id,
+                        dev_name=d.dev_name,
+                        dev_type=d.dev_type,
+                        last_seen=d.last_seen
+                    )
+                    for d in hub_devices
+                ]
+            )
+        )
+    return results
+
+
+@api.post("/api/hubs/pair")
+@limiter.limit("10/minute")
+def pair_hub(
+    request: Request,
+    payload: HubPairRequest,
+    x_hub_key: str = Header(..., alias="X-Hub-Key"),
+    db: Session = Depends(get_db)
+):
+    """
+    [V5] Bootstrap pairing Hub Edge:
+    1. Hub terdaftar & aktif  -> verifikasi X-Hub-Key tersimpan, perbarui kehadiran, status 'paired'.
+    2. Hub belum terdaftar    -> butuh HUB_BOOTSTRAP_KEY dari env (provisioning out-of-band);
+                                 baris dibuat dengan is_active=False menunggu persetujuan admin (202).
+    Endpoint ini bootstrap-only dan hanya aman di jaringan tepercaya saat provisi awal.
+    """
+    existing = db.get(hub_table, payload.hub_id)
+    now_utc = datetime.now(UTC)
+
+    # 1. Hub terdaftar & aktif: alur pairing normal
+    if existing and existing.is_active:
+        stored_key = existing.hub_key or ""
+        if not secrets.compare_digest(stored_key, x_hub_key):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Akses Ditolak: API Key Hub tidak cocok!"
+            )
+        existing.last_seen = now_utc
+        existing.status = "online"
+        db.commit()
+        return {"status": "paired", "hub_id": existing.hub_id}
+
+    # 2. Hub belum terdaftar / non-aktif: wajib cocok dengan kunci bootstrap yang di-provision via env
+    bootstrap_key = os.getenv("HUB_BOOTSTRAP_KEY", "")
+    if not bootstrap_key or not secrets.compare_digest(bootstrap_key, x_hub_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Akses Ditolak: Hub tidak terdaftar atau API Key bootstrap tidak cocok!"
+        )
+
+    if not existing:
+        clean_name = payload.hub_name.strip()
+        if not clean_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="HUB_NAME tidak boleh kosong!"
+            )
+        new_hub = hub_table(
+            hub_id=payload.hub_id,
+            hub_name=clean_name,
+            hub_key=x_hub_key,
+            is_active=False,
+            status="offline",
+            created_at=now_utc
+        )
+        db.add(new_hub)
+        db.commit()
+
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "pending_approval", "hub_id": payload.hub_id})
+
+
+@api.post("/api/hubs/{hub_id}/approve")
+@limiter.limit("30/minute")
+def approve_hub(
+    request: Request,
+    hub_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
+    """[V5] Admin menyetujui Hub pending agar aktif."""
+    hub = db.get(hub_table, hub_id)
+    if not hub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hub tidak ditemukan")
+
+    hub.is_active = True
+    db.commit()
+    return {"status": "approved", "hub_id": hub_id}
+
+
+@api.post("/api/hubs/{hub_id}/revoke")
+@limiter.limit("30/minute")
+def revoke_hub(
+    request: Request,
+    hub_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
+    """[V5] Mencabut akses Hub (non-aktif); verify_hub_identity akan menolak Hub ini."""
+    hub = db.get(hub_table, hub_id)
+    if not hub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hub tidak ditemukan")
+
+    hub.is_active = False
+    hub.status = "offline"
+    db.commit()
+    return {"status": "revoked", "hub_id": hub_id}
 
 
 # ==========================================

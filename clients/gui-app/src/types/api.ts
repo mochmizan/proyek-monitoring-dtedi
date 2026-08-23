@@ -162,3 +162,25 @@ export interface DeviceHistoryResponse {
   points: TelemetryHistoryPoint[];
 }
 
+export interface HubDeviceSummary {
+  dev_id: string;
+  dev_name?: string | null;
+  dev_type?: string | null;
+  last_seen?: string | null;
+}
+
+export interface HubResponse {
+  hub_id: string;
+  hub_name: string;
+  room?: string | null;
+  status: 'online' | 'offline';
+  last_seen?: string | null;
+  device_count: number;
+  devices: HubDeviceSummary[];
+}
+
+export interface HubActionResponse {
+  status: string;
+  hub_id: string;
+}
+

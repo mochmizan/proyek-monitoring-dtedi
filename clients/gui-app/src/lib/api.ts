@@ -14,6 +14,8 @@ import type {
   AlertListResponse,
   AlertFilterParams,
   DeviceHistoryResponse,
+  HubResponse,
+  HubActionResponse,
 } from '../types/api';
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -242,5 +244,32 @@ export async function fetchDeviceHistory(deviceId: string, range = '24h'): Promi
     credentials: 'same-origin',
   });
   return handleResponse<DeviceHistoryResponse>(res);
+}
+
+// ----------------------------------------------------
+// Hubs API
+// ----------------------------------------------------
+
+export async function fetchHubs(): Promise<HubResponse[]> {
+  const res = await fetch('/api/hubs', {
+    credentials: 'same-origin',
+  });
+  return handleResponse<HubResponse[]>(res);
+}
+
+export async function approveHub(hubId: string): Promise<HubActionResponse> {
+  const res = await fetch(`/api/hubs/${encodeURIComponent(hubId)}/approve`, {
+    method: 'POST',
+    credentials: 'same-origin',
+  });
+  return handleResponse<HubActionResponse>(res);
+}
+
+export async function revokeHub(hubId: string): Promise<HubActionResponse> {
+  const res = await fetch(`/api/hubs/${encodeURIComponent(hubId)}/revoke`, {
+    method: 'POST',
+    credentials: 'same-origin',
+  });
+  return handleResponse<HubActionResponse>(res);
 }
 

@@ -1,0 +1,65 @@
+# ==============================================================================
+# smsb-api.service — HubGate V5 central API systemd unit (Work Package F)
+#
+# Install (VPS 'genset', as root):
+#   cp deploy/smsb-api.service /etc/systemd/system/smsb-api.service
+#   systemctl daemon-reload
+#   systemctl enable --now smsb-api
+#
+# Prereqs: user 'smsb' exists, venv at /opt/smsb/venv, code at /opt/smsb,
+#          .env at /opt/smsb/SERVERv5/v5/.env (mode 600, owned by smsb).
+# ==============================================================================
+
+[Unit]
+# Wait for the network to be fully up (online, not just configured) before start.
+After=network-online.target
+# postgresql.service is optional today (SQLite fallback) but harmless when absent:
+# systemd only orders against it if/when Postgres is enabled later.
+After=postgresql.service
+Wants=network-online.target
+Description=SMSB HubGate V5 FastAPI API (uvicorn, 127.0.0.1:8000)
+
+[Service]
+# --- Identity -----------------------------------------------------------------
+# Run unprivileged; nginx is the sole ingress on 443 -> 127.0.0.1:8000.
+User=smsb
+Group=smsb
+
+# --- Working directory & environment ------------------------------------------
+# App imports resolve relative to SERVERv5/v5 (hubgatev5:api); SQLite DB also
+# lives in this directory, hence the ReadWritePaths allowance below.
+WorkingDirectory=/opt/smsb/SERVERv5/v5
+# Secrets are injected from the gitignored .env file — never hardcode here.
+EnvironmentFile=/opt/smsb/SERVERv5/v5/.env
+
+# --- Process launch ------------------------------------------------------------
+# Bound to loopback only. --proxy-headers trusts X-Forwarded-* exclusively from
+# nginx (127.0.0.1). 2 workers + limit-concurrency fits the 1 GB RAM budget.
+ExecStart=/opt/smsb/venv/bin/python -m uvicorn hubgatev5:api --host 127.0.0.1 --port 8000 --workers 2 --limit-concurrency 50 --proxy-headers --forwarded-allow-ip=127.0.0.1
+
+# --- Restart policy & resource ceiling -----------------------------------------
+# Always recover from crashes after a 5s cooldown; hard-cap memory so a leak
+# cannot OOM the 1 GB VPS (systemd kills and restarts the unit at 500M).
+Restart=always
+RestartSec=5
+MemoryMax=500M
+
+# --- Sandboxing / hardening ----------------------------------------------------
+# NoNewPrivileges: blocks privilege escalation via setuid/sudo from the service.
+NoNewPrivileges=yes
+# ProtectSystem=strict: entire filesystem hierarchy read-only by default...
+ProtectSystem=strict
+# ...PrivateTmp: private /tmp not shared with other processes.
+PrivateTmp=yes
+ProtectHome=yes
+# RestrictSUIDSGID: refuses to create setuid/setgid files.
+RestrictSUIDSGID=yes
+# Block runtime modification of kernel sysctl and cgroup settings.
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+# The single writable exception: app dir holds the SQLite DB, uploads and logs.
+ReadWritePaths=/opt/smsb/SERVERv5/v5
+
+[Install]
+# Start at boot for the default multi-user target.
+WantedBy=multi-user.target

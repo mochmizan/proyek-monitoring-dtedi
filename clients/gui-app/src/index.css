@@ -46,3 +46,27 @@ html, body {
   display: flex;
   flex-direction: column;
 }
+
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+@keyframes value-flash {
+  0% {
+    background-color: rgb(99 102 241 / 0.15);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.value-flash {
+  animation: value-flash 900ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .value-flash {
+    animation: none;
+  }
+}

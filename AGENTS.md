@@ -50,7 +50,9 @@ Node sketches deployed to field hardware and bridged through HUBV5:
 | `firmware/WEMOS_TS/WEMOS_TS.ino` | Temperature/humidity node (SHT30, OLED) | Aligned to live hub (`hs109rs`, `192.168.72.242`); dual I2C auto-probing (`0x3C`/`0x3D` for OLED, `0x44`/`0x45` for SHT30); 1 Hz throttled display engine (zero Soft WDT resets); NaN float publish skip; live boot I2C diagnostics; zero blocking halts |
 | `firmware/WEMOS_AC/WEMOS_AC.ino` | AC/IR controller (2x IRGreeAC, SHT30, OLED) | Aligned to live hub (`hs109rs`, `192.168.72.242`); dual I2C auto-probing; 1 Hz throttled display engine; NaN float publish skip; EEPROM raw state persistence (`0xAC` magic byte + `kGreeStateLength` 8B/unit); boot restore; zero blocking halts |
 | `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino` | ATS Wemos bridge (MQTT + serial to FSM) | Aligned to live hub (`hs109rs`, `192.168.72.242`); non-blocking OLED check & exponential backoff reconnect; `HUB_NAME`/`DEV_TYPE: "ATS"` payload; canonical serial command framing |
+| `firmware/WEMOS_ATS/WEMOS_ATS.ino` | ATS Wemos bridge (MQTT + serial to FSM) | Realigned to canonical bridge (`fixed_wemos_mqtt_raspi.ino`): live broker `192.168.72.242`, `hs109rs/ats/*` topics, authenticated MQTT (`hubadmin`), full ATSData payload (`HUB_NAME`/`DEV_TYPE`/`EMERGENCY`), 512B PubSub buffer, bounded serial buffer, exponential backoff |
 | `firmware/fsm_w_serial/fsm_w_serial.ino` | ATS FSM controller (Arduino Uno-class) | ATS FSM controller; communicates with bridge over serial UART using canonical protocol `<M,auto/manual>`, `<SGM,on/off>`, `<RST,rst>` |
+| `firmware/PROMINI/PROMINI.ino` | ATS FSM controller (Pro Mini/Uno-class) | Non-blocking RTC degraded mode (no `while(1);` on RTC absence): warmup countdown disabled, FSM continues on `millis()` timing; canonical serial protocol |
 | `firmware/HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino` | I2C bus recovery / OLED diagnostic utility | bench tool, not deployed |
 
 Implemented, tested with `arduino-cli`, and documented in `FIRMWARE_ALIGNMENT_REPORT.md`. Folder name must always match the `.ino` name (Arduino IDE requirement).
@@ -74,7 +76,9 @@ smsb/
 │   ├── WEMOS_TS/WEMOS_TS.ino        ← temperature/humidity node (ESP8266)
 │   ├── WEMOS_AC/WEMOS_AC.ino        ← AC/IR controller node (ESP8266)
 │   ├── fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino ← ATS Wemos bridge (ESP8266)
+│   ├── WEMOS_ATS/WEMOS_ATS.ino      ← ATS Wemos bridge, realigned fork (ESP8266)
 │   ├── fsm_w_serial/fsm_w_serial.ino ← ATS FSM controller (Arduino Uno-class)
+│   ├── PROMINI/PROMINI.ino          ← ATS FSM controller (Pro Mini/Uno-class)
 │   └── HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino ← I2C bus recovery / OLED diagnostic
 ├── clients/
 │   └── gui-app/                     ← SPA (see its AGENTS.md for details)

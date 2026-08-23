@@ -1,0 +1,62 @@
+# ==============================================================================
+# hubbrain.service — HubBrain V5 edge gateway unit template (Work Package F)
+#
+# TARGET HOST: Raspberry Pi (edge), installed as /etc/systemd/system/hubbrain.service
+# NOTE: A hubbrain.service already exists on the Pi — this file is the canonical
+#       template; diff before overwriting.
+#
+# PLACEHOLDERS (adjust before install):
+#   - All paths below use explicit /home/hubadmin locations. If your deploy root
+#     differs, sed-replace them, or swap in %h (expands to User='s home):
+#         WorkingDirectory=%h/smsb/HUBV5/V5
+#   - ExecStart assumes a venv at <deploy root>/HUBV5/V5/venv running main.py.
+#     Adjust interpreter/script path to match tools/install_pi_service.py output.
+#
+# Install (Pi, as root):
+#   cp deploy/hubbrain.service /etc/systemd/system/hubbrain.service
+#   systemctl daemon-reload
+#   systemctl enable --now hubbrain.service
+# ==============================================================================
+
+[Unit]
+# Full connectivity required for upstream HTTPS pushes; local broker first.
+After=network-online.target mosquitto.service
+Wants=network-online.target
+Description=SMSB HubBrain V5 Edge Gateway (MQTT bridge + offline WAL cache)
+
+[Service]
+# Dedicated unprivileged Pi user (matches tools/deploy_pi_edge.py assumptions).
+User=hubadmin
+Group=hubadmin
+
+# --- Working directory & environment ------------------------------------------
+# Placeholder: adjust to the actual Pi deploy root if it is not ~/smsb.
+WorkingDirectory=/home/hubadmin/smsb/HUBV5/V5
+# Secrets (MQTT_PASS, HUB_KEY, SERVER_URL) come from the gitignored .env only.
+EnvironmentFile=/home/hubadmin/smsb/HUBV5/V5/.env
+
+# --- Process launch ------------------------------------------------------------
+# Placeholder: point at the real main.py under the Pi's venv.
+ExecStart=/home/hubadmin/smsb/HUBV5/V5/venv/bin/python /home/hubadmin/smsb/HUBV5/V5/main.py
+
+# --- Restart policy & resource ceiling -----------------------------------------
+# Long RestartSec=10 avoids hot-looping while the network/WAN is down; 150M cap
+# protects the Pi's limited RAM (Mosquitto + OS share the same board).
+Restart=always
+RestartSec=10
+MemoryMax=150M
+
+# --- Sandboxing / hardening ----------------------------------------------------
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=no
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+# Single writable exception: directory holding edge_cache.db (SQLite WAL).
+# Placeholder: must match EDGE_CACHE_DB_PATH's parent dir in .env.
+ReadWritePaths=/home/hubadmin/smsb/HUBV5/V5
+
+[Install]
+WantedBy=multi-user.target

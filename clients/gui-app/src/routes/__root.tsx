@@ -8,7 +8,8 @@ import {
   Settings as SettingsIcon, 
   LogOut, 
   Thermometer, 
-  ShieldAlert 
+  ShieldAlert, 
+  Radio 
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, logoutUser, fetchAlerts } from '../lib/api';
@@ -150,6 +151,16 @@ function RootLayout() {
                   {alertCount}
                 </span>
               )}
+            </Link>
+
+            <Link
+              to="/hubs"
+              activeProps={{ className: "bg-indigo-600/20 text-indigo-400 border-l-2 border-indigo-500 font-medium" }}
+              inactiveProps={{ className: "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" }}
+              className="flex items-center gap-3 px-4 py-3 rounded-md transition-colors"
+            >
+              <Radio className="h-5 w-5" />
+              <span>Hubs</span>
             </Link>
 
             {isAdmin && (

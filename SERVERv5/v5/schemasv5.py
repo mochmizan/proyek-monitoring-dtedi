@@ -333,3 +333,33 @@ class DeviceHistoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ==========================================
+# SKEMA HUB ENTITIES & PAIRING (V5)
+# ==========================================
+
+class HubDeviceSummary(BaseModel):
+    dev_id: str
+    dev_name: Optional[str] = None
+    dev_type: Optional[str] = None
+    last_seen: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class HubResponse(BaseModel):
+    hub_id: str
+    hub_name: str
+    room: Optional[str] = None
+    status: str = "offline"
+    last_seen: Optional[datetime] = None
+    device_count: int = 0
+    devices: list[HubDeviceSummary] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class HubPairRequest(BaseModel):
+    hub_id: str = Field(..., min_length=1, max_length=100)
+    hub_name: str = Field(..., min_length=1, max_length=100)
+
+

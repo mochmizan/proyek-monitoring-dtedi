@@ -264,6 +264,20 @@ To guarantee flawless implementation without hallucinated APIs or anti-patterns,
 
 ---
 
+### Component 5: Regressed ATS Bridge Fork Realignment ([`WEMOS_ATS.ino`](firmware/WEMOS_ATS/WEMOS_ATS.ino))
+
+The hardware team's fork of the canonical ATS bridge (`fixed_wemos_mqtt_raspi.ino`) regressed to the stale broker (`192.168.89.242`), legacy namespace (`hs108rs/ats/*`), unauthenticated MQTT, and a payload missing `HUB_NAME`/`DEV_TYPE` — guaranteeing HTTP 422 rejection end-to-end. It was realigned to full canonical parity:
+
+1. **Network & Auth:** Broker `192.168.72.242:1883`, topics `hs109rs/ats/data` / `hs109rs/ats/command`, authenticated connect (`mqtt.connect(clientId, mqtt_user, mqtt_pass)`, `hubadmin`) with exponential backoff (3s–30s).
+2. **ATSData Schema Compliance:** Payload now includes `HUB_NAME`, `DEV_ID`, `DEV_NAME`, `DEV_TYPE: "ATS"`, and `EMERGENCY` (parsed from `<EMERGENCY,x>` serial frames) as native bools, matching `ATSData` in `SERVERv5/v5/schemasv5.py`.
+3. **Robustness Parity:** `setBufferSize(512)`, downlink length/nullptr guards, publish-only-when-connected guard, bounded 64-char serial buffer, guarded `mqtt.loop()`. Canonical serial framing `<M,auto/manual>`, `<SGM,on/off>`, `<RST,rst>`, `<C,GET>` unchanged.
+
+### Component 6: ATS FSM Controller Non-Blocking RTC Degraded Mode ([`PROMINI.ino`](firmware/PROMINI/PROMINI.ino))
+
+* Removed the catastrophic `while(1);` halt in `setup()` when `rtc.begin()` fails. The node now sets an `rtcAvailable` flag and continues: warmup countdown is disabled (`getWarmupCountdown()` returns zeros), RTC reads, EEPROM warmup persistence, and the LCD date/time page are skipped, and the FSM keeps operating on `millis()`-based timing. Canonical serial protocol unchanged.
+
+---
+
 ## 4. Verification & Validation Summary
 
 ### Automated Test Matrix

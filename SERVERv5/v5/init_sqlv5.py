@@ -57,6 +57,7 @@ def migrate_additive_columns(bind_engine=None):
     """Melakukan additive migrations untuk kolom baru yang ditambahkan ke tabel yang sudah ada:
     - dev_table: room_id, marker_x, marker_y
     - event_log: dev_id, room_id, metric, severity, value, threshold, resolved_at
+    - hub_table: last_seen, status
     """
     target_engine = bind_engine or engine
     inspector = inspect(target_engine)
@@ -111,6 +112,18 @@ def migrate_additive_columns(bind_engine=None):
                 if "resolved_at" not in event_cols:
                     logging.info("Migrasi: Menambahkan kolom 'resolved_at' ke event_log...")
                     conn.execute(text(f"ALTER TABLE event_log ADD COLUMN resolved_at {ts_type};"))
+
+        # 3. hub_table: last_seen, status
+        if "hub_table" in table_names:
+            hub_cols = [col["name"] for col in inspector.get_columns("hub_table")]
+            ts_type = "TIMESTAMP WITH TIME ZONE" if is_pg else "TIMESTAMP"
+            with target_engine.begin() as conn:
+                if "last_seen" not in hub_cols:
+                    logging.info("Migrasi: Menambahkan kolom 'last_seen' ke hub_table...")
+                    conn.execute(text(f"ALTER TABLE hub_table ADD COLUMN last_seen {ts_type};"))
+                if "status" not in hub_cols:
+                    logging.info("Migrasi: Menambahkan kolom 'status' ke hub_table...")
+                    conn.execute(text("ALTER TABLE hub_table ADD COLUMN status VARCHAR DEFAULT 'offline';"))
     except Exception as e:
         logging.error(f"Gagal melakukan additive migration kolom: {e}")
         raise

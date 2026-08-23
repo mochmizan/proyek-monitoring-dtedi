@@ -1,18 +1,31 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Thermometer, Zap, Wind, HelpCircle, RefreshCw } from 'lucide-react';
+import { Thermometer, Zap, Wind, HelpCircle, RefreshCw, Network, LayoutGrid } from 'lucide-react';
 import { useState } from 'react';
+import { z } from 'zod';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchRooms, fetchRoomMap } from '../lib/api';
 import type { RoomMapMarker } from '../types/api';
+import { TopologyView } from '../components/TopologyView';
+
+const mapSearchSchema = z.object({
+  view: z.enum(['floor-plan', 'topology']).catch('floor-plan').optional(),
+});
 
 export const Route = createFileRoute('/map')({
+  validateSearch: (search) => mapSearchSchema.parse(search),
   component: MapPage,
 });
 
 function MapPage() {
   const router = useRouter();
+  const { view } = Route.useSearch();
+  const activeView = view ?? 'floor-plan';
+
+  const setView = (next: 'floor-plan' | 'topology') => {
+    void router.navigate({ to: '/map', search: { view: next === 'floor-plan' ? undefined : next } });
+  };
 
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
@@ -101,6 +114,34 @@ function MapPage() {
         </div>
       </div>
 
+      <div className="flex border-b border-zinc-800 gap-4 text-sm font-semibold">
+        <button
+          onClick={() => setView('floor-plan')}
+          className={cn(
+            'pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer',
+            activeView === 'floor-plan'
+              ? 'border-indigo-500 text-indigo-400'
+              : 'border-transparent text-zinc-500 hover:text-zinc-300'
+          )}
+        >
+          <LayoutGrid className="h-4 w-4" />
+          <span>Floor Plan</span>
+        </button>
+        <button
+          onClick={() => setView('topology')}
+          className={cn(
+            'pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer',
+            activeView === 'topology'
+              ? 'border-indigo-500 text-indigo-400'
+              : 'border-transparent text-zinc-500 hover:text-zinc-300'
+          )}
+        >
+          <Network className="h-4 w-4" />
+          <span>Topology</span>
+        </button>
+      </div>
+
+      {activeView === 'floor-plan' ? (
       <div className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg p-6 flex flex-col items-center justify-center min-h-[500px] relative">
         {rooms.length === 0 ? (
           <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 gap-2 min-h-[400px]">
@@ -173,6 +214,9 @@ function MapPage() {
           </div>
         )}
       </div>
+      ) : (
+        <TopologyView />
+      )}
     </div>
   );
 }
