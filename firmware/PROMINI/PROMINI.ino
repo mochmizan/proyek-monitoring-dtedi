@@ -1,8 +1,9 @@
-#include <ZMPT101B.h>
+﻿#include <ZMPT101B.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include "RTClib.h"
 #include <EEPROM.h>
+#include <avr/wdt.h>
 
 #define SENSITIVITAS_SENSOR_AC 500.0f
 #define BATAS_VAC 200.0f
@@ -80,7 +81,9 @@ int menu = 0;
 unsigned long debounce_left = 0;
 unsigned long debounce_right = 0;
 
-String buffer = "";
+const int CMD_BUF_LEN = 64;
+char cmdBuffer[CMD_BUF_LEN + 1];
+int cmdBufferLen = 0;
 
 bool autoMode = true;
 bool lastMode = autoMode;
@@ -147,6 +150,8 @@ void matikan_lampu_emergency(){
 
 void setup() {
 
+  wdt_enable(WDTO_2S);
+
   Serial.begin(9600);
 
   Wire.begin();
@@ -155,7 +160,7 @@ void setup() {
   lcd.backlight();
 
   lcd.setCursor(0,0);
-  lcd.print("Hello World!");
+  lcd.print(F("Hello World!"));
 
   pinMode(BTN_LEFT, INPUT_PULLUP);
   pinMode(BTN_RIGHT, INPUT_PULLUP);
@@ -173,15 +178,15 @@ void setup() {
 
   if (!rtc.begin()) {
     rtcAvailable = false;
-    Serial.println("<RTC tidak ditemukan! Mode degradasi: warmup countdown nonaktif, FSM tetap jalan>");
-    // Tidak ada while(1); — sistem lanjut operasi normal tanpa RTC
+    Serial.println(F("<RTC tidak ditemukan! Mode degradasi: warmup countdown nonaktif, FSM tetap jalan>"));
+    // Tidak ada while(1); â€” sistem lanjut operasi normal tanpa RTC
   }
   else {
     rtcAvailable = true;
 
     // // Jika RTC kehilangan power
     if (rtc.lostPower()) {
-      Serial.println("<RTC kehilangan power, set waktu!>");
+      Serial.println(F("<RTC kehilangan power, set waktu!>"));
 
       // SET waktu sesuai waktu compile
       rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -200,10 +205,10 @@ void setup() {
 
     if (savedTime > 1700000000 && savedTime < now) {
       lastWarmup = DateTime(savedTime);
-      Serial.println("<Data warmup berhasil dimuat>");
+      Serial.println(F("<Data warmup berhasil dimuat>"));
     }
     else {
-      Serial.println("<Data EEPROM kosong / invalid>");
+      Serial.println(F("<Data EEPROM kosong / invalid>"));
       EEPROM.put(0, now);
       lastWarmup = rtc.now(); // fallback
     }
@@ -255,75 +260,76 @@ void setup() {
   // EEPROM.put(0, now);
   // lastWarmup = rtc.now(); // fallback
 
+  wdt_reset();
   delay(1000);
+  wdt_reset();
 }
 
-void processCommand(String msg) {
-  
-  int commaIndex = msg.indexOf(',');
-  int endIndex = msg.indexOf('>');  
+void processCommand(const char* msg) {
 
-  if (commaIndex != -1 && endIndex != -1) {
+  const char* comma = strchr(msg, ',');
+  const char* end = strchr(msg, '>');
 
-    String type = msg.substring(1, commaIndex);
-    String data = msg.substring(commaIndex + 1, endIndex);
+  if (comma != NULL && end != NULL) {
 
-    if (type == "C") {
-      
-      if (data == "GET") {
-        Serial.print("<STATE,");
+    int typeLen = comma - msg - 1;
+    int dataLen = end - comma - 1;
+    const char* type = msg + 1;
+    const char* data = comma + 1;
+
+    if (typeLen == 1 && type[0] == 'C' && dataLen == 3 && strncmp(data, "GET", 3) == 0) {
+        Serial.print(F("<STATE,"));
         Serial.print(stateToString(nowState));
-        Serial.println(">");
+        Serial.println(F(">"));
 
-        Serial.print("<PLN,");
+        Serial.print(F("<PLN,"));
         Serial.print(teganganPln);
-        Serial.println(">");
-        Serial.print("<GENSET,");
+        Serial.println(F(">"));
+        Serial.print(F("<GENSET,"));
         Serial.print(teganganGenset);
-        Serial.println(">");
-        Serial.print("<AKI,");
+        Serial.println(F(">"));
+        Serial.print(F("<AKI,"));
         Serial.print(teganganAki);
-        Serial.println(">");
+        Serial.println(F(">"));
 
-        Serial.print("<REM_SEC,");
+        Serial.print(F("<REM_SEC,"));
         Serial.print(sisaDetik);
-        Serial.println(">");
-        Serial.print("<REM_MIN,");
+        Serial.println(F(">"));
+        Serial.print(F("<REM_MIN,"));
         Serial.print(sisaMenit);
-        Serial.println(">");
-        Serial.print("<REM_HOUR,");
+        Serial.println(F(">"));
+        Serial.print(F("<REM_HOUR,"));
         Serial.print(sisaJam);
-        Serial.println(">");
+        Serial.println(F(">"));
 
-        Serial.print("<AUTO_MODE,");
+        Serial.print(F("<AUTO_MODE,"));
         Serial.print(autoMode);
-        Serial.println(">");
+        Serial.println(F(">"));
 
-        Serial.print("<EMERGENCY,");
+        Serial.print(F("<EMERGENCY,"));
         Serial.print(emergencyNotified);
-        Serial.println(">");
-      }
+        Serial.println(F(">"));
     }
-    else if (type == "RST"){
+    else if (typeLen == 3 && strncmp(type, "RST", 3) == 0){
       emergencyNotified = false;
     }
-    else if (type == "M" ) {
+    else if (typeLen == 1 && type[0] == 'M') {
       lastMode = autoMode;
-      if (data == "auto") {
+      if (dataLen == 4 && strncmp(data, "auto", 4) == 0) {
         autoMode = true;
       }
-      else if (data == "manual") {
+      else if (dataLen == 6 && strncmp(data, "manual", 6) == 0) {
         autoMode = false;
       }
     }
 
-    else if (type == "SGM"){ // SGM = Start Genset Manually
+    else if (typeLen == 3 && strncmp(type, "SGM", 3) == 0){ // SGM = Start Genset Manually
 
       if (gensetOnState == AWAL_ON && gensetOffState == AWAL_OFF){
-        if (data == "off"){
+        if (dataLen == 3 && strncmp(data, "off", 3) == 0){
           nowManualState = GENSET_OFF;
         }
-        else if (data == "on"){
+        else if (dataLen == 2 && strncmp(data, "on", 2) == 0){
           nowManualState = GENSET_ON;// start_genset_manually
         }
       }
@@ -351,30 +357,30 @@ void do_lcd(){
     if (menu <= 0) {
       menu = 0;
       lcd.setCursor(0,0);
-      lcd.print("STATE:");
+      lcd.print(F("STATE:"));
       lcd.setCursor(0, 1);
       lcd.print(stateToString(nowState));
     }
     else if (menu == 1) {
       lcd.setCursor(0, 0);
-      lcd.print("PLN: ");
+      lcd.print(F("PLN: "));
       lcd.setCursor(5, 0);
       lcd.print(teganganPln, 0);
 
       lcd.setCursor(8, 0);
-      lcd.print("AKI: ");
+      lcd.print(F("AKI: "));
       lcd.setCursor(13, 0);
       lcd.print(teganganAki, 0);
 
       lcd.setCursor(0, 1);
-      lcd.print("GENSET: ");
+      lcd.print(F("GENSET: "));
       lcd.setCursor(8, 1);
       lcd.print(teganganGenset, 0);
     }
     else if (menu == 2) {
       
       lcd.setCursor(0, 0);
-      lcd.print("Warmup Rem. Time");
+      lcd.print(F("Warmup Rem. Time"));
 
       char line2[17];
 
@@ -392,7 +398,7 @@ void do_lcd(){
 
       if (!rtcAvailable) {
         lcd.setCursor(0, 0);
-        lcd.print("RTC offline");
+        lcd.print(F("RTC offline"));
       }
       else {
         char line1[17];
@@ -418,13 +424,15 @@ void do_lcd(){
   }
   else if (emergencyNotified == true){
     lcd.setCursor(2, 0);
-    lcd.print("EMERGENCY!");
+    lcd.print(F("EMERGENCY!"));
     lcd.setCursor(0, 0);
-    lcd.print("GENSET FAILURE!");
+    lcd.print(F("GENSET FAILURE!"));
   }
 }
 
 void loop() {
+
+  wdt_reset();
 
   if (rtcAvailable) {
     nowTime = rtc.now();
@@ -448,17 +456,18 @@ void loop() {
     char c = Serial.read();
 
     if (c == '<'){
-      buffer = "";
-      buffer += c;
+      cmdBufferLen = 0;
+      cmdBuffer[cmdBufferLen++] = c;
     }
     else if (c == '>') {
-      buffer += c;
-      processCommand(buffer);
-      buffer = "";
+      if (cmdBufferLen < CMD_BUF_LEN) cmdBuffer[cmdBufferLen++] = c;
+      cmdBuffer[cmdBufferLen] = '\0';
+      processCommand(cmdBuffer);
+      cmdBufferLen = 0;
     }
     else {
-      if (buffer.length() < 64) buffer += c;
-      else buffer = "";
+      if (cmdBufferLen < CMD_BUF_LEN) cmdBuffer[cmdBufferLen++] = c;
+      else cmdBufferLen = 0;
     }
   }
 
@@ -695,10 +704,10 @@ void loop() {
           nowState = WAIT;
           waktuGlobal_last2 = millis();
           matikan_lampu_emergency();
-          Serial.println("<RESET_OK,Emergency direset, sistem kembali normal>");
+          Serial.println(F("<RESET_OK,Emergency direset, sistem kembali normal>"));
         }
         else if (emergencyNotified == true){
-          Serial.println("EMERGENCY,Genset gagal start setelah 5x percobaan. Cek kondisi fisik & kirim RST,confirm untuk reset");
+          Serial.println(F("EMERGENCY,Genset gagal start setelah 5x percobaan. Cek kondisi fisik & kirim RST,confirm untuk reset"));
           nyalakan_lampu_emergency();
         }
       }
@@ -737,14 +746,14 @@ void loop() {
         }
       }
 
-      Serial.print("<State: ");
+      Serial.print(F("<State: "));
       Serial.print(stateToString(nowState));
-      Serial.println(">");
+      Serial.println(F(">"));
 
     }
   }
   else {
-    Serial.print("<Manual Mode>");
+    Serial.print(F("<Manual Mode>"));
 
     if (lastMode == true){
       lastMode = autoMode;
@@ -757,13 +766,13 @@ void loop() {
     }
 
     if (nowManualState == WAIT_COMMAND){
-      Serial.println("Waiting for command!");
+      Serial.println(F("Waiting for command!"));
       waktuGlobal_last2 = waktuGlobal;
     }
 
     else if (nowManualState == GENSET_ON){
       if (gensetOnState == AWAL_ON){
-        Serial.println("Memulai aktifkan genset!");
+        Serial.println(F("Memulai aktifkan genset!"));
         wait_next_genset_on_state(waktuGlobal, NYALAKAN_GENSET);
       }
       else if (gensetOnState == NYALAKAN_GENSET){
@@ -789,7 +798,7 @@ void loop() {
 
     else if (nowManualState == GENSET_OFF){
       if (gensetOffState == AWAL_OFF){
-        Serial.println("Memulai matikan genset!");
+        Serial.println(F("Memulai matikan genset!"));
         wait_next_genset_off_state(waktuGlobal, LEPAS_ON);
         lepas_starter_genset(); // preventif check
       }
@@ -821,22 +830,22 @@ void wait_next_genset_off_state(unsigned long waktuGlobal, gensetOffFSM state) {
   }
 }
 
-const char* stateToString(State s) {
+const __FlashStringHelper* stateToString(State s) {
   switch (s) {
-    case WAIT_AKI: return "WAIT_AKI";
-    case CHECK_WAIT_AKI: return "CHECK_WAIT_AKI";
-    case PLN: return "PLN";
-    case GENSET: return "GENSET";
-    case WAIT: return "WAIT";
-    case LONG_WAIT: return "LONG_WAIT";
-    case CHECK_WAIT: return "CHECK_WAIT";
-    case CHECK_LONG_WAIT: return "CHECK_LONG_WAIT";
-    case DELAY_AFTER_START_GENSET: return "DELAY_AFTER_START_GENSET";
-    case WAIT_GENSET: return "WAIT_GENSET";
-    case CHECK_WAIT_GENSET: return "CHECK_WAIT_GENSET";
-    case START_GENSET: return "START_GENSET";
-    case EMERGENCY_GENSET: return "EMERGENCY_GENSET";
-    default: return "UNKNOWN";
+    case WAIT_AKI: return F("WAIT_AKI");
+    case CHECK_WAIT_AKI: return F("CHECK_WAIT_AKI");
+    case PLN: return F("PLN");
+    case GENSET: return F("GENSET");
+    case WAIT: return F("WAIT");
+    case LONG_WAIT: return F("LONG_WAIT");
+    case CHECK_WAIT: return F("CHECK_WAIT");
+    case CHECK_LONG_WAIT: return F("CHECK_LONG_WAIT");
+    case DELAY_AFTER_START_GENSET: return F("DELAY_AFTER_START_GENSET");
+    case WAIT_GENSET: return F("WAIT_GENSET");
+    case CHECK_WAIT_GENSET: return F("CHECK_WAIT_GENSET");
+    case START_GENSET: return F("START_GENSET");
+    case EMERGENCY_GENSET: return F("EMERGENCY_GENSET");
+    default: return F("UNKNOWN");
   }
 }
 

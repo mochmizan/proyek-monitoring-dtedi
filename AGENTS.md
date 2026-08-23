@@ -43,7 +43,9 @@ React 19.2.7, TypeScript 6.0.3, Vite 8.1.3, TanStack Router 1.170.17, TanStack Q
 
 ## Firmware (`firmware/` — one sketch folder per node)
 
-Node sketches deployed to field hardware and bridged through HUBV5:
+Node sketches deployed to field hardware and bridged through HUBV5.
+
+**Fleet AP standardization (2026-08-23)**: every hub Pi broadcasts an identical hidden AP (`smsb-iot` / WPA2, channel surveyed per room) at static `192.168.72.242`, so all ESP sketches share the same WiFi/broker constants and work in any room on any Pi without reflashing. `DEV_NAME` is boot-derived per node (`<TYPE>-<last4 MAC hex>`), replacing hardcoded names.
 
 | Sketch | Node | Status |
 |---|---|---|

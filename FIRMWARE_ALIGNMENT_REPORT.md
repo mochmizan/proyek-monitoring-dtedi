@@ -168,6 +168,11 @@ To guarantee flawless implementation without hallucinated APIs or anti-patterns,
    doc["AUTO_MODE"]  = (bool)autoMode;
    doc["EMERGENCY"]  = (bool)emergency;
    ```
+4. **Boot-Time Derived `DEV_NAME`:** the hardcoded `device_name` was replaced with a unique per-node name derived at boot: `"ATS-"` + last 4 hex digits of the WiFi MAC, uppercased (e.g. `ATS-6047`), stored in a bounded 16-byte `char` buffer via `snprintf`. Every published occurrence (`DEV_NAME` field and the MQTT client ID) uses the derived name, staying compatible with the realigned `WEMOS_ATS.ino` fork.
+
+#### Fleet AP Standardization (2026-08-23)
+
+1. **Identical Hidden AP Bubble:** WiFi constants set to the fleet values — SSID `smsb-iot` (hidden AP broadcast by every room's Pi), password `SmsbRoomNet2026`, broker `192.168.72.242` — so nodes roam between rooms without reflash.
 
 ---
 
@@ -204,8 +209,13 @@ To guarantee flawless implementation without hallucinated APIs or anti-patterns,
        temperature = 0.0f;
        humidity    = 0.0f;
    }
-   // OLED writes strictly guarded: if (isOledPresent) { ... }
-   ```
+    // OLED writes strictly guarded: if (isOledPresent) { ... }
+    ```
+
+#### Fleet AP Standardization (2026-08-23)
+
+1. **Identical Hidden AP Bubble:** WiFi constants set to the fleet values — SSID `smsb-iot` (hidden AP broadcast by every room's Pi), password `SmsbRoomNet2026`, broker `192.168.72.242` — so nodes roam between rooms without reflash.
+2. **Boot-Time Derived `DEV_NAME`:** the hardcoded `hs109-ts-01` was replaced with a unique per-node name derived at boot: `"TS-"` + last 4 hex digits of the WiFi MAC, uppercased (e.g. `TS-6047`), stored in a bounded 16-byte `char` buffer via `snprintf`. Every published occurrence (`DEV_NAME` field and the MQTT client ID) uses the derived name.
 
 ---
 
@@ -248,7 +258,12 @@ To guarantee flawless implementation without hallucinated APIs or anti-patterns,
 2. **Command Hooks:**
    - In MQTT `callback()`: `ac->send(); saveACStateToEEPROM((ac == &ac1) ? 1 : 2, *ac); publishACStatus(&ac1, &ac2);`
    - In `processSerialCommand()`: `ac->send(); saveACStateToEEPROM((ac == &ac1) ? 1 : 2, *ac);`
-   - Hardcoded `initAC()` 19°C removed completely.
+    - Hardcoded `initAC()` 19°C removed completely.
+
+#### Fleet AP Standardization (2026-08-23)
+
+1. **Identical Hidden AP Bubble:** WiFi constants set to the fleet values — SSID `smsb-iot` (hidden AP broadcast by every room's Pi), password `SmsbRoomNet2026`, broker `192.168.72.242` — so nodes roam between rooms without reflash.
+2. **Boot-Time Derived `DEV_NAME`:** the hardcoded `hs109-ac-01` was replaced with a unique per-node name derived at boot: `"AC-"` + last 4 hex digits of the WiFi MAC, uppercased (e.g. `AC-6047`), stored in a bounded 16-byte `char` buffer via `snprintf`. Every published occurrence (`DEV_NAME` field and the MQTT client ID) uses the derived name.
 
 ---
 
@@ -272,9 +287,22 @@ The hardware team's fork of the canonical ATS bridge (`fixed_wemos_mqtt_raspi.in
 2. **ATSData Schema Compliance:** Payload now includes `HUB_NAME`, `DEV_ID`, `DEV_NAME`, `DEV_TYPE: "ATS"`, and `EMERGENCY` (parsed from `<EMERGENCY,x>` serial frames) as native bools, matching `ATSData` in `SERVERv5/v5/schemasv5.py`.
 3. **Robustness Parity:** `setBufferSize(512)`, downlink length/nullptr guards, publish-only-when-connected guard, bounded 64-char serial buffer, guarded `mqtt.loop()`. Canonical serial framing `<M,auto/manual>`, `<SGM,on/off>`, `<RST,rst>`, `<C,GET>` unchanged.
 
+#### Fleet AP Standardization (2026-08-23)
+
+1. **Identical Hidden AP Bubble:** WiFi constants set to the fleet values — SSID `smsb-iot` (hidden AP broadcast by every room's Pi), password `SmsbRoomNet2026`, broker `192.168.72.242` — so nodes roam between rooms without reflash.
+2. **Boot-Time Derived `DEV_NAME`:** the hardcoded `hs109-ats-01` was replaced with a unique per-node name derived at boot: `"ATS-"` + last 4 hex digits of the WiFi MAC, uppercased (e.g. `ATS-6047`), stored in a bounded 9-byte `char` buffer. Every published occurrence (`DEV_NAME` field and the MQTT client ID) uses the derived name.
+
 ### Component 6: ATS FSM Controller Non-Blocking RTC Degraded Mode ([`PROMINI.ino`](firmware/PROMINI/PROMINI.ino))
 
 * Removed the catastrophic `while(1);` halt in `setup()` when `rtc.begin()` fails. The node now sets an `rtcAvailable` flag and continues: warmup countdown is disabled (`getWarmupCountdown()` returns zeros), RTC reads, EEPROM warmup persistence, and the LCD date/time page are skipped, and the FSM keeps operating on `millis()`-based timing. Canonical serial protocol unchanged.
+
+#### RAM Reduction & Watchdog Hardening (2026-08-23)
+
+1. **Static RAM: 1425 B (69%) → 766 B (37%)** — free RAM 623 B → 1282 B (+659 B), flash 18042 B → 17238 B. Two levers:
+   * All `Serial`/`LCD` string literals (state frames, LCD labels, degraded-mode warnings) and `stateToString()` returns moved to flash via `F()` / `const __FlashStringHelper*` — the largest RAM consumer on AVR.
+   * The dynamic `String` serial RX buffer was replaced with a bounded 65-byte `char cmdBuffer[]`, and `processCommand()` was rewritten to parse in place with `strchr`/`strncmp` (length-checked token matching) instead of allocating `substring()` garbage per frame.
+2. **AVR Watchdog:** `wdt_enable(WDTO_2S)` at the top of `setup()`, `wdt_reset()` at the top of `loop()` and around the boot `delay(1000)`. The FSM is already non-blocking (`millis()` timers, no `while(1);`), so no other call site starves the dog.
+3. **Protocol Preservation:** outbound frames `<STATE>`, `<PLN>`, `<GENSET>`, `<AKI>`, `<REM_SEC/MIN/HOUR>`, `<AUTO_MODE>`, `<EMERGENCY>` and inbound `<M,auto/manual>`, `<SGM,on/off>`, `<RST,rst>`, `<C,GET>` are byte-identical. All `rtc.*` call sites remain gated by `rtcAvailable`.
 
 ---
 

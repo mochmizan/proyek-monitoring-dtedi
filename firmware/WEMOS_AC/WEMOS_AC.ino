@@ -42,8 +42,8 @@ const uint16_t IR2_PIN = D6;
 //========================
 // WiFi Config
 //========================
-const char* NAMA_WIFI     = "ABC";
-const char* NAMA_PASSWORD = "Admin123";
+const char* NAMA_WIFI     = "smsb-iot";
+const char* NAMA_PASSWORD = "SmsbRoomNet2026";
 
 //========================
 // MQTT Broker Config (Hub)
@@ -56,7 +56,7 @@ const char*     COMMAND_TOPIC = "hs109rs/ac/command";
 //========================
 // Device Identification
 //========================
-const char* DEV_NAME  = "hs109-ac-01";
+char DEV_NAME[16];                         // Derived at boot: AC-last4ofMAC
 const char* DEV_TYPE  = "AC";
 const char* HUB_NAME  = "hs109rs-hub-01";  // Target Hub Name
 const char* MQTT_USER = "hubadmin";
@@ -467,6 +467,10 @@ void setup()
     Wire.setClock(100000);
 
     scanAndInitI2C();
+
+    String bootMac = WiFi.macAddress();
+    snprintf(DEV_NAME, sizeof(DEV_NAME), "%s-%c%c%c%c", DEV_TYPE,
+             bootMac[12], bootMac[13], bootMac[15], bootMac[16]);
 
     mqttClientId = String(DEV_NAME) + "-" + WiFi.macAddress();
 

@@ -3,16 +3,16 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// Ganti sesuai WiFi kamu
-const char* NAMA_WIFI = "ABC";
-const char* NAMA_PASSWORD = "Admin123";
+// Fleet AP bubble: SSID/password identik di semua room Pi (hidden AP)
+const char* NAMA_WIFI = "smsb-iot";
+const char* NAMA_PASSWORD = "SmsbRoomNet2026";
 
 // MQTT Broker (Hub)
 const char* MQTT_IP = "192.168.72.242";
 const uint16_t MQTT_PORT = 1883;
 const char* DATA_TOPIC = "hs109rs/ats/data";
 const char* COMMAND_TOPIC = "hs109rs/ats/command";
-const char* DEVICE_NAME = "hs109-ats-01";
+char DEVICE_NAME[9] = "ATS-"; // diisi saat boot: ATS- + 4 hex terakhir MAC (unik per node)
 const char* HUB_NAME = "hs109rs-hub-01";
 const char* DEV_TYPE = "ATS";
 const char* mqtt_user = "hubadmin";
@@ -245,6 +245,13 @@ void processData(String msg) {
 
 void setup() {
   Serial.begin(9600);
+
+  String mac = WiFi.macAddress();
+  snprintf(DEVICE_NAME, sizeof(DEVICE_NAME), "ATS-%c%c%c%c",
+           toupper(mac[12]), toupper(mac[13]), toupper(mac[15]), toupper(mac[16]));
+  Serial.print("DEV_NAME: ");
+  Serial.println(DEVICE_NAME);
+
   mqttClientId = String(DEVICE_NAME) + "-" + WiFi.macAddress();
   connect_wifi();
   mqtt.setServer(MQTT_IP, MQTT_PORT);

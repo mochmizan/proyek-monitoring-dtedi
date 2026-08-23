@@ -4,15 +4,15 @@
 #include <ArduinoJson.h>
 
 // Ganti sesuai WiFi kamu
-const char* ssid = "ABC";
-const char* password = "Admin123";
+const char* ssid = "smsb-iot";
+const char* password = "SmsbRoomNet2026";
 
 // MQTT Broker (Hub)
 const char* mqtt_server = "192.168.72.242";
 const uint16_t mqtt_port = 1883;
 const char* mqtt_topic_data = "hs109rs/ats/data";
 const char* mqtt_topic_command = "hs109rs/ats/command";
-const char* device_name = "hs109-ats-01";
+char device_name[16];  // Derived at boot: ATS-last4ofMAC
 const char* HUB_NAME = "hs109rs-hub-01";
 const char* DEV_TYPE = "ATS";
 const char* mqtt_user = "hubadmin";
@@ -165,6 +165,11 @@ void setup() {
   Serial.begin(9600);
   pinMode(13, OUTPUT);
   digitalWrite(13, LOW);
+
+  String bootMac = WiFi.macAddress();
+  snprintf(device_name, sizeof(device_name), "%s-%c%c%c%c", DEV_TYPE,
+           bootMac[12], bootMac[13], bootMac[15], bootMac[16]);
+
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
