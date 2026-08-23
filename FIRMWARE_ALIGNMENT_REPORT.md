@@ -292,17 +292,27 @@ The hardware team's fork of the canonical ATS bridge (`fixed_wemos_mqtt_raspi.in
 1. **Identical Hidden AP Bubble:** WiFi constants set to the fleet values — SSID `smsb-iot` (hidden AP broadcast by every room's Pi), password `SmsbRoomNet2026`, broker `192.168.72.242` — so nodes roam between rooms without reflash.
 2. **Boot-Time Derived `DEV_NAME`:** the hardcoded `hs109-ats-01` was replaced with a unique per-node name derived at boot: `"ATS-"` + last 4 hex digits of the WiFi MAC, uppercased (e.g. `ATS-6047`), stored in a bounded 9-byte `char` buffer. Every published occurrence (`DEV_NAME` field and the MQTT client ID) uses the derived name.
 
-### Component 6: ATS FSM Controller Non-Blocking RTC Degraded Mode ([`PROMINI.ino`](firmware/PROMINI/PROMINI.ino))
+### Component 6: ATS FSM Controller — Hardware-Team v2 Integration & Hardening ([`PROMINI.ino`](firmware/PROMINI/PROMINI.ino))
 
-* Removed the catastrophic `while(1);` halt in `setup()` when `rtc.begin()` fails. The node now sets an `rtcAvailable` flag and continues: warmup countdown is disabled (`getWarmupCountdown()` returns zeros), RTC reads, EEPROM warmup persistence, and the LCD date/time page are skipped, and the FSM keeps operating on `millis()`-based timing. Canonical serial protocol unchanged.
+#### Integrated from hardware-team v2 (authoritative FSM base, taken as-is)
 
-#### RAM Reduction & Watchdog Hardening (2026-08-23)
+* **ZMPT101B AC voltage sensing:** `sensorPLN` on A1 / `sensorGenset` on A0 with sensitivity `500.0`, RMS-sampled each cycle and thresholded at `BATAS_VAC 200.0`.
+* **Expanded State enum:** `WAIT_AKI, CHECK_WAIT_AKI, PLN, GENSET, WAIT, LONG_WAIT, CHECK_WAIT, CHECK_LONG_WAIT, DELAY_AFTER_START_GENSET, WAIT_GENSET, CHECK_WAIT_GENSET, START_GENSET, EMERGENCY_GENSET`, plus manual-mode sub-FSMs (`gensetOnState` / `gensetOffState`) behind `<M,manual>`.
+* **Weekly warmup scheduler:** `WARMUP_DAY = 0` (Sunday), `WARMUP_HOUR = 18`; `getNextWarmup()` computes the next Sunday-18:00 occurrence, `saveNextWarmup()` / `loadNextWarmup()` persist it as unixtime in EEPROM addr 0. `getWarmupCountdown()` returns remaining time until that schedule; when it hits zero during the `PLN` state the FSM runs the 5-minute genset warmup, then reschedules next week.
+* **Majority-vote debounce:** `cariModus()` over `bool dataTegangan[SIZE=10]` and `dataTegangan_long[LONG_SIZE=20]`.
+* **Emergency latch:** `MAX_START_ATTEMPTS = 5` failed starter cycles latch `emergencyNotified` + `EMERGENCY_GENSET`; inbound `<RST,rst>` clears it and the state handler emits `<RESET_OK,Emergency direset, sistem kembali normal>`.
 
-1. **Static RAM: 1425 B (69%) → 766 B (37%)** — free RAM 623 B → 1282 B (+659 B), flash 18042 B → 17238 B. Two levers:
-   * All `Serial`/`LCD` string literals (state frames, LCD labels, degraded-mode warnings) and `stateToString()` returns moved to flash via `F()` / `const __FlashStringHelper*` — the largest RAM consumer on AVR.
-   * The dynamic `String` serial RX buffer was replaced with a bounded 65-byte `char cmdBuffer[]`, and `processCommand()` was rewritten to parse in place with `strchr`/`strncmp` (length-checked token matching) instead of allocating `substring()` garbage per frame.
-2. **AVR Watchdog:** `wdt_enable(WDTO_2S)` at the top of `setup()`, `wdt_reset()` at the top of `loop()` and around the boot `delay(1000)`. The FSM is already non-blocking (`millis()` timers, no `while(1);`), so no other call site starves the dog.
-3. **Protocol Preservation:** outbound frames `<STATE>`, `<PLN>`, `<GENSET>`, `<AKI>`, `<REM_SEC/MIN/HOUR>`, `<AUTO_MODE>`, `<EMERGENCY>` and inbound `<M,auto/manual>`, `<SGM,on/off>`, `<RST,rst>`, `<C,GET>` are byte-identical. All `rtc.*` call sites remain gated by `rtcAvailable`.
+#### Retained hardening (layered without changing FSM behavior)
+
+1. **Non-blocking RTC degraded mode:** removed the catastrophic `while(1);` halt when `rtc.begin()` fails. An `rtcAvailable` flag gates every RTC touchpoint:
+   * `setup()` — `lostPower()`/`adjust()` and warmup-EEPROM init run only when the RTC is present; otherwise skipped entirely.
+   * `loop()` top — `nowTime = rtc.now()` assignment is gated.
+   * `GENSET` state warmup completion — EEPROM reschedule block is gated.
+   * LCD menu page 3 — renders `"RTC offline"` instead of the date/time readout.
+   With no RTC, `getWarmupCountdown()` returns `{0,0,0,0}` every cycle (warmup never triggers) and the FSM proceeds immediately on `millis()` timing.
+2. **Static RAM reduction: 766 B (37%)** dynamic, free RAM 1282 B; flash 17662 B (57%). All spammy per-loop `Serial`/LCD literals and `stateToString()` returns live in flash via `F()` / `const __FlashStringHelper*`; the serial RX path uses a bounded 65-byte `char cmdBuffer[]` filled by index and parsed in place with `strchr`/`strncmp` (length-checked token matching) instead of `String` garbage per frame.
+3. **AVR Watchdog:** `wdt_enable(WDTO_2S)` first thing in `setup()`, `wdt_reset()` at the top of `loop()` and around the boot `delay(1000)`. The FSM is fully non-blocking, so nothing else starves the dog.
+4. **Protocol Preservation (byte-identical):** outbound frames `<STATE,x>`, `<PLN,x>`, `<GENSET,x>`, `<AKI,x>`, `<REM_SEC,x>`, `<REM_MIN,x>`, `<REM_HOUR,x>`, `<AUTO_MODE,x>`, `<EMERGENCY,x>`, `<RESET_OK,...>`, `<NEXT WARMUP ...>` and state-spam lines unchanged; inbound `<C,GET>`, `<RST,rst>`, `<M,auto/manual>`, `<SGM,on/off>` parsing semantics identical. Pin map, thresholds, and all timing constants untouched.
 
 ---
 

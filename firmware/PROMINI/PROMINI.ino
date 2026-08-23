@@ -60,9 +60,11 @@ RTC_DS3231 rtc;
 ZMPT101B sensorPLN (A1, 50.0);
 ZMPT101B sensorGenset (A0, 50.0);
 DateTime nowTime;
-DateTime lastWarmup;
+DateTime nextWarmup;
 
-const unsigned long WARMUP_COUNTDOWN_SEC = 86400UL;
+// Weekly warmup scheduler (hardware-team v2): warmup setiap hari yang dipilih
+const int WARMUP_DAY = 0;   // 0 = Sunday
+const int WARMUP_HOUR = 18;
 
 struct warmupCountdown{
   long remSecTotal;
@@ -179,86 +181,32 @@ void setup() {
   if (!rtc.begin()) {
     rtcAvailable = false;
     Serial.println(F("<RTC tidak ditemukan! Mode degradasi: warmup countdown nonaktif, FSM tetap jalan>"));
-    // Tidak ada while(1); â€” sistem lanjut operasi normal tanpa RTC
+    // Tidak ada while(1); - sistem lanjut operasi normal tanpa RTC
   }
   else {
     rtcAvailable = true;
 
-    // // Jika RTC kehilangan power
+    // Jika RTC kehilangan power
     if (rtc.lostPower()) {
       Serial.println(F("<RTC kehilangan power, set waktu!>"));
 
       // SET waktu sesuai waktu compile
       rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
-      // // ATAU set manual:
+      // ATAU set manual:
       // rtc.adjust(DateTime(2026, 4, 18, 19, 39, 0));
     }
 
-    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
-  ///////////////////
-    unsigned long now = rtc.now().unixtime();
-    unsigned long savedTime;
-
-    EEPROM.get(0, savedTime);
-
-    if (savedTime > 1700000000 && savedTime < now) {
-      lastWarmup = DateTime(savedTime);
-      Serial.println(F("<Data warmup berhasil dimuat>"));
+    // Muat jadwal warmup mingguan dari EEPROM; jika invalid, hitung & simpan
+    if (!loadNextWarmup()) {
+      nextWarmup = getNextWarmup(rtc.now());
+      saveNextWarmup(nextWarmup);
+      Serial.println(F("<Data EEPROM kosong / invalid, jadwal warmup awal disimpan>"));
     }
     else {
-      Serial.println(F("<Data EEPROM kosong / invalid>"));
-      EEPROM.put(0, now);
-      lastWarmup = rtc.now(); // fallback
+      Serial.println(F("<Jadwal warmup berhasil dimuat>"));
     }
-  ///////////////////////
   }
-
-// Last Warmup Kemarin Jam 3
-
-  // DateTime now = rtc.now();
-
-  // // Besok
-  // DateTime besok = now - TimeSpan(1, 0, 0, 0);
-
-  // // Besok jam 02:00:00
-  // DateTime warmupTime(
-  //     besok.year(),
-  //     besok.month(),
-  //     besok.day(),
-  //     15, 0, 0
-  // );
-
-// Last Warmup Kemarin Jam 3
-
-  // EEPROM.put(0, warmupTime.unixtime());
-  // lastWarmup = warmupTime;
-
-  // EEPROM.get(0, savedTime);
-
-  // if (savedTime > 1700000000 && savedTime < now) {
-
-  //     DateTime t(savedTime);
-
-  //     // Tambah 1 hari
-  //     t = t + TimeSpan(1, 0, 0, 0);
-
-  //     // Ubah jam menjadi 04:00
-  //     DateTime fixedTime(
-  //         t.year(),
-  //         t.month(),
-  //         t.day(),
-  //         4, 0, 0);
-
-  //     EEPROM.put(0, fixedTime.unixtime());
-  //     lastWarmup = fixedTime;
-
-  //     Serial.println("EEPROM berhasil diubah.");
-  // }
-
-  // EEPROM.put(0, now);
-  // lastWarmup = rtc.now(); // fallback
 
   wdt_reset();
   delay(1000);
@@ -727,10 +675,11 @@ void loop() {
               isWarmup = false;
               warmupStarted = false;
 
+              // Warmup selesai: jadwalkan siklus mingguan berikutnya
               if (rtcAvailable) {
-                unsigned long now = rtc.now().unixtime();
-                EEPROM.put(0, now);
-                lastWarmup = rtc.now();
+                DateTime now = rtc.now();
+                nextWarmup = getNextWarmup(now);
+                saveNextWarmup(nextWarmup);
               }
 
             }
@@ -901,9 +850,7 @@ warmupCountdown getWarmupCountdown(){
     return {0, 0, 0, 0};
   }
 
-  TimeSpan diff = nowTime - lastWarmup;
-
-  long rem_sec_total = WARMUP_COUNTDOWN_SEC - diff.totalseconds();
+  long rem_sec_total = (long)nextWarmup.unixtime() - (long)nowTime.unixtime();
 
   if (rem_sec_total < 0) rem_sec_total = 0;
 
@@ -916,4 +863,35 @@ warmupCountdown getWarmupCountdown(){
   long rem_min = ((rem_sec_total - hour_in_sec) - rem_sec) / 60;
 
   return {rem_sec_total, rem_sec, rem_min, rem_hour};
+}
+
+// Hitung kejadian WARMUP_DAY jam WARMUP_HOUR berikutnya yang > now
+DateTime getNextWarmup(DateTime now) {
+  DateTime candidate(now.year(), now.month(), now.day(), WARMUP_HOUR, 0, 0);
+
+  int daysAhead = (WARMUP_DAY - candidate.dayOfTheWeek() + 7) % 7;
+  candidate = candidate + TimeSpan(daysAhead, 0, 0, 0);
+
+  if (candidate.unixtime() <= now.unixtime()) {
+    candidate = candidate + TimeSpan(7, 0, 0, 0);
+  }
+
+  return candidate;
+}
+
+void saveNextWarmup(DateTime dt) {
+  EEPROM.put(0, dt.unixtime());
+}
+
+bool loadNextWarmup() {
+  unsigned long savedTime;
+
+  EEPROM.get(0, savedTime);
+
+  if (savedTime > 1700000000UL) {
+    nextWarmup = DateTime(savedTime);
+    return true;
+  }
+
+  return false;
 }
