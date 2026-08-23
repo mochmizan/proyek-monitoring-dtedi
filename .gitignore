@@ -1,0 +1,53 @@
+# ===== Secrets & credentials (NEVER commit) =====
+.env
+.env.*
+!.env.example
+cert.key
+*.pem
+mosquitto/config/passwd
+cookies.txt
+pi_backups/
+browser_screenshots/
+
+# ===== Databases (regenerable / contain user hashes) =====
+*.db
+*.db-journal
+*.sqlite3
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+ENV/
+*.egg-info/
+
+# ===== Node / SPA =====
+node_modules/
+dist/
+*.tsbuildinfo
+.eslintcache
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# ===== Firmware tooling =====
+firmware_build/
+
+# ===== Generated / tool output =====
+graphify-out/
+SERVERv5/v5/static/
+*.log
+
+# ===== IDE / OS =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

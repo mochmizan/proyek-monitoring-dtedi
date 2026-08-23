@@ -1,0 +1,24 @@
+export const queryKeys = {
+  auth: {
+    all: ['auth'] as const,
+    me: () => [...queryKeys.auth.all, 'me'] as const,
+  },
+  devices: {
+    all: ['devices'] as const,
+    list: (status?: string) => [...queryKeys.devices.all, 'list', { status }] as const,
+    detail: (id: string) => [...queryKeys.devices.all, 'detail', id] as const,
+    history: (id: string, range?: string) => [...queryKeys.devices.all, 'history', id, { range }] as const,
+    pending: () => [...queryKeys.devices.all, 'pending'] as const,
+    active: () => [...queryKeys.devices.all, 'active'] as const,
+  },
+  rooms: {
+    all: ['rooms'] as const,
+    list: () => [...queryKeys.rooms.all, 'list'] as const,
+    detail: (id: string) => [...queryKeys.rooms.all, 'detail', id] as const,
+    map: (id: string) => [...queryKeys.rooms.all, 'map', id] as const,
+  },
+  alerts: {
+    all: ['alerts'] as const,
+    list: (filters?: Record<string, unknown>) => [...queryKeys.alerts.all, 'list', filters] as const,
+  },
+};
