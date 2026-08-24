@@ -36,6 +36,8 @@ Pi (edge): install `hubbrain.service` per its header (diff against the existing 
 
 ## Non-Obvious Facts
 
+- **Ownership model is load-bearing**: app code = `genset:smsb` (group-inherited via setgid dirs), but `hubgatev5.db`, `.env`, and `static/` must be `smsb:smsb` — the service user `smsb` writes the SQLite DB. A blanket `chown -R genset:genset` (or losing the `smsb` group) causes `sqlite3.OperationalError: attempt to write a readonly database` → HTTP 500 on every login. Restore with: `chown -R genset:smsb /opt/smsb && chmod -R g+rwX /opt/smsb && find /opt/smsb -type d -exec chmod g+s {} + && chown smsb:smsb /opt/smsb/SERVERv5/v5/hubgatev5.db* /opt/smsb/SERVERv5/v5/.env`
+
 - Nginx expects the deployment root at `/opt/smsb` (static uploads from `SERVERv5/v5/static/`), but the SPA is served from `/var/www/gui-app` (rsync target of the push-deploy hook) — not from `clients/gui-app/dist` anymore
 - `SERVERv5/v5/static/` is a **generated** deploy target — gitignored
 - The staging config hardcodes the Windows checkout path `/mnt/c/Users/Mizan/Documents/smsb/...` — machine-specific, adjust per host

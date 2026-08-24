@@ -6,7 +6,8 @@
 # It:
 #   1. Creates a bare git repo at /opt/smsb.git
 #   2. Installs a post-receive hook that, on every `git push prod`:
-#        - checks out the pushed tree to /opt/smsb (GIT_WORK_TREE)
+#        - syncs /opt/smsb (an independent clone with origin=/opt/smsb.git)
+#          via fetch + reset --hard origin/main
 #        - pip-installs requirements into /opt/smsb/venv (if venv exists)
 #        - npm ci && npm run build in clients/gui-app (if node present)
 #        - rsyncs dist/ to /var/www/gui-app
@@ -145,8 +146,8 @@ while read -r _old _new ref; do
     echo "[post-receive] deploying '${branch}' -> ${DEPLOY_WORK_TREE}"
     fail=0
 
-    if ! GIT_DIR="." GIT_WORK_TREE="${DEPLOY_WORK_TREE}" git checkout -f "${branch}"; then
-        echo "[post-receive] ERROR: checkout failed"
+    if ! ( cd "${DEPLOY_WORK_TREE}" && unset GIT_DIR GIT_WORK_TREE && git fetch origin "${branch}" && git reset --hard "origin/${branch}" ); then
+        echo "[post-receive] ERROR: work-tree sync failed"
         exit 1
     fi
 
@@ -178,8 +179,14 @@ while read -r _old _new ref; do
     # ---- Post-deploy smoke checks -------------------------------------------
     echo "[post-receive] running smoke checks..."
 
-    # Check 1: unauthenticated /api/auth/me must return 401
-    me_code="$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/api/auth/me || echo 000)"
+    # Check 1: unauthenticated /api/auth/me must return 401.
+    # Uvicorn can take several seconds to bind on the 1 GB VPS — poll for it.
+    me_code="000"
+    for _ in $(seq 1 20); do
+        me_code="$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/api/auth/me || echo 000)"
+        [[ "${me_code}" == "401" ]] && break
+        sleep 1
+    done
     if [[ "${me_code}" == "401" ]]; then
         echo "[post-receive] PASS: /api/auth/me returned 401"
     else
@@ -211,8 +218,8 @@ while read -r _old _new ref; do
 Rollback hint (run as root on this VPS):
   # Find the last known-good commit:
   git --git-dir=/opt/smsb.git log --oneline -5
-  # Re-checkout the previous commit into the work tree:
-  git --git-dir=/opt/smsb.git --work-tree=/opt/smsb checkout -f <PREVIOUS_SHA>
+  # Re-sync the work tree clone to the previous commit:
+  cd /opt/smsb && git fetch origin && git reset --hard origin/main~1
   # Rebuild/reinstall as needed, then:
   systemctl restart ${SERVICE_NAME}
   journalctl -u ${SERVICE_NAME} -n 50 --no-pager
