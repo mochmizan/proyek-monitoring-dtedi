@@ -111,12 +111,27 @@ fi
 # 2. Ensure work tree and web root exist with sane ownership
 # ------------------------------------------------------------------------------
 run "mkdir -p '${WORK_TREE}' '${WWW_DIR}'"
-run "chown -R '${DEPLOY_USER}:${DEPLOY_USER}' '${WORK_TREE}'"
+# Group smsb everywhere + setgid dirs so service-created files stay group-accessible.
+run "chown -R '${DEPLOY_USER}:smsb' '${WORK_TREE}'"
+run "chmod -R g+rwX '${WORK_TREE}'"
+run "find '${WORK_TREE}' -type d -exec chmod g+s {} +"
+# Secrets & runtime state must stay owned by the SERVICE user (smsb writes the
+# SQLite DB; a genset-owned .env/DB causes 'readonly database' HTTP 500s).
+run "bash -c 'chown smsb:smsb \"${WORK_TREE}/SERVERv5/v5/.env\" \"${WORK_TREE}/SERVERv5/v5/hubgatev5.db\"* 2>/dev/null || true'"
 # nginx reads but never writes the SPA root.
 run "chmod 755 '${WWW_DIR}'"
 
 # ------------------------------------------------------------------------------
-# 3. Post-receive hook
+# 3a. Sudoers: the post-receive hook runs unprivileged but must restart the API
+# ------------------------------------------------------------------------------
+SUDOERS_PATH="/etc/sudoers.d/smsb-deploy"
+log "Installing sudoers rule: ${DEPLOY_USER} may restart ${SERVICE_NAME}"
+run "echo '${DEPLOY_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart ${SERVICE_NAME}.service' > '${SUDOERS_PATH}'"
+run "chmod 440 '${SUDOERS_PATH}'"
+run "visudo -c"
+
+# ------------------------------------------------------------------------------
+# 4. Post-receive hook
 # ------------------------------------------------------------------------------
 HOOK_PATH="${BARE_REPO}/hooks/post-receive"
 HOOK_TMP="$(mktemp)"
@@ -172,8 +187,9 @@ while read -r _old _new ref; do
         echo "[post-receive] NOTE: npm not found, skipping SPA build (serving existing ${WWW_DIR})"
     fi
 
-    # Restart API service
-    systemctl restart "${SERVICE_NAME}" || fail=1
+    # Restart API service (hook runs as the unprivileged deploy user;
+    # sudoers rule authorizes exactly "systemctl restart <unit>.service")
+    sudo -n systemctl restart "${SERVICE_NAME}.service" || fail=1
     sleep 2
 
     # ---- Post-deploy smoke checks -------------------------------------------
