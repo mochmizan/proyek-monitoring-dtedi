@@ -45,6 +45,14 @@ Python 3.10+ (Raspberry Pi OS), paho-mqtt 2.x, requests, python-dotenv. `require
 - Cert is a self-signed `cert.crt` copied from the server; invalid certs abort all upstream calls
 - Disables `urllib3` SSL warnings — expected, local IP + self-signed cert
 
+## Pi Networking & System Facts (final design, live since 2026-08-24)
+
+- **netplan contains eth0 ONLY**: `dhcp4: true` plus static `10.33.36.81/24` and `routes: [{to: default, via: 10.33.36.254}]`. Never add wifi stanzas: `wifis:` without `access-points` is silently dropped by the generator, and with them networkd spawns wpa_supplicant that fights hostapd (bubble AP flaps).
+- **wlan0 IP comes from `/etc/systemd/system/wlan0-addr.service`** (oneshot, `After=hostapd.service`: `ip link set wlan0 up` + `ip addr add 192.168.72.242/24`) — not netplan.
+- **dnsmasq real config = `/etc/dnsmasq.d/smsb-ap.conf`**; the main `/etc/dnsmasq.conf` must stay empty/comment-only (duplicate keywords make dnsmasq fail to start, killing DHCP leases for the bubble).
+- **Clock**: the Pi has NO RTC battery — boot logs carry fake timestamps until time sync; don't trust file mtimes for ordering. It runs **chrony 4.8 (NOT timesyncd)** as a client of the VPS NTP server (`server 10.33.102.172 iburst prefer`; Ubuntu's default NTS pool sources are disabled because **the Pi has NO internet** — the wall port is LAN-only). chrony `makestep` corrects the fake boot clock within seconds.
+- eth0 is cabled to a UGM wall port (campus LAN); VPS↔Pi path verified (`ping 10.33.36.81`, 0% loss).
+
 ## Work Guidance
 
 - Keep whitelist sync / poll / forward loops non-blocking with bounded timeouts (`timeout=5`)

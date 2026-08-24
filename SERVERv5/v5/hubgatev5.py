@@ -827,7 +827,8 @@ def get_device_history(
         q = db.query(temperature_data).filter(temperature_data.dev_id == dev_id)
         if cutoff is not None:
             q = q.filter(temperature_data.timestamp >= cutoff)
-        rows = q.order_by(temperature_data.timestamp.asc()).limit(1000).all()
+        rows = q.order_by(temperature_data.timestamp.desc()).limit(1000).all()
+        rows.reverse()
         for r in rows:
             ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
             points.append(
@@ -841,7 +842,8 @@ def get_device_history(
         q = db.query(ats_data).filter(ats_data.dev_id == dev_id)
         if cutoff is not None:
             q = q.filter(ats_data.timestamp >= cutoff)
-        rows = q.order_by(ats_data.timestamp.asc()).limit(1000).all()
+        rows = q.order_by(ats_data.timestamp.desc()).limit(1000).all()
+        rows.reverse()
         for r in rows:
             ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
             points.append(

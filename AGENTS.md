@@ -27,7 +27,7 @@ AGENTS.md files are binding work contracts for their subtrees. Parent docs defin
 | `npm run dev` (in `clients/gui-app/`) | Vite HMR dev server with `/api` and `/static` proxy |
 | `npm run build` (in `clients/gui-app/`) | `tsc -b && vite build` (typecheck first) |
 | `npm run lint` (in `clients/gui-app/`) | `oxlint` (no ESLint/Prettier) |
-| `pytest` (at repo root) | Run full automated test suite (100 tests) |
+| `pytest` (at repo root) | Run full automated test suite (105 tests) |
 | `docker compose up -d` (at repo root) | Start local PostgreSQL and Eclipse Mosquitto containers |
 
 ## Stack
@@ -141,7 +141,7 @@ Rules until then:
 - Search params validated with Zod (`validateSearch` + `Route.useSearch()`)
 - Sort/filter state in URL params, not component state
 - File-based routing via TanStack Router — add new `.tsx` in `routes/`, gen file updates automatically
-- Run `pytest` to verify all 100 backend, edge, and pipeline integration tests
+- Run `pytest` to verify all 105 backend, edge, and pipeline integration tests
 
 ## Verification
 

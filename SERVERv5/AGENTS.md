@@ -53,7 +53,7 @@ Python 3.14 (venv), FastAPI, Uvicorn, Pydantic v2 (discriminated unions), SQLAlc
 | `POST /api/devices/{id}/pair` | `require_role("admin")` | 30/min | Pair pending device (name, room, marker, thresholds) |
 | `POST /api/devices/{id}/unpair` | `require_role("admin")` | 30/min | Unpair device (clears room/marker, deactivates) |
 | `PUT /api/devices/{id}/thresholds` | `require_role("admin")` | 30/min | Update warning/critical/hysteresis/debounce thresholds |
-| `GET /api/devices/{id}/history` | authenticated user | 60/min | Historical telemetry time-series (`?range=6h,24h,7d,30d,all`) |
+| `GET /api/devices/{id}/history` | authenticated user | 60/min | Historical telemetry time-series (`?range=6h,24h,7d,30d,all`). **Latest-first pagination semantics**: fetches the newest rows first (ORDER BY timestamp DESC, LIMIT) then reverses to ascending for output — a device always shows its most recent data, never frozen at oldest rows (fixed 2026-08-24; previously ASC+LIMIT returned stale head-of-table rows) |
 | `GET /api/alerts` | authenticated user | 60/min | Filterable alerts list (rooms, devices, severity, status, times) |
 | `POST /api/iot/unapproved` | hub headers | 60/min | Report unknown MAC blocked at edge |
 | `POST /api/iot` | hub headers | 120/min | Receive telemetry (TS/ATS/AC) and evaluate thresholds |
@@ -86,6 +86,7 @@ Python 3.14 (venv), FastAPI, Uvicorn, Pydantic v2 (discriminated unions), SQLAlc
 - Physical nodes (e.g. `80:7D:3A:5E:3D:DB`) require registration/pairing in `dev_table` before HubBrain forwards telemetry to `/api/iot`
 - `HUB_BOOTSTRAP_KEY` env (optional): when set, unknown hubs presenting it via `/api/hubs/pair` self-register as pending approval; unset disables open bootstrap entirely. Bootstrap key becomes the new hub's stored credential — rotate per-hub after approval
 - `hub_table` gained additive columns `last_seen` (tz-aware, stamped on every successful hub-auth request) and `status` (`online`/`offline`, derived from a 25s cutoff in `GET /api/hubs`)
+- Ops: the VPS also runs **chrony as an NTP server** for campus IoT hubs (`allow 10.33.0.0/16`, UFW `123/udp` from campus ranges) — edge Pis have no internet and sync time from this VPS
 
 ## Work Guidance
 

@@ -172,52 +172,100 @@ function TelemetryChart({
   const maxTimeMs = !isNaN(latestPointTime) ? latestPointTime : Date.now();
   const minTimeMs = maxTimeMs - windowMs;
 
+  const timeToX = (tMs: number) => {
+    const ratio = Math.max(0, Math.min(1, (tMs - minTimeMs) / (maxTimeMs - minTimeMs)));
+    return padding.left + ratio * plotWidth;
+  };
   const getX = (index: number) => {
     const pt = points[index];
-    if (!pt || !pt.timestamp) {
-      if (points.length <= 1) return padding.left + plotWidth / 2;
-      return padding.left + (index / (points.length - 1)) * plotWidth;
-    }
-    const t = parseToDate(pt.timestamp).getTime();
+    const t = pt && pt.timestamp ? parseToDate(pt.timestamp).getTime() : NaN;
     if (isNaN(t)) {
       if (points.length <= 1) return padding.left + plotWidth / 2;
       return padding.left + (index / (points.length - 1)) * plotWidth;
     }
-    const ratio = Math.max(0, Math.min(1, (t - minTimeMs) / (maxTimeMs - minTimeMs)));
-    return padding.left + ratio * plotWidth;
+    return timeToX(t);
   };
 
-  // Helper for generating line SVG path
-  const buildLinePath = (getValue: (p: TelemetryHistoryPoint) => number | null | undefined): string => {
-    const validCoords: { x: number; y: number }[] = [];
+  // Production-grade gap handling: break lines at outages, shade offline spans
+  const GAP_FLOOR_MS = 5 * 60 * 1000;
+  const pointTimes: (number | null)[] = points.map((p) => {
+    const t = p.timestamp ? parseToDate(p.timestamp).getTime() : NaN;
+    return isNaN(t) ? null : t;
+  });
+  const validIntervals: number[] = [];
+  for (let i = 1; i < pointTimes.length; i++) {
+    const a = pointTimes[i - 1];
+    const b = pointTimes[i];
+    if (a !== null && b !== null) {
+      const d = b - a;
+      if (d > 0 && d < GAP_FLOOR_MS * 20) validIntervals.push(d);
+    }
+  }
+  let gapThresholdMs = GAP_FLOOR_MS;
+  if (validIntervals.length >= 8) {
+    validIntervals.sort((a, b) => a - b);
+    gapThresholdMs = Math.max(GAP_FLOOR_MS, validIntervals[Math.floor(validIntervals.length / 2)] * 10);
+  }
+  const outages = (() => {
+    const list: { start: number; end: number }[] = [];
+    for (let i = 1; i < pointTimes.length; i++) {
+      const a = pointTimes[i - 1];
+      const b = pointTimes[i];
+      if (a !== null && b !== null && b - a > gapThresholdMs) list.push({ start: a, end: b });
+    }
+    return list;
+  })();
+
+  interface SeriesPaths {
+    linePath: string;
+    areaPath: string;
+    isolated: { x: number; y: number }[];
+  }
+  const buildLine = (getValue: (p: TelemetryHistoryPoint) => number | null | undefined): SeriesPaths => {
+    const segments: string[] = [];
+    const areas: string[] = [];
+    const isolated: { x: number; y: number }[] = [];
+    let current: { x: number; y: number }[] = [];
+    const bottomY = padding.top + plotHeight;
+    const flush = () => {
+      if (current.length >= 2) {
+        const seg = current.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
+        segments.push(seg);
+        areas.push(
+          `${seg} L ${current[current.length - 1].x.toFixed(1)} ${bottomY.toFixed(1)} L ${current[0].x.toFixed(1)} ${bottomY.toFixed(1)} Z`
+        );
+      } else if (current.length === 1) {
+        isolated.push({ x: current[0].x, y: current[0].y });
+      }
+      current = [];
+    };
+    let lastT: number | null = null;
     points.forEach((p, idx) => {
       const v = getValue(p);
-      if (typeof v === 'number' && !isNaN(v)) {
-        validCoords.push({ x: getX(idx), y: getY(v) });
+      if (typeof v !== 'number' || isNaN(v)) {
+        flush();
+        return;
       }
+      const t = pointTimes[idx];
+      if (t !== null && lastT !== null && t - lastT > gapThresholdMs) flush();
+      current.push({ x: getX(idx), y: getY(v) });
+      lastT = t;
     });
-    if (validCoords.length === 0) return '';
-    if (validCoords.length === 1) {
-      return `M ${(validCoords[0].x - 6).toFixed(1)} ${validCoords[0].y.toFixed(1)} L ${(validCoords[0].x + 6).toFixed(1)} ${validCoords[0].y.toFixed(1)}`;
-    }
-    return validCoords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
+    flush();
+    return { linePath: segments.join(' '), areaPath: areas.join(' '), isolated };
   };
 
-  const buildAreaPath = (linePath: string): string => {
-    if (!linePath || points.length <= 1) return '';
-    const firstX = getX(0);
-    const lastX = getX(points.length - 1);
-    const bottomY = padding.top + plotHeight;
-    return `${linePath} L ${lastX.toFixed(1)} ${bottomY} L ${firstX.toFixed(1)} ${bottomY} Z`;
-  };
-
-  const tempLinePath = buildLinePath((p) => p.temp);
-  const tempAreaPath = buildAreaPath(tempLinePath);
-  const humidLinePath = buildLinePath((p) => p.humid);
-
-  const plnLinePath = buildLinePath((p) => p.pln);
-  const gensetLinePath = buildLinePath((p) => p.genset);
-  const akiLinePath = buildLinePath((p) => p.aki);
+  const tempLine = buildLine((p) => p.temp);
+  const humidLine = buildLine((p) => p.humid);
+  const plnLine = buildLine((p) => p.pln);
+  const gensetLine = buildLine((p) => p.genset);
+  const akiLine = buildLine((p) => p.aki);
+  const tempLinePath = tempLine.linePath;
+  const tempAreaPath = tempLine.areaPath;
+  const humidLinePath = humidLine.linePath;
+  const plnLinePath = plnLine.linePath;
+  const gensetLinePath = gensetLine.linePath;
+  const akiLinePath = akiLine.linePath;
 
   // Y-axis 5 ticks
   const yTicks = [0, 1, 2, 3, 4].map((i) => minY + (i / 4) * (maxY - minY));
@@ -519,6 +567,35 @@ function TelemetryChart({
               </g>
             )}
 
+            {/* Offline Shading (gaps beyond threshold) */}
+            {outages.map((o, i) => {
+              const x1 = Math.max(padding.left, timeToX(o.start));
+              const x2 = Math.min(width - padding.right, timeToX(o.end));
+              if (x2 - x1 < 2) return null;
+              return (
+                <g key={`outage-${i}`}>
+                  <rect
+                    x={x1}
+                    y={padding.top}
+                    width={x2 - x1}
+                    height={plotHeight}
+                    fill="#52525b"
+                    opacity="0.25"
+                  />
+                  {x2 - x1 > 44 && (
+                    <text
+                      x={(x1 + x2) / 2}
+                      y={padding.top + 12}
+                      textAnchor="middle"
+                      className="text-[9px] fill-zinc-500 font-mono"
+                    >
+                      offline
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+
             {/* Curves & Area Fills */}
             {isTS || (!isTS && !isATS) ? (
               <>
@@ -543,6 +620,12 @@ function TelemetryChart({
                     strokeLinejoin="round"
                   />
                 )}
+                {tempLine.isolated.map((d, i) => (
+                  <circle key={`iso-t-${i}`} cx={d.x} cy={d.y} r={3} fill="#6366f1" />
+                ))}
+                {humidLine.isolated.map((d, i) => (
+                  <circle key={`iso-h-${i}`} cx={d.x} cy={d.y} r={3} fill="#10b981" />
+                ))}
               </>
             ) : (
               <>
@@ -577,6 +660,15 @@ function TelemetryChart({
                     strokeLinejoin="round"
                   />
                 )}
+                {plnLine.isolated.map((d, i) => (
+                  <circle key={`iso-p-${i}`} cx={d.x} cy={d.y} r={3} fill="#10b981" />
+                ))}
+                {gensetLine.isolated.map((d, i) => (
+                  <circle key={`iso-g-${i}`} cx={d.x} cy={d.y} r={3} fill="#f59e0b" />
+                ))}
+                {akiLine.isolated.map((d, i) => (
+                  <circle key={`iso-a-${i}`} cx={d.x} cy={d.y} r={3} fill="#6366f1" />
+                ))}
               </>
             )}
 
