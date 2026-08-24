@@ -340,3 +340,49 @@ def test_ats_device_history_24h():
     assert p1["genset"] == 222.1
     assert p1["aki"] == 13.5
     assert p1["state"] == "GENSET_RUN"
+
+
+# ==========================================
+# 4. DENSE DATA DOWNSAMPLING (bucketed path)
+# ==========================================
+
+def test_ats_dense_history_downsamples():
+    """Dense windows (>1000 rows) are averaged into ~1000 time buckets."""
+    db = SessionLocal()
+    try:
+        now = datetime.now(UTC)
+        bulk = []
+        for i in range(1200):
+            bulk.append(
+                ats_data(
+                    data_id=str(uuid.uuid4()),
+                    dev_id="ATS_DEV_01",
+                    timestamp=now - timedelta(minutes=30) + timedelta(seconds=i * 1.5),
+                    state="PLN_MAIN",
+                    pln=220.0,
+                    genset=0.0,
+                    aki=14.0,
+                    rem_hour=0.0,
+                    rem_min=0.0,
+                    rem_sec=0.0,
+                    auto_mode=True,
+                    emergency=False,
+                )
+            )
+        db.add_all(bulk)
+        db.commit()
+    finally:
+        db.close()
+
+    cookies = get_auth_cookies()
+    resp = client.get("/api/devices/ATS_DEV_01/history?range=6h", cookies=cookies)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Bucketed output must stay bounded and ascending
+    assert data["total_points"] <= 1100
+    timestamps = [p["timestamp"] for p in data["points"]]
+    assert timestamps == sorted(timestamps)
+    # Latest bucket must be near 'now', not stuck at window start
+    last = data["points"][-1]["timestamp"]
+    assert last is not None

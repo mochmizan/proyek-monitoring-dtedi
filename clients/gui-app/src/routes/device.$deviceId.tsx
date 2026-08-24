@@ -213,6 +213,10 @@ function TelemetryChart({
       const b = pointTimes[i];
       if (a !== null && b !== null && b - a > gapThresholdMs) list.push({ start: a, end: b });
     }
+    const firstValid = pointTimes.find((t) => t !== null) as number | undefined;
+    if (firstValid !== undefined && firstValid - minTimeMs > gapThresholdMs) {
+      list.unshift({ start: minTimeMs, end: firstValid });
+    }
     return list;
   })();
 

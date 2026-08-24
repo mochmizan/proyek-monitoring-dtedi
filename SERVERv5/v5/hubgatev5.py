@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import func, cast, Integer
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -823,38 +824,115 @@ def get_device_history(
 
     points: list[TelemetryHistoryPoint] = []
 
+    # Time-bucket downsampling for dense windows: high-rate devices (e.g. ATS
+    # at ~1.5 Hz) blow past any fixed row limit in minutes, so average into
+    # ~1000 buckets across the requested window instead of truncating.
+    def _bucket_seconds() -> int:
+        window_end = now
+        if cutoff is not None:
+            window_start = cutoff
+        else:
+            if device.dev_type in ("TS", "AC", "ACC"):
+                window_start = db.query(func.min(temperature_data.timestamp)).filter(
+                    temperature_data.dev_id == dev_id
+                ).scalar() or now
+            else:
+                window_start = db.query(func.min(ats_data.timestamp)).filter(
+                    ats_data.dev_id == dev_id
+                ).scalar() or now
+            if window_start.tzinfo is None:
+                window_start = window_start.replace(tzinfo=UTC)
+        return max(1, int((window_end - window_start).total_seconds()) // 1000)
+
+    def _epoch_expr(col):
+        if db.get_bind().dialect.name == "sqlite":
+            return cast(func.strftime("%s", col), Integer)
+        return cast(func.extract("epoch", col), Integer)
+
     if device.dev_type in ("TS", "AC", "ACC"):
         q = db.query(temperature_data).filter(temperature_data.dev_id == dev_id)
         if cutoff is not None:
             q = q.filter(temperature_data.timestamp >= cutoff)
-        rows = q.order_by(temperature_data.timestamp.desc()).limit(1000).all()
-        rows.reverse()
-        for r in rows:
-            ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
-            points.append(
-                TelemetryHistoryPoint(
-                    timestamp=ts,
-                    temp=r.temp,
-                    humid=r.humid
+        if q.count() <= 1000:
+            rows = q.order_by(temperature_data.timestamp.desc()).limit(1000).all()
+            rows.reverse()
+            for r in rows:
+                ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
+                points.append(
+                    TelemetryHistoryPoint(
+                        timestamp=ts,
+                        temp=r.temp,
+                        humid=r.humid
+                    )
                 )
+        else:
+            bucket_sec = _bucket_seconds()
+            epoch = _epoch_expr(temperature_data.timestamp)
+            bucket_expr = cast(epoch / bucket_sec, Integer)
+            rows = (
+                q.with_entities(
+                    bucket_expr.label("b"),
+                    func.avg(temperature_data.temp).label("temp"),
+                    func.avg(temperature_data.humid).label("humid"),
+                    func.avg(epoch).label("ts"),
+                )
+                .group_by(bucket_expr)
+                .order_by(bucket_expr)
+                .all()
             )
+            for r in rows:
+                points.append(
+                    TelemetryHistoryPoint(
+                        timestamp=datetime.fromtimestamp(float(r.ts), tz=UTC),
+                        temp=r.temp,
+                        humid=r.humid
+                    )
+                )
     elif device.dev_type == "ATS":
         q = db.query(ats_data).filter(ats_data.dev_id == dev_id)
         if cutoff is not None:
             q = q.filter(ats_data.timestamp >= cutoff)
-        rows = q.order_by(ats_data.timestamp.desc()).limit(1000).all()
-        rows.reverse()
-        for r in rows:
-            ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
-            points.append(
-                TelemetryHistoryPoint(
-                    timestamp=ts,
-                    pln=r.pln,
-                    genset=r.genset,
-                    aki=r.aki,
-                    state=r.state
+        if q.count() <= 1000:
+            rows = q.order_by(ats_data.timestamp.desc()).limit(1000).all()
+            rows.reverse()
+            for r in rows:
+                ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
+                points.append(
+                    TelemetryHistoryPoint(
+                        timestamp=ts,
+                        pln=r.pln,
+                        genset=r.genset,
+                        aki=r.aki,
+                        state=r.state
+                    )
                 )
+        else:
+            bucket_sec = _bucket_seconds()
+            epoch = _epoch_expr(ats_data.timestamp)
+            bucket_expr = cast(epoch / bucket_sec, Integer)
+            rows = (
+                q.with_entities(
+                    bucket_expr.label("b"),
+                    func.avg(ats_data.pln).label("pln"),
+                    func.avg(ats_data.genset).label("genset"),
+                    func.avg(ats_data.aki).label("aki"),
+                    func.max(ats_data.state).label("state"),
+                    func.avg(epoch).label("ts"),
+                )
+                .group_by(bucket_expr)
+                .order_by(bucket_expr)
+                .all()
             )
+            for r in rows:
+                points.append(
+                    TelemetryHistoryPoint(
+                        timestamp=datetime.fromtimestamp(float(r.ts), tz=UTC),
+                        pln=r.pln,
+                        genset=r.genset,
+                        aki=r.aki,
+                        state=r.state
+                    )
+                )
 
     return DeviceHistoryResponse(
         dev_id=device.dev_id,
