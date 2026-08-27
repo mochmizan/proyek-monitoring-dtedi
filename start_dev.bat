@@ -29,7 +29,7 @@ start "HubGate V5 API (Port 8000)" cmd /k "cd /d %~dp0server && python -m uvicor
 
 :: 4. Launch Frontend React SPA
 echo [2/3] Starting Frontend SPA Dev Server on port 5173...
-start "Frontend SPA (Port 5173)" cmd /k "cd /d %~dp0apps\web && npm run dev"
+start "Frontend SPA (Port 5173)" cmd /k "cd /d %~dp0dashboard && npm run dev"
 
 :: 5. Open Browser
 echo [3/3] Waiting for servers to initialize...

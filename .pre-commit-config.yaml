@@ -6,9 +6,9 @@
     hooks:
       - id: oxlint
         name: oxlint (SPA)
-        entry: bash -c "npm --prefix apps/web run lint"
+        entry: bash -c "npm --prefix dashboard run lint"
         language: system
-        files: ^apps/web/
+        files: ^dashboard/
         pass_filenames: false
       - id: check-merge-conflict
         name: check-merge-conflict

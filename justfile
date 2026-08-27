@@ -21,14 +21,14 @@ test:
     python -m pytest hub/test_edge_resilience.py -q
 
 lint:
-    npm --prefix apps/web run lint
-    npm --prefix apps/web run build
+    npm --prefix dashboard run lint
+    npm --prefix dashboard run build
     bash -n deploy/setup_push_deploy.sh
     bash -n deploy/deploy_production.sh
 
 build:
-    npm --prefix apps/web ci
-    npm --prefix apps/web run build
+    npm --prefix dashboard ci
+    npm --prefix dashboard run build
 
 # â”€â”€ firmware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Note: WEMOS_ATS is a deprecated alias shim (see firmware/WEMOS_ATS/README.md); only 3 canonical ESP dirs compile.

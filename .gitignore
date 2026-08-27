@@ -31,7 +31,7 @@ ENV/
 # ===== Node / SPA =====
 node_modules/
 dist/
-apps/web/dist/
+dashboard/dist/
 *.tsbuildinfo
 .eslintcache
 .vite/
@@ -51,6 +51,7 @@ server/static/
 # ===== IDE / OS =====
 # .idea/ gitignored â€” JetBrains
 .idea/
+.opencode/
 .vscode/
 *.swp
 .DS_Store

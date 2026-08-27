@@ -67,6 +67,6 @@ Historical debugging notes (netplan wlan0 drop rules, dnsmasq duplicate-keyword 
 ```powershell
 .\start_dev.bat            # API :8000 + SPA :5173
 pytest                     # full suite (107 tests)
-cd apps\web; npm run lint; npm run build
+cd dashboard; npm run lint; npm run build
 ```
 Dashboard logins: `admin/admin123`, `operator/operator123`, `viewer/viewer123`.

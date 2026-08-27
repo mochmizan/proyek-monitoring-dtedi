@@ -38,7 +38,7 @@ Pi (edge): install `hubbrain.service` per its header (diff against the existing 
 
 - **Ownership model is load-bearing**: app code = `genset:smsb` (group-inherited via setgid dirs), but `hubgatev5.db`, `.env`, and `static/` must be `smsb:smsb` â€” the service user `smsb` writes the SQLite DB. A blanket `chown -R genset:genset` (or losing the `smsb` group) causes `sqlite3.OperationalError: attempt to write a readonly database` â†’ HTTP 500 on every login. Restore with: `chown -R genset:smsb /opt/smsb && chmod -R g+rwX /opt/smsb && find /opt/smsb -type d -exec chmod g+s {} + && chown smsb:smsb /opt/smsb/server/hubgatev5.db* /opt/smsb/server/.env`
 
-- Nginx expects the deployment root at `/opt/smsb` (static uploads from `server/static/`), but the SPA is served from `/var/www/gui-app` (rsync target of the push-deploy hook) â€” not from `apps/web/dist` anymore
+- Nginx expects the deployment root at `/opt/smsb` (static uploads from `server/static/`), but the SPA is served from `/var/www/gui-app` (rsync target of the push-deploy hook) â€” not from `dashboard/dist` anymore
 - `server/static/` is a **generated** deploy target â€” gitignored
 - The staging config hardcodes the Windows checkout path `/mnt/c/Users/Mizan/Documents/smsb/...` â€” machine-specific, adjust per host
 - `deploy_production.sh` is additive-safe (`init_sqlv5.py` idempotent) but installs a legacy `hubgate.service` with 4 workers â€” on `genset` prefer `smsb-api.service`; do not enable both units simultaneously

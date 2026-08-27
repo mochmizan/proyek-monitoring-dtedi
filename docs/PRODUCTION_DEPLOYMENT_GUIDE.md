@@ -94,7 +94,7 @@ sudo bash deploy/deploy_production.sh
 
 This automated script performs:
 1. **Pre-flight Audit:** Runs `python3 tools/verify_prod_env.py --mode prod --target server`.
-2. **Frontend Build:** Installs npm dependencies and compiles the React SPA via Vite into `apps/web/dist`.
+2. **Frontend Build:** Installs npm dependencies and compiles the React SPA via Vite into `dashboard/dist`.
 3. **Database Migration:** Executes additive migrations via `server/init_sqlv5.py`.
 4. **Nginx Configuration:** Installs `deploy/nginx_smsb.conf`, verifies TLS certificates, tests syntax (`nginx -t`), and reloads Nginx.
 5. **Systemd Service:** Installs and starts `hubgate.service` under systemd.

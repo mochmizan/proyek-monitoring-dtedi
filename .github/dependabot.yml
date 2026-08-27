@@ -9,7 +9,7 @@ updates:
     schedule:
       interval: "weekly"
   - package-ecosystem: "npm"
-    directory: "/apps/web"
+    directory: "/dashboard"
     schedule:
       interval: "weekly"
   - package-ecosystem: "github-actions"

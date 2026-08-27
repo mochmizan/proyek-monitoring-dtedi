@@ -29,7 +29,7 @@ ESP8266 field nodes (firmware/)          Raspberry Pi 4              Cloud / VPS
 | `firmware/` | ESP8266/Arduino node sketches (one folder per sketch, Arduino IDE compatible; `firmware/common/secrets.h` gitignored) |
 | `hub/` | HubBrain V5 â€” Python edge gateway daemon for Raspberry Pi |
 | `server/` | HubGate V5 â€” FastAPI cloud gateway, auth/RBAC, DB models, tests |
-| `apps/web/` | React SPA |
+| `dashboard/` | React SPA |
 | `docs/` | Canonical docs: design spec, firmware report, testing/deployment/backup guides, handover, research notes |
 | `openspec/` | Spec-driven change proposals & capability specs |
 | `tests/` | Repo-level E2E pipeline & deployment-verifier tests |
@@ -63,7 +63,7 @@ Default local dev logins: `admin/admin123`, `operator/operator123`, `viewer/view
 
 ```powershell
 pytest                # full suite at repo root (offline-safe, SQLite-backed)
-cd apps/web
+cd dashboard
 npm run lint          # oxlint
 npm run build         # typecheck + production build
 ```

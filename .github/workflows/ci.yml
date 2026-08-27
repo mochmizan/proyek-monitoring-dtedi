@@ -35,15 +35,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
-        working-directory: apps/web
+        working-directory: dashboard
       - run: npm run lint
-        working-directory: apps/web
+        working-directory: dashboard
       - run: npm run test -- --run
-        working-directory: apps/web
+        working-directory: dashboard
       - run: npm run build
-        working-directory: apps/web
+        working-directory: dashboard
 
   deploy-lint:
     runs-on: ubuntu-latest

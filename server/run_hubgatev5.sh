@@ -14,7 +14,7 @@ echo -e "${GREEN}=========================================${NC}"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
-FRONTEND_DIR="$REPO_ROOT/apps/web"
+FRONTEND_DIR="$REPO_ROOT/dashboard"
 cd "$SCRIPT_DIR"
 
 # 1. DETEKSI IP SERVER

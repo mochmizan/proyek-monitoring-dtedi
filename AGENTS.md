@@ -1,12 +1,12 @@
 ﻿# AGENTS.md â€” smsb (root)
 
-IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `apps/web/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `server/` (HubGate V5), a Raspberry Pi edge gateway at `hub/` (HubBrain V5), ESP8266 node firmware at `firmware/` (one folder per sketch, `firmware/common/secrets.h` gitignored), and spec-driven change proposals in `openspec/`. Design spec at `docs/2026-07-01-iot-temperature-monitoring-design.md`. Version suffix `V5` stays until a `V6` proposal lands (see `openspec/`).
+IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `dashboard/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `server/` (HubGate V5), a Raspberry Pi edge gateway at `hub/` (HubBrain V5), ESP8266 node firmware at `firmware/` (one folder per sketch, `firmware/common/secrets.h` gitignored), and spec-driven change proposals in `openspec/`. Design spec at `docs/2026-07-01-iot-temperature-monitoring-design.md`. Version suffix `V5` stays until a `V6` proposal lands (see `openspec/`).
 
 ## Ownership
 
 - **Root**: project-wide rules, DOX framework, global preferences
 - **docs/**: design spec, firmware alignment report, testing/deployment/backup guides, handover notes
-- **apps/web/**: SPA development â€” routes, TanStack Query hooks, minimal Zustand UI store, build tooling
+- **dashboard/**: SPA development â€” routes, TanStack Query hooks, minimal Zustand UI store, build tooling
 - **server/**: cloud gateway (HubGate V5) â€” FastAPI, auth/RBAC, DB, rooms/devices/alerts API, deploy scripts
 - **hub/**: edge gateway (HubBrain V5) â€” Raspberry Pi MQTT bridge, whitelist, offline WAL cache, HTTPS upstream
 - **openspec/**: spec-driven change proposals & capability specs
@@ -25,9 +25,9 @@ AGENTS.md files are binding work contracts for their subtrees. Parent docs defin
 | Command | What it does |
 |---|---|
 | `start_dev.bat` or `.\start_dev.ps1` | 1-click launcher for HubGate V5 API (port 8000) & Vite SPA (port 5173) |
-| `npm run dev` (in `apps/web/`) | Vite HMR dev server with `/api` and `/static` proxy |
-| `npm run build` (in `apps/web/`) | `tsc -b && vite build` (typecheck first) |
-| `npm run lint` (in `apps/web/`) | `oxlint` (no ESLint/Prettier) |
+| `npm run dev` (in `dashboard/`) | Vite HMR dev server with `/api` and `/static` proxy |
+| `npm run build` (in `dashboard/`) | `tsc -b && vite build` (typecheck first) |
+| `npm run lint` (in `dashboard/`) | `oxlint` (no ESLint/Prettier) |
 | `pytest` (at repo root) | Run full automated test suite (107 tests) |
 | `docker compose up -d` (at repo root) | Start local PostgreSQL and Eclipse Mosquitto containers |
 
@@ -151,15 +151,15 @@ Rules until then:
 
 ## Verification
 
-- `npm run lint` (oxlint) in `apps/web/` before submitting changes
-- `npm run build` in `apps/web/` for typecheck + production build check
+- `npm run lint` (oxlint) in `dashboard/` before submitting changes
+- `npm run build` in `dashboard/` for typecheck + production build check
 - `pytest` across repo for full automated test suite
 
 ## Child DOX Index
 
 | Path | Scope |
 |---|---|
-| `apps/web/AGENTS.md` | SPA development: routes, TanStack Query hooks, UI store, components |
+| `dashboard/AGENTS.md` | SPA development: routes, TanStack Query hooks, UI store, components |
 | `server/AGENTS.md` | Cloud gateway (HubGate V5): FastAPI endpoints, auth/RBAC, DB models, migrations, tests |
 | `hub/AGENTS.md` | Edge gateway (HubBrain V5): MQTT bridge, whitelist, offline WAL cache, topic resolver |
 | `openspec/AGENTS.md` | Spec-driven change proposals & capability specs |
@@ -167,3 +167,15 @@ Rules until then:
 | `tools/AGENTS.md` | Ops utilities: Pi deploy/backup, DB seeding, mock publishers, sniffers, verifiers |
 | `deploy/AGENTS.md` | Production deploy script & Nginx configs |
 
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

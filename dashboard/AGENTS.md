@@ -85,7 +85,7 @@ src/
 
 ## App-Root Tooling Scripts
 
-- `tools/browser_test.mjs` â€” Playwright headless loginâ†’dashboard flow (needs Vite on :5173; dev creds hardcoded) â€” lives in `tools/`, not `apps/web/`
+- `tools/browser_test.mjs` â€” Playwright headless loginâ†’dashboard flow (needs Vite on :5173; dev creds hardcoded) â€” lives in `tools/`, not `dashboard/`
 - These are dev conveniences, not part of the build; keep them out of `src/`
 
 ## Stack Notes

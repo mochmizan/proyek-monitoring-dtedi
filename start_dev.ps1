@@ -25,7 +25,7 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$ro
 
 # 4. Launch Frontend Vite SPA
 Write-Host "[2/2] Starting Frontend SPA on port 5173..." -ForegroundColor White
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$rootDir\apps\web'; Write-Host '--- Frontend Vite SPA (Port 5173) ---' -ForegroundColor Green; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$rootDir\dashboard'; Write-Host '--- Frontend Vite SPA (Port 5173) ---' -ForegroundColor Green; npm run dev"
 
 # 5. Open Browser
 Start-Sleep -Seconds 3

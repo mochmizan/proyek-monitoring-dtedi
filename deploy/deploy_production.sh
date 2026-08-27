@@ -33,7 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 SERVER_DIR="${REPO_ROOT}/server"
-FRONTEND_DIR="${REPO_ROOT}/apps/web"
+FRONTEND_DIR="${REPO_ROOT}/dashboard"
 NGINX_CONF_SRC="${REPO_ROOT}/deploy/nginx_smsb.conf"
 NGINX_CONF_DEST="/etc/nginx/sites-available/smsb"
 SYSTEMD_SERVICE_DEST="/etc/systemd/system/hubgate.service"

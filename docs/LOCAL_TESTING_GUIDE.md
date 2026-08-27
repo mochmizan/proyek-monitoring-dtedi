@@ -27,7 +27,7 @@ flowchart LR
     end
 
     subgraph Frontend SPA
-        SPA[React 19 + TanStack Query\napps/web :5173] -->|Vite Proxy /api| HG
+        SPA[React 19 + TanStack Query\ndashboard :5173] -->|Vite Proxy /api| HG
     end
 ```
 
@@ -138,7 +138,7 @@ HubBrain connects to Mosquitto at `localhost:1883`, synchronizes device whitelis
 ### Step 5: Run Frontend SPA
 In a third terminal, run the Vite frontend development server:
 ```bash
-cd apps/web
+cd dashboard
 npm install
 npm run dev
 ```

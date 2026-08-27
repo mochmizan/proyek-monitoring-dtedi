@@ -9,7 +9,7 @@
 #        - syncs /opt/smsb (an independent clone with origin=/opt/smsb.git)
 #          via fetch + reset --hard origin/main
 #        - pip-installs requirements into /opt/smsb/venv (if venv exists)
-#        - npm ci && npm run build in apps/web (if node present)
+#        - npm ci && npm run build in dashboard (if node present)
 #        - rsyncs dist/ to /var/www/gui-app
 #        - restarts smsb-api.service
 #        - runs post-deploy smoke checks (API 401 on /api/auth/me unauthenticated,
@@ -41,7 +41,7 @@ DEPLOY_USER="${DEPLOY_USER:-genset}"
 BARE_REPO="${BARE_REPO:-/opt/smsb.git}"
 WORK_TREE="${WORK_TREE:-/opt/smsb}"
 VENV_DIR="${VENV_DIR:-/opt/smsb/venv}"
-SPA_DIR="${SPA_DIR:-${WORK_TREE}/apps/web}"
+SPA_DIR="${SPA_DIR:-${WORK_TREE}/dashboard}"
 WWW_DIR="${WWW_DIR:-/var/www/gui-app}"
 SERVICE_NAME="${SERVICE_NAME:-smsb-api}"
 
@@ -146,7 +146,7 @@ set -euo pipefail
 
 DEPLOY_WORK_TREE="/opt/smsb"
 VENV_DIR="/opt/smsb/venv"
-SPA_DIR="${DEPLOY_WORK_TREE}/apps/web"
+SPA_DIR="${DEPLOY_WORK_TREE}/dashboard"
 WWW_DIR="/var/www/gui-app"
 SERVICE_NAME="smsb-api"
 
