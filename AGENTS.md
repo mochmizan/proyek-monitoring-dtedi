@@ -1,6 +1,6 @@
 # AGENTS.md — smsb (root)
 
-IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `clients/gui-app/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `SERVERv5/` (HubGate V5), a Raspberry Pi edge gateway at `HUBV5/` (HubBrain V5), ESP8266 node firmware at the root (`.ino`), and spec-driven change proposals in `openspec/`. Design spec at `docs/2026-07-01-iot-temperature-monitoring-design.md`.
+IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `clients/gui-app/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `SERVERv5/` (HubGate V5), a Raspberry Pi edge gateway at `HUBV5/` (HubBrain V5), ESP8266 node firmware at `firmware/` (one folder per sketch, `firmware/common/secrets.h` gitignored), and spec-driven change proposals in `openspec/`. Design spec at `docs/2026-07-01-iot-temperature-monitoring-design.md`. Version suffix `V5` stays until a `V6` proposal lands (see `openspec/`).
 
 ## Ownership
 
@@ -28,12 +28,12 @@ AGENTS.md files are binding work contracts for their subtrees. Parent docs defin
 | `npm run dev` (in `clients/gui-app/`) | Vite HMR dev server with `/api` and `/static` proxy |
 | `npm run build` (in `clients/gui-app/`) | `tsc -b && vite build` (typecheck first) |
 | `npm run lint` (in `clients/gui-app/`) | `oxlint` (no ESLint/Prettier) |
-| `pytest` (at repo root) | Run full automated test suite (106 tests) |
+| `pytest` (at repo root) | Run full automated test suite (107 tests) |
 | `docker compose up -d` (at repo root) | Start local PostgreSQL and Eclipse Mosquitto containers |
 
 ## Stack
 
-React 19.2.7, TypeScript 6.0.3, Vite 8.1.3, TanStack Router 1.170.17, TanStack Query 5.90.21, Zustand 5.0.14 (UI state only), Zod 4.4.3, Tailwind 4.3.2, oxlint 1.72.0, lucide-react, clsx, tailwind-merge. FastAPI, SQLAlchemy 2.0, PostgreSQL / SQLite fallback, Pydantic v2, SlowAPI, Argon2id.
+React 19.2.7, TypeScript ~6.0.2, Vite ^8.1.1, TanStack Router 1.170.17, TanStack Query 5.101.2, Zustand 5.0.14 (UI state only), Zod 4.4.3, Tailwind 4.3.2, oxlint 1.71, lucide-react, clsx, tailwind-merge. FastAPI, SQLAlchemy 2.0, PostgreSQL / SQLite fallback, Pydantic v2, SlowAPI, Argon2id.
 
 ## Architecture
 
@@ -111,7 +111,7 @@ smsb/
 ## Non-Obvious Facts
 
 - `routeTree.gen.ts` is auto-generated (TanStack Router Vite plugin) — never edit
-- `App.css` is dead code (leftover Vite template, not imported)
+- `App.css`/`mockData.ts` removed (were dead Vite template code)
 - Same-origin topology: Vite proxy locally (`/api` → `8000`) and Nginx in production forward cookies transparently without CORS preflight
 - Alerts evaluate synchronously during ingestion in `receive_iot` with per-device debounce windows and hysteresis recovery
 - Edge HubBrain queues telemetry in local SQLite WAL (`edge_cache.db`) on upstream failure and replays FIFO on reconnect
@@ -123,9 +123,11 @@ The repo currently tracks **live credentials** by explicit decision (private whi
 
 | Tier | Location | Secret |
 |---|---|---|
-| 1 | `HUBV5/V5/.env` (gitignored — keep it that way), `tools/deploy_pi_edge.py`, `tools/send_ac_command.py`, `tools/sniff_pi.py`, `tools/sniff_pi_mqtt.py`, `tools/stream_live_telemetry.py`, `tools/seed_demo_data.py`, `tools/verify_prod_env.py` (banned-value literals), all field `.ino` sketches (`MQTT_PASS`, WiFi password) | live MQTT_PASS / HUB_KEY / Pi SSH creds |
-| 1 | `tests/test_verify_prod_env.py` L111/L113 | real secrets as test fixtures |
+| 1 | `HUBV5/V5/.env` (gitignored — keep it that way), `firmware/common/secrets.h` (gitignored — live WiFi/MQTT creds via `WIFI_PASS`/`MQTT_PASS` macros) | live MQTT_PASS / HUB_KEY / Pi SSH creds |
+| 1 | `tests/test_verify_prod_env.py` L111/L113 | real secrets as test fixtures (banned-value literals for verifier) |
 | 2 | `SERVERv5/v5/README.txt`, `HUBV5/V5/README.txt` sample configs; `start_dev.*` printed dev logins; `docker-compose.yml` postgres creds | weak/sample credentials |
+
+> **Note (afb9c46)**: `tools/` scripts are now env-driven with no hardcoded live defaults — `deploy_pi_edge.py`, `send_ac_command.py`, `sniff_pi*.py`, `stream_live_telemetry.py`, `seed_demo_data.py` and others require `MQTT_PASS`/`HUB_KEY`/`PI_PASSWORD` via env or CLI args. `tools/verify_prod_env.py` banned-value literals are verifier fixtures, not deployed secrets. Field `.ino` sketches no longer embed secrets — they include `firmware/common/secrets.h` (gitignored; see `secrets.h.example`).
 
 Rules until then:
 - NEVER add new hardcoded secrets; read from env/args (see `tools/AGENTS.md`)
@@ -145,7 +147,7 @@ Rules until then:
 - Search params validated with Zod (`validateSearch` + `Route.useSearch()`)
 - Sort/filter state in URL params, not component state
 - File-based routing via TanStack Router — add new `.tsx` in `routes/`, gen file updates automatically
-- Run `pytest` to verify all 106 backend, edge, and pipeline integration tests
+- Run `pytest` to verify all 107 backend, edge, and pipeline integration tests
 
 ## Verification
 

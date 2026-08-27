@@ -284,20 +284,25 @@ void loop() {
   isGensetOn = checkVolt(teganganGenset, BATAS_VAC);
   isAkiOn = checkVolt(teganganAki, BATAS_AKI);
 
+  static char buf[65];
+  static uint8_t len = 0;
   while (Serial.available()) {
     char c = Serial.read();
-
-    if (c == '<'){
-      buffer = "";
-      buffer += c;
-    }
-    else if (c == '>') {
-      buffer += c;
-      processCommand(buffer);
-      buffer = "";
-    }
-    else {
-      buffer += c;
+    if (c == '<') {
+      len = 0;
+      if (len < 64) buf[len++] = c;
+      buf[len] = '\0';
+    } else if (c == '>') {
+      if (len < 64) buf[len++] = c;
+      buf[len] = '\0';
+      processCommand(String(buf));
+      len = 0;
+      buf[0] = '\0';
+    } else {
+      if (len < 64) {
+        buf[len++] = c;
+        buf[len] = '\0';
+      }
     }
   }
 

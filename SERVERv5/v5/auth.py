@@ -56,7 +56,8 @@ async def session_expired_handler(request: Request, exc: SessionExpired):
         status_code=status.HTTP_401_UNAUTHORIZED,
         content={"detail": "Session expired or invalid. Please login again."}
     )
-    response.delete_cookie("session_id", path="/", httponly=True, secure=True, samesite="lax")
+    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.delete_cookie("session_id", path="/", httponly=True, secure=is_secure, samesite="lax")
     origin = request.headers.get("origin")
     if origin:
         cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "")

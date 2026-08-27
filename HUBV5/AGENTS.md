@@ -19,13 +19,13 @@ Raspberry Pi 4 edge gateway ("satpam" local): filters IoT node traffic via MQTT,
 
 ## Stack
 
-Python 3.10+ (Raspberry Pi OS), paho-mqtt 2.2.1, requests 2.32.3, python-dotenv 1.0.1, urllib3 2.2.3 (pinned in `requirements.txt` for reproducible Pi builds). Local broker: Mosquitto with `allow_anonymous false` + password file.
+Python 3.10+ (Raspberry Pi OS), paho-mqtt 2.2.1, requests 2.32.3, python-dotenv 1.0.1, urllib3 2.2.3 — all pinned via `==` in `requirements.txt` for reproducible Pi builds. Local broker: Mosquitto with `allow_anonymous false` + password file. Firmware dedup: field `.ino` sketches share constants via `firmware/common/secrets.h` (gitignored) and fleet AP `smsb-iot` at `192.168.72.242` — no per-sketch credential forks.
 
 ## Architecture
 
 - Single file `main.py`: 4 background threads — whitelist sync (30s), fast command polling (2s interval for sub-2-second latency), offline cache FIFO replay (5s), MQTT loop — plus optional interactive AC CLI on the main thread
 - **Edge filtering**: MQTT messages on `MQTT_TOPIC` (default `hs109rs/#`) whose `DEV_ID` (MAC) is not in the synced whitelist are dropped, logged as `[FILTER BLOCK]`, and throttled-reported to `/api/iot/unapproved`.
-- **Forwarding & Offline Cache**: whitelisted telemetry is POSTed to `SERVER_URL` with `X-Hub-ID`/`X-Hub-Key` headers and `verify=TLS_CERT_PATH`. On forward failure, payloads are buffered in local SQLite WAL (`edge_cache.db`) with 7-day TTL and bounded queue (`MAX_PENDING_ROWS=20000`, oldest-pruned FIFO; at-least-once replay — server dedup on `(DEV_ID, created_at)` recommended).
+ - **Forwarding & Offline Cache**: whitelisted telemetry is POSTed to `SERVER_URL` with `X-Hub-ID`/`X-Hub-Key` headers and `verify=TLS_CERT_PATH`. On forward failure, payloads are buffered in local SQLite WAL (`edge_cache.db`) with 7-day TTL and bounded queue (`MAX_PENDING_ROWS=20000`, oldest-pruned FIFO; enforced since `afb9c46`; at-least-once replay — server dedup on `(DEV_ID, created_at)` recommended).
 - **Paced Replay**: background daemon replays buffered records in FIFO order with pacing delay upon upstream recovery, while live telemetry continues forwarding without backlog queueing.
 - **Dynamic Command Dispatch**: polls `SERVER_COMMANDS_URL` (`/api/hub/commands`), resolves topic dynamically via `derive_command_topic` (`{hub_name}/{dev_type}/command`), publishes payload to local MQTT, and acks delivery via `/delivered`.
 - **AC control**: publishes standard `{target, action, temp}` (and legacy `{AC_NUMBER, AC_COMMAND}`) JSON to `hs109rs/ac/command`; CLI accepts `AC1 ON`, `AC1 OFF`, `AC1 TEMP 20`.

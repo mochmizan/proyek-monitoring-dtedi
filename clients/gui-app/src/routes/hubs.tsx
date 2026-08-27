@@ -12,7 +12,8 @@ import {
   Radio,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchCurrentUser, fetchHubs, approveHub, revokeHub } from '../lib/api';
+import { fetchCurrentUser, fetchHubs, approveHub, revokeHub } from '../lib/api'
+import { POLL_MS, STALE_MS } from '../lib/constants';
 import { cn } from '../lib/utils';
 import { StatusDot } from '../components/StatusDot';
 import { FreshnessBadge } from '../components/FreshnessBadge';
@@ -169,8 +170,8 @@ function HubsPage() {
   } = useQuery({
     queryKey: queryKeys.hubs.list(),
     queryFn: fetchHubs,
-    refetchInterval: 3000,
-    staleTime: 2000,
+    refetchInterval: POLL_MS,
+    staleTime: STALE_MS,
   });
 
   const [actionError, setActionError] = useState<string | null>(null);

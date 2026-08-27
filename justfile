@@ -31,10 +31,10 @@ build:
     npm --prefix clients/gui-app run build
 
 # ── firmware ─────────────────────────────────────────────────
+# Note: WEMOS_ATS is a deprecated alias shim (see firmware/WEMOS_ATS/README.md); only 3 canonical ESP dirs compile.
 firmware-check:
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_TS
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_AC
-    arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_ATS
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/fixed_wemos_mqtt_raspi
 
 # ── deploy (no auto-push; use --dry-run first) ─────────────

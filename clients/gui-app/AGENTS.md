@@ -1,6 +1,6 @@
 # AGENTS.md — gui-app
 
-React 19 + TypeScript 6.0 + Vite 8 SPA for IoT smart-building monitoring. **Connected to live HubGate V5 backend via TanStack Query and Same-Origin Vite Proxy.**
+React 19.2.7 + TypeScript ~6.0.2 + Vite ^8.1.1 SPA for IoT smart-building monitoring (TanStack Query 5.101.2, oxlint 1.71). **Connected to live HubGate V5 backend via TanStack Query and Same-Origin Vite Proxy.**
 
 ## Ownership
 
@@ -41,20 +41,30 @@ React 19 + TypeScript 6.0 + Vite 8 SPA for IoT smart-building monitoring. **Conn
 
 ```
 src/
-├── main.tsx              ← entry: createRoot → <App/>
+├── main.tsx              ← entry: createRoot → <App/> wrapped in ErrorBoundary
 ├── App.tsx               ← TanStack Router + QueryClientProvider setup
 ├── index.css             ← Tailwind 4 @import + @theme vars (dark)
 ├── routeTree.gen.ts      ← AUTO-GENERATED — never edit
+├── components/
+│   ├── ErrorBoundary.tsx ← class ErrorBoundary (catches render crashes; used at App root)
+│   ├── RoomCard.tsx, StatusDot.tsx, FreshnessBadge.tsx, Sparkline.tsx, TopologyView.tsx
+│   ├── device/           ← Controls.tsx, HistoryChart.tsx (split from device.$deviceId.tsx)
+│   └── settings/         ← RoomsTab.tsx, DevicesTab.tsx, HubsTab.tsx (split from settings.tsx)
+├── hooks/
+│   └── useDeviceHistory.ts ← history query hook (wraps api + gap-aware chart logic)
 ├── routes/               ← 9 page components (see table above)
 ├── store/
 │   └── appStore.ts       ← minimal Zustand store (sidebarOpen, selectedRoomId)
 ├── types/
 │   └── api.ts            ← TypeScript interfaces matching HubGate V5 Pydantic models
+├── __tests__/            ← vitest unit tests (jsdom, setup.ts)
+├── e2e/                  ← playwright e2e tests (playwright.config.ts, webServer: vite :5173)
 └── lib/
     ├── api.ts            ← centralized Fetch API client with error handling
     ├── queryClient.ts    ← shared QueryClient instance
     ├── queryKeys.ts      ← hierarchical query key factory for caching & invalidation
-    ├── mockData.ts       ← fallback mock fixtures for standalone testing
+    ├── constants.ts      ← POLL_MS=3000, STALE_MS=2000, GAP_FLOOR_MIN=5 (single source of polling/gap constants)
+    ├── chartUtils.ts     ← gap detection + offline shading helpers (used by HistoryChart)
     └── utils.ts          ← cn() = clsx + tailwind-merge
 ```
 
@@ -75,11 +85,15 @@ src/
 
 ## App-Root Tooling Scripts
 
-- `browser_test.mjs` — Playwright headless login→dashboard flow (needs Vite on :5173; dev creds hardcoded)
-- `capture_all_ranges.mjs`, `capture_device_graph.mjs` — screenshot capture utilities for device history ranges (output to untracked screenshot dirs)
+- `tools/browser_test.mjs` — Playwright headless login→dashboard flow (needs Vite on :5173; dev creds hardcoded) — lives in `tools/`, not `clients/gui-app/`
 - These are dev conveniences, not part of the build; keep them out of `src/`
+
+## Stack Notes
+
+- `package.json` pins `react@19.2.7`, `typescript@~6.0.2`, `vite@^8.1.1`, `@tanstack/react-query@5.101.2`, `oxlint@1.71`, `vitest@3.2.4`, `@playwright/test@1.62.1`; `npm run lint` = oxlint, `npm run build` = `tsc -b && vite build`
+- `constants.ts` is the single source for polling/gap constants — do not duplicate `3000`/`2000`/`5` literals in components
 
 ## Verification
 
-Rely on root AGENTS.md commands: `npm run lint`, `npm run build` (from gui-app/ directory)
+Rely on root AGENTS.md commands: `npm run lint`, `npm run build` (from gui-app/ directory); `npm run test` (vitest) and `npm run e2e` (playwright, needs Vite :5173)
 

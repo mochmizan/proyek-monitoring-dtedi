@@ -664,11 +664,13 @@ def verify_tls_cert_file():
     """Validates existence and readability of TLS_CERT_PATH if configured."""
     if TLS_CERT_PATH and os.path.exists(TLS_CERT_PATH):
         if os.path.getsize(TLS_CERT_PATH) == 0:
-            logging.warning(f"[SECURITY WARNING] TLS certificate '{TLS_CERT_PATH}' is empty (0 bytes).")
+            logging.error(f"[SECURITY FATAL] TLS certificate '{TLS_CERT_PATH}' is empty (0 bytes). Refusing to start.")
+            sys.exit(1)
         else:
             logging.info(f"[SECURITY] Strict TLS certificate pinned to '{TLS_CERT_PATH}'.")
     elif TLS_CERT_PATH:
-        logging.warning(f"[SECURITY WARNING] TLS certificate not found at '{TLS_CERT_PATH}'.")
+        logging.error(f"[SECURITY FATAL] TLS certificate not found at '{TLS_CERT_PATH}'. Refusing to start.")
+        sys.exit(1)
 
 
 def main():

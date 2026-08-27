@@ -2,7 +2,7 @@
 
 > **Target Audience:** Autonomous AI Agents, System Architects, and Embedded/Cloud Software Engineers.  
 > **Repository:** `smsb` (IoT Smart-Building Monitoring System)  
-> **OpenSpec Reference:** [`openspec/changes/align-field-firmware-with-live-hub/`](openspec/changes/align-field-firmware-with-live-hub/)  
+> **OpenSpec Reference:** `openspec/changes/align-field-firmware-with-live-hub/` (pruned 2026-08-27, `8f1e12e`; archived in git history — `git show 8f1e12e^:openspec/changes/align-field-firmware-with-live-hub/`)  
 > **Generated:** 2026-08-17  
 > **Status:** Full Implementation & Review Complete (APPROVED)
 
@@ -120,6 +120,19 @@ To guarantee flawless implementation without hallucinated APIs or anti-patterns,
 ```
 
 ---
+
+### Firmware Inventory (Canonical Set — P5 Dedup)
+
+| Sketch | Role | Compile Gate | Status |
+|---|---|---|---|
+| `firmware/WEMOS_TS/WEMOS_TS.ino` | Temperature/humidity node | `just firmware-check` | Canonical — compiled |
+| `firmware/WEMOS_AC/WEMOS_AC.ino` | AC/IR controller | `just firmware-check` | Canonical — compiled |
+| `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino` | ATS Wemos bridge | `just firmware-check` | **Canonical — compiled** |
+| `firmware/WEMOS_ATS/WEMOS_ATS.ino` | ATS bridge fork | — (skipped) | **Deprecated alias → `fixed_wemos_mqtt_raspi`** (12-line shim + `README.md` redirect) |
+| `firmware/fsm_w_serial/fsm_w_serial.ino` | ATS FSM (Arduino) | — | AVR target, not in ESP gate |
+| `firmware/PROMINI/PROMINI.ino` | ATS FSM (Pro Mini) | — | AVR target, not in ESP gate |
+
+> P5 removes double maintenance: 3/3 ESP dirs compile; `WEMOS_ATS` is an alias shim only.
 
 ### Component 1: ATS Wemos Bridge Firmware ([`fixed_wemos_mqtt_raspi.ino`](fixed_wemos_mqtt_raspi.ino))
 
@@ -279,9 +292,11 @@ To guarantee flawless implementation without hallucinated APIs or anti-patterns,
 
 ---
 
-### Component 5: Regressed ATS Bridge Fork Realignment ([`WEMOS_ATS.ino`](firmware/WEMOS_ATS/WEMOS_ATS.ino))
+### Component 5: ATS Bridge Fork — Deprecated Alias ([`WEMOS_ATS.ino`](firmware/WEMOS_ATS/WEMOS_ATS.ino)) — **DEPRECATED as of P5 Dedup (2026-08-27)**
 
-The hardware team's fork of the canonical ATS bridge (`fixed_wemos_mqtt_raspi.ino`) regressed to the stale broker (`192.168.89.242`), legacy namespace (`hs108rs/ats/*`), unauthenticated MQTT, and a payload missing `HUB_NAME`/`DEV_TYPE` — guaranteeing HTTP 422 rejection end-to-end. It was realigned to full canonical parity:
+> **Status: DEPRECATED ALIAS — DO NOT MAINTAIN.** Canonical ATS bridge is [`fixed_wemos_mqtt_raspi.ino`](firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino). `WEMOS_ATS/WEMOS_ATS.ino` is now a 12-line shim (`#warning` + empty `setup`/`loop`) with a redirect `README.md`; `just firmware-check` compiles only the 3 canonical ESP dirs (TS, AC, `fixed_wemos_mqtt_raspi`) — 3/3 PASS. No double maintenance.
+
+The hardware team's fork of the canonical ATS bridge (`fixed_wemos_mqtt_raspi.ino`) regressed to the stale broker (`192.168.89.242`), legacy namespace (`hs108rs/ats/*`), unauthenticated MQTT, and a payload missing `HUB_NAME`/`DEV_TYPE` — guaranteeing HTTP 422 rejection end-to-end. It was realigned to full canonical parity **before dedup**:
 
 1. **Network & Auth:** Broker `192.168.72.242:1883`, topics `hs109rs/ats/data` / `hs109rs/ats/command`, authenticated connect (`mqtt.connect(clientId, mqtt_user, mqtt_pass)`, `hubadmin`) with exponential backoff (3s–30s).
 2. **ATSData Schema Compliance:** Payload now includes `HUB_NAME`, `DEV_ID`, `DEV_NAME`, `DEV_TYPE: "ATS"`, and `EMERGENCY` (parsed from `<EMERGENCY,x>` serial frames) as native bools, matching `ATSData` in `SERVERv5/v5/schemasv5.py`.
@@ -291,6 +306,12 @@ The hardware team's fork of the canonical ATS bridge (`fixed_wemos_mqtt_raspi.in
 
 1. **Identical Hidden AP Bubble:** WiFi constants set to the fleet values — SSID `smsb-iot` (hidden AP broadcast by every room's Pi), password `SmsbRoomNet2026`, broker `192.168.72.242` — so nodes roam between rooms without reflash.
 2. **Boot-Time Derived `DEV_NAME`:** the hardcoded `hs109-ats-01` was replaced with a unique per-node name derived at boot: `"ATS-"` + last 4 hex digits of the WiFi MAC, uppercased (e.g. `ATS-6047`), stored in a bounded 9-byte `char` buffer. Every published occurrence (`DEV_NAME` field and the MQTT client ID) uses the derived name.
+
+#### P5 Dedup (2026-08-27) — Fork Eliminated
+
+- `WEMOS_ATS/WEMOS_ATS.ino` replaced by 12-line shim; `WEMOS_ATS/README.md` redirects to `fixed_wemos_mqtt_raspi/`.
+- `justfile:35` `firmware-check` now compiles only `WEMOS_TS`, `WEMOS_AC`, `fixed_wemos_mqtt_raspi` (3/3 PASS).
+- `firmware/platformio.ini` pins libs (`PubSubClient@2.8.0`, `ArduinoJson@6.21.5`/`7.x`, `IRremoteESP8266`, SSD1306/GFX, SHT31) — single source of truth, no double maintenance.
 
 ### Component 6: ATS FSM Controller — Hardware-Team v2 Integration & Hardening ([`PROMINI.ino`](firmware/PROMINI/PROMINI.ino))
 
@@ -323,7 +344,7 @@ Executed via Python virtualenv against SQLite test databases:
 * `SERVERv5/v5/test_milestone1.py`: **PASSED** (Core schema ingestion, table creation, ATSData / TSData ingestion).
 * `SERVERv5/v5/test_milestone2_3.py`: **PASSED** (Full telemetry routing, command queue polling, downlink dispatch, and delivered acknowledgment).
 
-### Hardware Bench Verification Protocols ([`tasks.md`](openspec/changes/align-field-firmware-with-live-hub/tasks.md) § 5)
+### Hardware Bench Verification Protocols (`tasks.md` § 5 — `openspec/changes/align-field-firmware-with-live-hub/tasks.md` pruned 2026-08-27, archived in git history `8f1e12e^`)
 
 | Test ID | Procedure | Acceptance Criteria | Result |
 |---|---|---|---|
@@ -343,7 +364,7 @@ All WiFi/MQTT secrets were removed from tracked firmware and tooling. See `firmw
 
 **Firmware (`firmware/common/secrets.h`):**
 - New headers `firmware/common/secrets.h.example:1` and `firmware/common/secrets.h:1` define `WIFI_SSID`, `WIFI_PASS`, `MQTT_USER`, `MQTT_PASS`, `MQTT_HOST`, `HUB_NAME`.
-- All four ESP sketches include the header via `__has_include("../common/secrets.h")` fallback to `"secrets.h"` (Arduino IDE: copy `secrets.h` into each sketch folder): `firmware/WEMOS_TS/WEMOS_TS.ino:6`, `firmware/WEMOS_AC/WEMOS_AC.ino:12`, `firmware/WEMOS_ATS/WEMOS_ATS.ino:8`, `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino:6`.
+- The 3 canonical ESP sketches include the header via `__has_include("../common/secrets.h")` fallback to `"secrets.h"` (Arduino IDE: copy `secrets.h` into each sketch folder): `firmware/WEMOS_TS/WEMOS_TS.ino:6`, `firmware/WEMOS_AC/WEMOS_AC.ino:12`, `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino:6` (P5: `WEMOS_ATS` is now a 12-line shim with no secrets include).
 - Guard: `#ifndef WIFI_PASS` → `#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h..."`.
 - `NAMA_PASSWORD`/`ssid`/`password` and `MQTT_IP`/`mqtt_server` now assign from `WIFI_PASS`/`WIFI_SSID`/`MQTT_HOST`; `HUB_NAME`/`MQTT_USER`/`MQTT_PASS` macro collisions handled via `static const char* _VAL` + `#undef` before variable definition (e.g., `firmware/WEMOS_TS/WEMOS_TS.ino:34`, `firmware/WEMOS_AC/WEMOS_AC.ino:46`).
 - Verification: `grep -r "414d9d" firmware/` and `grep -r "SmsbRoomNet2026" firmware/` are now zero for `*.ino` (see `tools/verify_prod_env.py` banned list for expected fixture).

@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/SERVERv5/v5"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/HUBV5/V5"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/clients/gui-app"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

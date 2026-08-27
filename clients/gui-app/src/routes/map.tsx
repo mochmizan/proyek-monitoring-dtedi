@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { z } from 'zod';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchRooms, fetchRoomMap } from '../lib/api';
+import { fetchRooms, fetchRoomMap } from '../lib/api'
+import { POLL_MS } from '../lib/constants';
 import type { RoomMapMarker } from '../types/api';
 import { TopologyView } from '../components/TopologyView';
 
@@ -39,7 +40,7 @@ function MapPage() {
     queryKey: queryKeys.rooms.map(activeRoomId),
     queryFn: () => fetchRoomMap(activeRoomId),
     enabled: !!activeRoomId,
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });
 

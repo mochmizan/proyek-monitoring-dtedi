@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchRoomMap } from '../lib/api';
+import { fetchRoomMap } from '../lib/api'
+import { POLL_MS, STALE_MS } from '../lib/constants';
 import type { RoomResponse } from '../types/api';
 import { Sparkline } from './Sparkline';
 import { FreshnessBadge } from './FreshnessBadge';
@@ -29,9 +30,9 @@ export function RoomCard({ room, status, className }: RoomCardProps) {
   const { data: roomMap, dataUpdatedAt } = useQuery({
     queryKey: queryKeys.rooms.map(room.id),
     queryFn: () => fetchRoomMap(room.id),
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
-    staleTime: 2000,
+    staleTime: STALE_MS,
   });
 
   const tsReading = (roomMap?.devices || []).find(

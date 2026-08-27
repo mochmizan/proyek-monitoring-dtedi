@@ -27,15 +27,16 @@ changes/<change-name>/
 - **Scope**: Firmware only — ATS bridge alignment (topic/IP/fields), non-blocking peripheral init + MQTT reconnect across all three ESP8266 nodes, AC state persistence via EEPROM
 - **Specs**: `ats-node-hub-alignment`, `field-node-connection-resilience`, `ac-node-state-persistence`
 - **Status**: **IMPLEMENTED & VERIFIED** (Tasks 1.1–4.4 completed; Section 5 bench tests defined for hardware staging)
-- **Reference Doc**: [`FIRMWARE_ALIGNMENT_REPORT.md`](../FIRMWARE_ALIGNMENT_REPORT.md)
+- **Reference Doc**: [`FIRMWARE_ALIGNMENT_REPORT.md`](../docs/FIRMWARE_ALIGNMENT_REPORT.md)
 - Ground-truth alignment: live hub config (`hs109rs-hub-01`, broker `192.168.72.242`), unified `hs109rs/#` topic tree, `HUB_NAME` / `DEV_TYPE: "ATS"` payload, non-blocking I2C probes (`0x3C`, `0x44`), EEPROM `0xAC` raw state persistence.
 
 ### 2. `complete-platform-rooms-frontend-and-deployment`
 - **Scope**: Full Platform — Database additive migrations, Rooms & Device Pairing API, Floor Plan Disk Storage & Map API, Alert Engine (debounce & hysteresis), Firmware NaN skip & canonical ATS serial protocol, Edge SQLite WAL cache & dynamic topic dispatch, React SPA live TanStack Query & auth wiring, Docker local test stack, Raspberry Pi backup gate, and production Nginx same-origin deployment.
 - **Specs**: `room-and-device-management`, `floor-plan-mapping`, `alert-threshold-evaluation`, `frontend-live-integration`, `edge-offline-resilience`, `local-test-environment`, `production-deployment`, `ats-serial-protocol-integrity`
 - **Status**: **IMPLEMENTED & VERIFIED** (All 10 Milestones, Tasks 1.1–13.6 completed; 100 automated tests passing, 0 linter errors, clean SPA build)
-- **Reference Docs**: [`LOCAL_TESTING_GUIDE.md`](../LOCAL_TESTING_GUIDE.md), [`PRODUCTION_DEPLOYMENT_GUIDE.md`](../PRODUCTION_DEPLOYMENT_GUIDE.md), [`HUB_BACKUP_GUIDE.md`](../HUB_BACKUP_GUIDE.md)
+- **Reference Docs**: [`LOCAL_TESTING_GUIDE.md`](../docs/LOCAL_TESTING_GUIDE.md), [`PRODUCTION_DEPLOYMENT_GUIDE.md`](../docs/PRODUCTION_DEPLOYMENT_GUIDE.md), [`HUB_BACKUP_GUIDE.md`](../docs/HUB_BACKUP_GUIDE.md)
 
+> **Note:** `changes/` pruned 2026-08-27 (`8f1e12e`) — all proposals were IMPLEMENTED & VERIFIED. Archived in git history (`git log --all -- openspec/changes/` / `git show 8f1e12e^:openspec/changes/`); specs retained in `docs/`.
 
 ## Work Guidance
 

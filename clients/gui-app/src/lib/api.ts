@@ -18,8 +18,13 @@ import type {
   HubActionResponse,
 } from '../types/api';
 
+const BASE = import.meta.env.VITE_API_BASE || '';
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+    }
     let errorMessage = `HTTP Error ${res.status}: ${res.statusText}`;
     try {
       const errorData = await res.json();
@@ -45,7 +50,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 // ----------------------------------------------------
 
 export async function loginUser(payload: UserLoginPayload): Promise<UserResponse> {
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -55,7 +60,7 @@ export async function loginUser(payload: UserLoginPayload): Promise<UserResponse
 }
 
 export async function logoutUser(): Promise<{ status: string }> {
-  const res = await fetch('/api/auth/logout', {
+  const res = await fetch(`${BASE}/api/auth/logout`, {
     method: 'POST',
     credentials: 'same-origin',
   });
@@ -63,7 +68,7 @@ export async function logoutUser(): Promise<{ status: string }> {
 }
 
 export async function fetchCurrentUser(): Promise<UserResponse> {
-  const res = await fetch('/api/auth/me', {
+  const res = await fetch(`${BASE}/api/auth/me`, {
     credentials: 'same-origin',
   });
   return handleResponse<UserResponse>(res);
@@ -74,14 +79,14 @@ export async function fetchCurrentUser(): Promise<UserResponse> {
 // ----------------------------------------------------
 
 export async function fetchRooms(): Promise<RoomResponse[]> {
-  const res = await fetch('/api/rooms', {
+  const res = await fetch(`${BASE}/api/rooms`, {
     credentials: 'same-origin',
   });
   return handleResponse<RoomResponse[]>(res);
 }
 
 export async function createRoom(payload: RoomCreate): Promise<RoomResponse> {
-  const res = await fetch('/api/rooms', {
+  const res = await fetch(`${BASE}/api/rooms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -91,7 +96,7 @@ export async function createRoom(payload: RoomCreate): Promise<RoomResponse> {
 }
 
 export async function updateRoom(roomId: string, payload: RoomUpdate): Promise<RoomResponse> {
-  const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -101,7 +106,7 @@ export async function updateRoom(roomId: string, payload: RoomUpdate): Promise<R
 }
 
 export async function deleteRoom(roomId: string): Promise<{ status: string; room_id: string }> {
-  const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
     method: 'DELETE',
     credentials: 'same-origin',
   });
@@ -112,7 +117,7 @@ export async function uploadFloorPlan(roomId: string, file: File): Promise<Floor
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/floor-plan`, {
+  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}/floor-plan`, {
     method: 'POST',
     body: formData,
     credentials: 'same-origin',
@@ -121,7 +126,7 @@ export async function uploadFloorPlan(roomId: string, file: File): Promise<Floor
 }
 
 export async function fetchRoomMap(roomId: string): Promise<RoomMapResponse> {
-  const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/map`, {
+  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}/map`, {
     credentials: 'same-origin',
   });
   return handleResponse<RoomMapResponse>(res);
@@ -132,7 +137,7 @@ export async function fetchRoomMap(roomId: string): Promise<RoomMapResponse> {
 // ----------------------------------------------------
 
 export async function fetchDevices(status?: 'pending' | 'active' | 'all'): Promise<DeviceResponse[]> {
-  const url = new URL('/api/devices', window.location.origin);
+  const url = new URL(`${BASE}/api/devices`, window.location.origin);
   if (status) {
     url.searchParams.set('status', status);
   }
@@ -143,7 +148,7 @@ export async function fetchDevices(status?: 'pending' | 'active' | 'all'): Promi
 }
 
 export async function pairDevice(devId: string, payload: DevicePairRequest): Promise<DeviceResponse> {
-  const res = await fetch(`/api/devices/${encodeURIComponent(devId)}/pair`, {
+  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/pair`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -153,7 +158,7 @@ export async function pairDevice(devId: string, payload: DevicePairRequest): Pro
 }
 
 export async function unpairDevice(devId: string): Promise<{ status: string; dev_id: string; is_active: boolean }> {
-  const res = await fetch(`/api/devices/${encodeURIComponent(devId)}/unpair`, {
+  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/unpair`, {
     method: 'POST',
     credentials: 'same-origin',
   });
@@ -164,7 +169,7 @@ export async function updateThresholds(
   devId: string,
   payload: ThresholdUpdateRequest
 ): Promise<ThresholdConfig> {
-  const res = await fetch(`/api/devices/${encodeURIComponent(devId)}/thresholds`, {
+  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/thresholds`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -177,7 +182,7 @@ export async function sendDeviceCommand(
   devId: string,
   command: DeviceCommand
 ): Promise<{ status: string; command_id: string }> {
-  const res = await fetch(`/api/devices/${encodeURIComponent(devId)}/command`, {
+  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/command`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
@@ -191,7 +196,7 @@ export async function sendDeviceCommand(
 // ----------------------------------------------------
 
 export async function fetchAlerts(params?: AlertFilterParams): Promise<AlertListResponse> {
-  const url = new URL('/api/alerts', window.location.origin);
+  const url = new URL(`${BASE}/api/alerts`, window.location.origin);
   if (params) {
     if (params.rooms && params.rooms.length > 0) {
       params.rooms.forEach((r) => url.searchParams.append('rooms', r));
@@ -236,7 +241,7 @@ export async function fetchAlerts(params?: AlertFilterParams): Promise<AlertList
 // ----------------------------------------------------
 
 export async function fetchDeviceHistory(deviceId: string, range = '24h'): Promise<DeviceHistoryResponse> {
-  const url = new URL(`/api/devices/${encodeURIComponent(deviceId)}/history`, window.location.origin);
+  const url = new URL(`${BASE}/api/devices/${encodeURIComponent(deviceId)}/history`, window.location.origin);
   if (range) {
     url.searchParams.set('range', range);
   }
@@ -251,14 +256,14 @@ export async function fetchDeviceHistory(deviceId: string, range = '24h'): Promi
 // ----------------------------------------------------
 
 export async function fetchHubs(): Promise<HubResponse[]> {
-  const res = await fetch('/api/hubs', {
+  const res = await fetch(`${BASE}/api/hubs`, {
     credentials: 'same-origin',
   });
   return handleResponse<HubResponse[]>(res);
 }
 
 export async function approveHub(hubId: string): Promise<HubActionResponse> {
-  const res = await fetch(`/api/hubs/${encodeURIComponent(hubId)}/approve`, {
+  const res = await fetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/approve`, {
     method: 'POST',
     credentials: 'same-origin',
   });
@@ -266,10 +271,9 @@ export async function approveHub(hubId: string): Promise<HubActionResponse> {
 }
 
 export async function revokeHub(hubId: string): Promise<HubActionResponse> {
-  const res = await fetch(`/api/hubs/${encodeURIComponent(hubId)}/revoke`, {
+  const res = await fetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/revoke`, {
     method: 'POST',
     credentials: 'same-origin',
   });
   return handleResponse<HubActionResponse>(res);
 }
-

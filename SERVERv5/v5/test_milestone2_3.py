@@ -267,11 +267,11 @@ def test_ip_resolver():
     resolved_ip_real = get_forwarded_address(mock_req_real)
     assert resolved_ip_real == "198.51.100.42"
 
-    # 2. Test X-Forwarded-For returns the last IP in the chain
+    # 2. Test X-Forwarded-For returns the first IP in the chain (original client)
     mock_req = MagicMock()
-    mock_req.headers = {"X-Forwarded-For": "203.0.113.195, 70.41.3.18"}
+    mock_req.headers = {"X-Forwarded-For": "203.0.113.195, 70.41.3.18, 150.172.238.178"}
     resolved_ip = get_forwarded_address(mock_req)
-    assert resolved_ip == "70.41.3.18"
+    assert resolved_ip == "203.0.113.195"
     
     # 3. Test fallback to get_remote_address
     mock_req_no_header = MagicMock()

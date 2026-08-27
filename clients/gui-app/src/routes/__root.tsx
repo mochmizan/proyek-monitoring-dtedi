@@ -13,9 +13,20 @@ import {
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, logoutUser, fetchAlerts } from '../lib/api';
+import { POLL_ALERTS_MS } from '../lib/constants';
 
 export interface MyRouterContext {
   queryClient: QueryClient;
+}
+
+function RootError({ error }: { error: Error }) {
+  return (
+    <div className="w-full min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-center gap-4">
+      <h1 className="text-xl font-bold text-zinc-100">Application Error</h1>
+      <p className="text-sm text-zinc-400 max-w-md">{error.message || 'Unexpected error'}</p>
+      <button onClick={() => window.location.reload()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm font-medium cursor-pointer">Reload</button>
+    </div>
+  );
 }
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
@@ -49,6 +60,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
     }
   },
   component: RootLayout,
+  errorComponent: RootError,
 });
 
 function RootLayout() {
@@ -65,7 +77,7 @@ function RootLayout() {
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
-    refetchInterval: 5000,
+    refetchInterval: POLL_ALERTS_MS,
     refetchIntervalInBackground: false,
   });
 

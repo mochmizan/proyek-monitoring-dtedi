@@ -19,15 +19,18 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    sourcemap: 'hidden',
+  },
   server: {
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: process.env.VITE_API_BASE || 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
       '/static': {
-        target: 'http://127.0.0.1:8000',
+        target: process.env.VITE_API_BASE || 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },

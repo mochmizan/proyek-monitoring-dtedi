@@ -14,7 +14,8 @@ import type { Edge, Node, NodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Cpu, HelpCircle, Server, Snowflake, Thermometer, Zap } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchDevices, fetchHubs, fetchRooms } from '../lib/api';
+import { fetchDevices, fetchHubs, fetchRooms } from '../lib/api'
+import { POLL_MS } from '../lib/constants';
 import { StatusDot } from './StatusDot';
 import type { StatusTone } from './StatusDot';
 import { cn } from '../lib/utils';
@@ -239,13 +240,13 @@ export function TopologyView() {
   const { data: hubs = [] } = useQuery({
     queryKey: queryKeys.hubs.list(),
     queryFn: fetchHubs,
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
   });
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.active(),
     queryFn: () => fetchDevices('active'),
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
   });
 
   const { data: rooms = [] } = useQuery({

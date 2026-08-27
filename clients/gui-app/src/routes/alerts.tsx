@@ -5,7 +5,8 @@ import { cn } from '../lib/utils';
 import { ChevronDown, Check, RefreshCw, ShieldAlert } from 'lucide-react';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api';
+import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api'
+import { POLL_MS } from '../lib/constants';
 
 const alertsSearchSchema = z.object({
   rooms: z.preprocess(
@@ -171,7 +172,7 @@ function AlertsPage() {
       start_time: startTimeIso,
       limit: 100,
     }),
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });
 

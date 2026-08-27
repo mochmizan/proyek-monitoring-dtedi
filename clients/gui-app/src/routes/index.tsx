@@ -11,7 +11,8 @@ import {
 import { cn } from '../lib/utils';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchRooms, fetchDevices, fetchAlerts } from '../lib/api';
+import { fetchRooms, fetchDevices, fetchAlerts } from '../lib/api'
+import { POLL_MS, STALE_MS } from '../lib/constants';
 import type { DeviceResponse } from '../types/api';
 import { RoomCard, RoomCardSkeleton } from '../components/RoomCard';
 import type { RoomCardStatus } from '../components/RoomCard';
@@ -34,22 +35,22 @@ function DashboardPage() {
   const { data: rooms = [], status: roomsStatus } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
-    staleTime: 2000,
+    staleTime: STALE_MS,
   });
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.list('all'),
     queryFn: () => fetchDevices('all'),
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });
 
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });
 

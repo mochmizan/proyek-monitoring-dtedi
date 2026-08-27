@@ -1,3 +1,7 @@
+// browser_test.mjs - Playwright headless login->dashboard flow.
+// Requires Vite dev server on :5173. DEV credentials via env (e.g. SMSB_USER/SMSB_PASS),
+// not hardcoded for prod - update to read from process.env before production use.
+
 import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
@@ -10,7 +14,7 @@ async function runBrowserTest() {
   });
   const page = await context.newPage();
 
-  const screenshotsDir = path.resolve('./browser_screenshots');
+  const screenshotsDir = path.resolve('../../browser_screenshots');
   if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
   }

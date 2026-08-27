@@ -22,11 +22,12 @@ FastAPI + Pydantic v2 + SQLAlchemy 2 ingestion gateway for IoT telemetry (the "c
 
 ## Stack
 
-Python 3.14 (venv), FastAPI, Uvicorn, Pydantic v2 (discriminated unions), SQLAlchemy 2.0, PostgreSQL (production) with **SQLite fallback** (`DATABASE_URL` unset), slowapi rate limiting, argon2-cffi password hashing, psycopg2-binary. `requirements.txt` in `v5/`.
+Python 3.14 (venv), FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3 (discriminated unions), SQLAlchemy 2.0.49, PostgreSQL (production) with **SQLite fallback** (`DATABASE_URL` unset), slowapi 0.1.10 rate limiting, argon2-cffi 25.1.0, psycopg2-binary 2.9.12, python-multipart 0.0.27. All pinned via `==` in `requirements.txt` for reproducible builds. Alembic  (see `alembic/` + `alembic.ini`) provides the canonical migration path; `init_sqlv5.py` remains idempotent add-col migration for fallback.
 
 ## Architecture
 
-- Entry: `hubgatev5.py` exports `api` (FastAPI app) — module name is `hubgatev5`, not `main`.
+- Entry: `hubgatev5.py` is now a shim re-exporting `api` from `app/main.py` — module name `hubgatev5` preserved for `uvicorn hubgatev5:api` and tests. Canonical assembly at `app/main.py` (FastAPI app, CORS, rate limiter, `/health` + `/api/health` unauthenticated DB check, static mount).
+- Routers split under `app/routers/` (`auth.py`, `hubs.py`, `rooms.py`, `devices.py`, `iot.py`, `commands.py`, `alerts.py`); cross-cutting code in `app/core/` (`config.py`, `rate_limit.py`, `logging.py`) and `app/services/` (`alert_engine.py`, `presence.py`). Alembic at `alembic/` (`versions/04a48dbce60b_initial_schema_as_observed.py`).
 - Tables (`modelsv5.py`): `hub_table`, `rooms`, `dev_table` (with `last_seen`, `last_status`, `marker_x`, `marker_y`), `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `pending_commands`, `users`, `sessions`, `login_attempts`
 - Payload validation (`schemasv5.py`): `IotPayload` = discriminated union on `DEV_TYPE` (`ATSData`, `TSData`, `ACCData`, `ACData`, `PUMPData`); `ATSCommand` and `ACCommand` validated for mode/power/temperature actions.
 - Auth (`auth.py` + `schemas_auth.py`): Argon2id hashing, timing-safe dummy-hash verification, sessions (2h sliding / 12h absolute cap), per-username lockout (5 fails → 15 min → 423 Locked), cookie `session_id` (httponly, secure, samesite=lax).
@@ -61,6 +62,7 @@ Python 3.14 (venv), FastAPI, Uvicorn, Pydantic v2 (discriminated unions), SQLAlc
 | `GET /api/hub/commands` | hub headers | 30/min | Hub polls pending commands |
 | `POST /api/hub/commands/{id}/delivered` | hub headers | 30/min | Ack command delivery |
 | `POST /api/auth/login` / `logout` / `me` | — / cookie / cookie | 5/min | Auth session endpoints |
+| `GET /health` & `/api/health` | — | no limit | Unauthenticated health check: `{status:"ok", db:"up"\|"down"}` (DB SELECT 1 probe) |
 
 ## Test Files (SQLite)
 

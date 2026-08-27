@@ -76,6 +76,8 @@ long sisaDetik = 0;
 long sisaMenit = 0;
 long sisaJam = 0;
 
+#define WIFI_CONNECT_TIMEOUT_MS 10000
+
 void setup_wifi() {
   delay(10);
   Serial.println();
@@ -84,7 +86,13 @@ void setup_wifi() {
 
   WiFi.begin(ssid, password);
 
+  unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
+      Serial.println();
+      Serial.println("WiFi connect timeout, akan dicoba lagi di loop berikutnya");
+      return;
+    }
     delay(500);
     Serial.print(".");
   }
@@ -222,19 +230,25 @@ void loop() {
     publishData();
   }
 
+  static char buf[65];
+  static uint8_t len = 0;
   while (Serial.available()) {
     char c = Serial.read();
     if (c == '<') {
-      buffer = "";
-      buffer += c;
-    }
-    else if (c == '>') {
-      buffer += c;
-      processData(buffer);
-      buffer = "";
-    }
-    else {
-      buffer += c;
+      len = 0;
+      if (len < 64) buf[len++] = c;
+      buf[len] = '\0';
+    } else if (c == '>') {
+      if (len < 64) buf[len++] = c;
+      buf[len] = '\0';
+      processData(String(buf));
+      len = 0;
+      buf[0] = '\0';
+    } else {
+      if (len < 64) {
+        buf[len++] = c;
+        buf[len] = '\0';
+      }
     }
   }
 }

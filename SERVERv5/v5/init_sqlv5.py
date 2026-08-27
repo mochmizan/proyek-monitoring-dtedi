@@ -128,15 +128,35 @@ def migrate_additive_columns(bind_engine=None):
         logging.error(f"Gagal melakukan additive migration kolom: {e}")
         raise
 
+def try_alembic_upgrade(bind_engine=None):
+    """Call alembic upgrade head if alembic is present; additive fallback otherwise."""
+    try:
+        import alembic.config
+        import alembic.command
+        import os
+        alembic_ini = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alembic.ini")
+        if os.path.exists(alembic_ini):
+            cfg = alembic.config.Config(alembic_ini)
+            # Override URL to current engine URL
+            target_engine = bind_engine or engine
+            cfg.set_main_option("sqlalchemy.url", str(target_engine.url))
+            alembic.command.upgrade(cfg, "head")
+            logging.info("Alembic upgrade head BERHASIL")
+            return True
+    except Exception as e:
+        logging.warning(f"Alembic upgrade skipped/fallback: {e}")
+    return False
+
 def init_db(bind_engine=None):
     try:
         target_engine = bind_engine or engine
+        # Try alembic first (best-effort), then always ensure additive + create_all for idempotency
+        try_alembic_upgrade(target_engine)
         # Jalankan migrasi kolom sebelum create_all agar kolom yang ada di-rename / ditambahkan terlebih dahulu
         migrate_dev_table_hub_name_to_hub_id(target_engine)
         migrate_additive_columns(target_engine)
 
         logging.info("Memulai pembuatan / verifikasi tabel V5 di database...")
-        # Membuat seluruh tabel yang terdefinisi di modelsv5.py (rooms, hubs, devices, telemetries, temperature_data, ats_data, pending_commands, device_threshold_config, users, sessions, login_attempts)
         Base.metadata.create_all(bind=target_engine)
         logging.info("Pembuatan tabel database V5 BERHASIL!")
 
@@ -149,6 +169,11 @@ def init_db(bind_engine=None):
 
 def seed_default_hub(bind_engine=None):
     """Memastikan minimal ada 1 Hub resmi awal terdaftar di database."""
+    # Fail-fast: default HUB_KEY only allowed when ENV != prod
+    if os.getenv("HUB_KEY", "rahasia_hub_01_xyz") == "rahasia_hub_01_xyz" and os.getenv("ENV") == "prod":
+        raise RuntimeError("HUB_KEY default 'rahasia_hub_01_xyz' is not allowed when ENV=prod — set a secure HUB_KEY")
+    if os.getenv("HUB_KEY") is None and os.getenv("ENV") != "prod":
+        logging.warning("HUB_KEY not set — using default 'rahasia_hub_01_xyz' (only allowed when ENV!=prod)")
     target_engine = bind_engine or engine
     if bind_engine is not None:
         CustomSession = sessionmaker(autoflush=False, autocommit=False, bind=target_engine)

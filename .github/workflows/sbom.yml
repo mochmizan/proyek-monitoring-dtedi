@@ -1,0 +1,20 @@
+name: sbom
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: spdx-json
+          upload-artifact: true
+          upload-release-assets: false

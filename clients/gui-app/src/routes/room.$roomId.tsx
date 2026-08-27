@@ -15,7 +15,8 @@ import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchRooms, fetchRoomMap, fetchCurrentUser, sendDeviceCommand, fetchAlerts } from '../lib/api';
+import { fetchRooms, fetchRoomMap, fetchCurrentUser, sendDeviceCommand, fetchAlerts } from '../lib/api'
+import { POLL_MS } from '../lib/constants';
 import type { RoomMapMarker, ATSCommand } from '../types/api';
 
 const roomSearchSchema = z.object({
@@ -40,21 +41,21 @@ function RoomDetailPage() {
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });
 
   const { data: roomMap, isFetching: isFetchingMap } = useQuery({
     queryKey: queryKeys.rooms.map(roomId),
     queryFn: () => fetchRoomMap(roomId),
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });
 
   const { data: roomAlertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ room: roomId }),
     queryFn: () => fetchAlerts({ room: roomId }),
-    refetchInterval: 3000,
+    refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });
 

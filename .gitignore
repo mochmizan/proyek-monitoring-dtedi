@@ -49,6 +49,7 @@ SERVERv5/v5/static/
 .pre-commit-config.yaml.bak
 
 # ===== IDE / OS =====
+# .idea/ gitignored — JetBrains
 .idea/
 .vscode/
 *.swp

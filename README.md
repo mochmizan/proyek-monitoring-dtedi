@@ -26,10 +26,11 @@ ESP8266 field nodes (firmware/)          Raspberry Pi 4              Cloud / VPS
 
 | Path | What it is |
 |---|---|
-| `firmware/` | ESP8266/Arduino node sketches (one folder per sketch, Arduino IDE compatible) |
+| `firmware/` | ESP8266/Arduino node sketches (one folder per sketch, Arduino IDE compatible; `firmware/common/secrets.h` gitignored) |
 | `HUBV5/V5/` | HubBrain V5 — Python edge gateway daemon for Raspberry Pi |
 | `SERVERv5/v5/` | HubGate V5 — FastAPI cloud gateway, auth/RBAC, DB models, tests |
 | `clients/gui-app/` | React SPA |
+| `docs/` | Canonical docs: design spec, firmware report, testing/deployment/backup guides, handover, research notes |
 | `openspec/` | Spec-driven change proposals & capability specs |
 | `tests/` | Repo-level E2E pipeline & deployment-verifier tests |
 | `tools/` | Ops utilities: Pi deploy/backup, DB seeding, mock publishers, sniffers, verifiers |
@@ -83,10 +84,13 @@ See `docs/FIRMWARE_ALIGNMENT_REPORT.md` for the protocol reference.
 
 | Doc | Topic |
 |---|---|
+| `docs/2026-07-01-iot-temperature-monitoring-design.md` | Original design spec (pre-V5 baseline) |
 | `docs/LOCAL_TESTING_GUIDE.md` | Local Docker + mock publisher + E2E test stack |
 | `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` | VPS + Raspberry Pi production runbook |
 | `docs/HUB_BACKUP_GUIDE.md` | Raspberry Pi mandatory backup gate |
 | `docs/FIRMWARE_ALIGNMENT_REPORT.md` | Firmware alignment & serial/MQTT protocol reference |
+| `docs/SESSION_HANDOVER.md` | Session continuation handover |
+| `docs/researcher_notes.md` | Scratch research notes |
 | `AGENTS.md` (+ per-directory) | DOX work contracts for AI/agent development |
 
 ## Security Notes
