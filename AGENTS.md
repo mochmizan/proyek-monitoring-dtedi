@@ -1,10 +1,11 @@
 # AGENTS.md — smsb (root)
 
-IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `clients/gui-app/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `SERVERv5/` (HubGate V5), a Raspberry Pi edge gateway at `HUBV5/` (HubBrain V5), ESP8266 node firmware at the root (`.ino`), and spec-driven change proposals in `openspec/`. Design spec at `2026-07-01-iot-temperature-monitoring-design.md`.
+IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `clients/gui-app/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `SERVERv5/` (HubGate V5), a Raspberry Pi edge gateway at `HUBV5/` (HubBrain V5), ESP8266 node firmware at the root (`.ino`), and spec-driven change proposals in `openspec/`. Design spec at `docs/2026-07-01-iot-temperature-monitoring-design.md`.
 
 ## Ownership
 
-- **Root**: project-wide rules, DOX framework, global preferences, design docs, firmware `.ino` files, guides (`LOCAL_TESTING_GUIDE.md`, `HUB_BACKUP_GUIDE.md`, `PRODUCTION_DEPLOYMENT_GUIDE.md`), `FIRMWARE_ALIGNMENT_REPORT.md`, `researcher_notes.md`
+- **Root**: project-wide rules, DOX framework, global preferences
+- **docs/**: design spec, firmware alignment report, testing/deployment/backup guides, handover notes
 - **clients/gui-app/**: SPA development — routes, TanStack Query hooks, minimal Zustand UI store, build tooling
 - **SERVERv5/**: cloud gateway (HubGate V5) — FastAPI, auth/RBAC, DB, rooms/devices/alerts API, deploy scripts
 - **HUBV5/**: edge gateway (HubBrain V5) — Raspberry Pi MQTT bridge, whitelist, offline WAL cache, HTTPS upstream
@@ -57,7 +58,7 @@ Node sketches deployed to field hardware and bridged through HUBV5.
 | `firmware/PROMINI/PROMINI.ino` | ATS FSM controller (Pro Mini/Uno-class) | Non-blocking RTC degraded mode (no `while(1);` on RTC absence): warmup countdown disabled, FSM continues on `millis()` timing; canonical serial protocol |
 | `firmware/HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino` | I2C bus recovery / OLED diagnostic utility | bench tool, not deployed |
 
-Implemented, tested with `arduino-cli`, and documented in `FIRMWARE_ALIGNMENT_REPORT.md`. Folder name must always match the `.ino` name (Arduino IDE requirement).
+Implemented, tested with `arduino-cli`, and documented in `docs/FIRMWARE_ALIGNMENT_REPORT.md`. Folder name must always match the `.ino` name (Arduino IDE requirement).
 
 ## Project Structure
 
@@ -66,11 +67,14 @@ smsb/
 ├── AGENTS.md                        ← root DOX doc (this file)
 ├── README.md                        ← GitHub front page (architecture, quickstart)
 ├── .gitignore                       ← excludes secrets (.env/passwd/cert.key), dbs, build output
-├── LOCAL_TESTING_GUIDE.md           ← local test stack guide (Docker + mock publishers + E2E)
-├── HUB_BACKUP_GUIDE.md              ← Raspberry Pi mandatory backup gate guide
-├── PRODUCTION_DEPLOYMENT_GUIDE.md   ← production VPS and Pi deployment runbook
-├── FIRMWARE_ALIGNMENT_REPORT.md     ← firmware alignment and protocol reference report
-├── SESSION_HANDOVER.md              ← session continuation handover documentation
+├── docs/                            ← design + guides (see below)
+│   ├── 2026-07-01-iot-temperature-monitoring-design.md
+│   ├── FIRMWARE_ALIGNMENT_REPORT.md ← firmware alignment and protocol reference
+│   ├── LOCAL_TESTING_GUIDE.md       ← local test stack guide
+│   ├── PRODUCTION_DEPLOYMENT_GUIDE.md ← production VPS and Pi deployment runbook
+│   ├── HUB_BACKUP_GUIDE.md          ← Raspberry Pi mandatory backup gate guide
+│   ├── SESSION_HANDOVER.md          ← session continuation handover
+│   └── researcher_notes.md          ← scratch research notes
 ├── start_dev.bat                    ← 1-click batch launcher for HubGate V5 & Vite SPA
 ├── start_dev.ps1                    ← 1-click PowerShell launcher with IP & Pi reachability check
 ├── docker-compose.yml               ← local PostgreSQL & Mosquitto container stack

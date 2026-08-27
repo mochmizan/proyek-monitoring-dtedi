@@ -77,16 +77,16 @@ npm run build         # typecheck + production build
 | `firmware/fsm_w_serial/` | ATS FSM controller (Arduino) | PLN/genset/backup-battery state machine |
 | `firmware/HARDWARE_OLED_TEST/` | I2C bus recovery & OLED diagnostic utility | |
 
-See `FIRMWARE_ALIGNMENT_REPORT.md` for the protocol reference.
+See `docs/FIRMWARE_ALIGNMENT_REPORT.md` for the protocol reference.
 
 ## Documentation
 
 | Doc | Topic |
 |---|---|
-| `LOCAL_TESTING_GUIDE.md` | Local Docker + mock publisher + E2E test stack |
-| `PRODUCTION_DEPLOYMENT_GUIDE.md` | VPS + Raspberry Pi production runbook |
-| `HUB_BACKUP_GUIDE.md` | Raspberry Pi mandatory backup gate |
-| `FIRMWARE_ALIGNMENT_REPORT.md` | Firmware alignment & serial/MQTT protocol reference |
+| `docs/LOCAL_TESTING_GUIDE.md` | Local Docker + mock publisher + E2E test stack |
+| `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` | VPS + Raspberry Pi production runbook |
+| `docs/HUB_BACKUP_GUIDE.md` | Raspberry Pi mandatory backup gate |
+| `docs/FIRMWARE_ALIGNMENT_REPORT.md` | Firmware alignment & serial/MQTT protocol reference |
 | `AGENTS.md` (+ per-directory) | DOX work contracts for AI/agent development |
 
 ## Security Notes
