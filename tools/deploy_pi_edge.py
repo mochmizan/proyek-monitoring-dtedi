@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 tools/deploy_pi_edge.py
 Deploys updated HubBrain V5 to the Raspberry Pi, sets up .env, establishes reverse port tunnel,
@@ -79,9 +79,9 @@ def main():
     ssh.connect(host, port=22, username=user, password=password, timeout=10)
     sftp = ssh.open_sftp()
 
-    # Step 1: Upload latest HUBV5/V5/main.py
-    local_main = Path(__file__).resolve().parent.parent / "HUBV5" / "V5" / "main.py"
-    remote_dir = f"/home/{user}/HUBV5/V5"
+    # Step 1: Upload latest hub/main.py
+    local_main = Path(__file__).resolve().parent.parent / "hub" / "V5" / "main.py"
+    remote_dir = f"/home/{user}/hub"
     remote_main = f"{remote_dir}/main.py"
     remote_env = f"{remote_dir}/.env"
 

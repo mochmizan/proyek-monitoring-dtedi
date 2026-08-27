@@ -1,4 +1,4 @@
-# test_e2e_pipeline.py
+﻿# test_e2e_pipeline.py
 # Automated End-to-End Pipeline Integration Tests for Milestone 8 (Tasks 8.1 - 8.5)
 # Tests Mock Publisher -> HubBrain Edge Gateway -> HubGate API Server -> PostgreSQL/SQLite Database
 
@@ -12,10 +12,10 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import TypeAdapter
 
-# Ensure SERVERv5, HUBV5, and tools are on python path
+# Ensure server, hub, and tools are on python path
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-server_v5_path = os.path.join(repo_root, "SERVERv5", "v5")
-hub_v5_path = os.path.join(repo_root, "HUBV5", "V5")
+server_v5_path = os.path.join(repo_root, "server", "v5")
+hub_v5_path = os.path.join(repo_root, "hub", "V5")
 tools_path = os.path.join(repo_root, "tools")
 
 for p in (server_v5_path, hub_v5_path, tools_path):

@@ -3,7 +3,7 @@ import uuid
 from argon2 import PasswordHasher
 
 ph = PasswordHasher()
-conn = sqlite3.connect('SERVERv5/v5/hubgatev5.db')
+conn = sqlite3.connect('server/hubgatev5.db')
 c = conn.cursor()
 
 accounts = [

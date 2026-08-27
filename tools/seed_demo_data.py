@@ -1,9 +1,9 @@
-import sys
+﻿import sys
 import os
 import uuid
 
-# Add SERVERv5/v5 to sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "SERVERv5", "v5")))
+# Add server to sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "server", "v5")))
 
 from databasev5 import SessionLocal
 from modelsv5 import Room, dev_table, DeviceThresholdConfig, hub_table, User, temperature_data, ats_data

@@ -25,7 +25,7 @@
 | OS / size | Ubuntu 24.04, 1 GB RAM |
 | Addresses | campus-internal **`10.33.102.172`**, Tailscale `100.108.98.30`, public `202.43.94.30` |
 | App | FastAPI `smsb-api.service` :8000 behind nginx (`hubgate` site), SPA at `/var/www/gui-app` |
-| Deploy | bare repo `/opt/smsb.git` + post-receive hook ← `git push prod main`; worktree `/opt/smsb`; SQLite DB `/opt/smsb/SERVERv5/v5/hubgatev5.db` |
+| Deploy | bare repo `/opt/smsb.git` + post-receive hook ← `git push prod main`; worktree `/opt/smsb`; SQLite DB `/opt/smsb/server/hubgatev5.db` |
 | TLS | self-signed `/etc/nginx/ssl/smsb.crt|.key`, SANs include `10.33.102.172`, Tailscale IP, public IP |
 | **NTP** | VPS is now an NTP server for campus IoT hubs: chrony `allow 10.33.0.0/16`, UFW allows `123/udp from 10.33.0.0/16` |
 
@@ -48,7 +48,7 @@ All 5 sketches fleet-standardized on `smsb-iot` @ `192.168.72.242`, boot-derived
 
 The internal campus-LAN path is the chosen deployment path: Pi → UGM wall port → campus routing → VPS `10.33.102.172`. SERVER_URL points at `https://10.33.102.172/api/*` — zero dependence on the public IP / Azure NSG. Campus WiFi clients reach the dashboard directly (no VPN); admin access from anywhere via Tailscale.
 
-Historical debugging notes (netplan wlan0 drop rules, dnsmasq duplicate-keyword failure, usbipd-win SD-card editing workflow) are preserved in git history of this file and in `HUBV5/AGENTS.md`.
+Historical debugging notes (netplan wlan0 drop rules, dnsmasq duplicate-keyword failure, usbipd-win SD-card editing workflow) are preserved in git history of this file and in `hub/AGENTS.md`.
 
 ---
 
@@ -60,13 +60,13 @@ Historical debugging notes (netplan wlan0 drop rules, dnsmasq duplicate-keyword 
 - Don't trust Starlink-hotspot port probes (CGNAT fake-ACKs all ports).
 - Rotate before public handover: `genset` VPS user password, `hubadmin` pw, MQTT_PASS; sanitize `tests/test_verify_prod_env.py` L111/L113.
 - Set `HUB_BOOTSTRAP_KEY` env on VPS before pairing any NEW hub (existing hub identity already pinned).
-- Never put wifi stanzas in Pi netplan (see `HUBV5/AGENTS.md`); never edit `/etc/dnsmasq.conf` on the Pi (keep it empty/comment-only).
+- Never put wifi stanzas in Pi netplan (see `hub/AGENTS.md`); never edit `/etc/dnsmasq.conf` on the Pi (keep it empty/comment-only).
 
 ## 4. Local Dev Resume (unchanged)
 
 ```powershell
 .\start_dev.bat            # API :8000 + SPA :5173
-pytest                     # full suite (106 tests)
-cd clients\gui-app; npm run lint; npm run build
+pytest                     # full suite (107 tests)
+cd apps\web; npm run lint; npm run build
 ```
 Dashboard logins: `admin/admin123`, `operator/operator123`, `viewer/viewer123`.

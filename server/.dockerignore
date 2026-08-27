@@ -1,4 +1,4 @@
-__pycache__
+﻿__pycache__
 *.pyc
 *.pyo
 *.pyd
@@ -12,8 +12,8 @@ venv
 edge_cache.db
 dist
 node_modules
-clients/gui-app/dist
-clients/gui-app/node_modules
+apps/web/dist
+apps/web/node_modules
 firmware_build
 graphify-out
 .env

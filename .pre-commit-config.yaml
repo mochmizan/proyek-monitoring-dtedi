@@ -1,4 +1,4 @@
-repos:
+﻿repos:
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.4
     hooks: [{id: gitleaks}]
@@ -6,9 +6,9 @@ repos:
     hooks:
       - id: oxlint
         name: oxlint (SPA)
-        entry: bash -c "npm --prefix clients/gui-app run lint"
+        entry: bash -c "npm --prefix apps/web run lint"
         language: system
-        files: ^clients/gui-app/
+        files: ^apps/web/
         pass_filenames: false
       - id: check-merge-conflict
         name: check-merge-conflict

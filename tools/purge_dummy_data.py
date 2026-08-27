@@ -1,8 +1,8 @@
-import sqlite3
+﻿import sqlite3
 
 def purge_dummy():
     db_paths = [
-        'SERVERv5/v5/hubgatev5.db',
+        'server/hubgatev5.db',
     ]
     
     for db_path in db_paths:
@@ -47,7 +47,7 @@ def purge_dummy():
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(pi_host, port=22, username=pi_user, password=pi_password, timeout=10)
-        stdin, stdout, stderr = ssh.exec_command('python3 -c "import sqlite3; conn = sqlite3.connect(\'/home/hubadmin/HUBV5/V5/edge_cache.db\'); conn.execute(\'DELETE FROM offline_queue\'); conn.commit(); print(\'Cleared Pi offline_queue\')"')
+        stdin, stdout, stderr = ssh.exec_command('python3 -c "import sqlite3; conn = sqlite3.connect(\'/home/hubadmin/hub/edge_cache.db\'); conn.execute(\'DELETE FROM offline_queue\'); conn.commit(); print(\'Cleared Pi offline_queue\')"')
         print(f"[*] Pi Edge Cache: {stdout.read().decode('utf-8').strip()}")
         ssh.close()
     except Exception as e:

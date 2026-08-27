@@ -1,14 +1,14 @@
-# AGENTS.md — smsb (root)
+﻿# AGENTS.md â€” smsb (root)
 
-IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `clients/gui-app/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `SERVERv5/` (HubGate V5), a Raspberry Pi edge gateway at `HUBV5/` (HubBrain V5), ESP8266 node firmware at `firmware/` (one folder per sketch, `firmware/common/secrets.h` gitignored), and spec-driven change proposals in `openspec/`. Design spec at `docs/2026-07-01-iot-temperature-monitoring-design.md`. Version suffix `V5` stays until a `V6` proposal lands (see `openspec/`).
+IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `apps/web/` (connected to live API via TanStack Query), a FastAPI cloud gateway at `server/` (HubGate V5), a Raspberry Pi edge gateway at `hub/` (HubBrain V5), ESP8266 node firmware at `firmware/` (one folder per sketch, `firmware/common/secrets.h` gitignored), and spec-driven change proposals in `openspec/`. Design spec at `docs/2026-07-01-iot-temperature-monitoring-design.md`. Version suffix `V5` stays until a `V6` proposal lands (see `openspec/`).
 
 ## Ownership
 
 - **Root**: project-wide rules, DOX framework, global preferences
 - **docs/**: design spec, firmware alignment report, testing/deployment/backup guides, handover notes
-- **clients/gui-app/**: SPA development — routes, TanStack Query hooks, minimal Zustand UI store, build tooling
-- **SERVERv5/**: cloud gateway (HubGate V5) — FastAPI, auth/RBAC, DB, rooms/devices/alerts API, deploy scripts
-- **HUBV5/**: edge gateway (HubBrain V5) — Raspberry Pi MQTT bridge, whitelist, offline WAL cache, HTTPS upstream
+- **apps/web/**: SPA development â€” routes, TanStack Query hooks, minimal Zustand UI store, build tooling
+- **server/**: cloud gateway (HubGate V5) â€” FastAPI, auth/RBAC, DB, rooms/devices/alerts API, deploy scripts
+- **hub/**: edge gateway (HubBrain V5) â€” Raspberry Pi MQTT bridge, whitelist, offline WAL cache, HTTPS upstream
 - **openspec/**: spec-driven change proposals & capability specs
 - **graphify-out/**: auto-generated tool output, not edited directly
 
@@ -16,7 +16,7 @@ IoT smart-building monitoring system. Multi-component monorepo: a React SPA at `
 
 AGENTS.md files are binding work contracts for their subtrees. Parent docs define broad rules; child docs carry domain-specific instructions. Work must remain understandable from the nearest applicable AGENTS.md plus every parent above it.
 
-**Read chain before editing:** root → walk to target path reading every AGENTS.md found → nearest doc is the local contract.
+**Read chain before editing:** root â†’ walk to target path reading every AGENTS.md found â†’ nearest doc is the local contract.
 
 **Update after editing:** update closest owning AGENTS.md when purpose, structure, contracts, workflows, inputs/outputs, or user preferences change. Update parent docs when child index or parent-level structure changes. Remove stale text immediately.
 
@@ -25,9 +25,9 @@ AGENTS.md files are binding work contracts for their subtrees. Parent docs defin
 | Command | What it does |
 |---|---|
 | `start_dev.bat` or `.\start_dev.ps1` | 1-click launcher for HubGate V5 API (port 8000) & Vite SPA (port 5173) |
-| `npm run dev` (in `clients/gui-app/`) | Vite HMR dev server with `/api` and `/static` proxy |
-| `npm run build` (in `clients/gui-app/`) | `tsc -b && vite build` (typecheck first) |
-| `npm run lint` (in `clients/gui-app/`) | `oxlint` (no ESLint/Prettier) |
+| `npm run dev` (in `apps/web/`) | Vite HMR dev server with `/api` and `/static` proxy |
+| `npm run build` (in `apps/web/`) | `tsc -b && vite build` (typecheck first) |
+| `npm run lint` (in `apps/web/`) | `oxlint` (no ESLint/Prettier) |
 | `pytest` (at repo root) | Run full automated test suite (107 tests) |
 | `docker compose up -d` (at repo root) | Start local PostgreSQL and Eclipse Mosquitto containers |
 
@@ -42,9 +42,9 @@ React 19.2.7, TypeScript ~6.0.2, Vite ^8.1.1, TanStack Router 1.170.17, TanStack
 - **Edge (HubBrain V5)**: Raspberry Pi daemon bridging MQTT topics (`hs109rs/#`) to upstream HTTPS with SQLite WAL offline buffer and FIFO replay on reconnection. Dynamic downlink topic resolution (`{hub_name}/{dev_type}/command`).
 - **Firmware**: Non-blocking I2C probing, NaN sensor read skips, EEPROM AC state persistence, and canonical serial command framing (`<SGM,on>`, `<SGM,off>`, `<RST,rst>`, `<M,auto>`, `<M,manual>`).
 
-## Firmware (`firmware/` — one sketch folder per node)
+## Firmware (`firmware/` â€” one sketch folder per node)
 
-Node sketches deployed to field hardware and bridged through HUBV5.
+Node sketches deployed to field hardware and bridged through hub.
 
 **Fleet AP standardization (2026-08-23)**: every hub Pi broadcasts an identical hidden AP (`smsb-iot` / WPA2, channel surveyed per room) at static `192.168.72.242`, so all ESP sketches share the same WiFi/broker constants and work in any room on any Pi without reflashing. `DEV_NAME` is boot-derived per node (`<TYPE>-<last4 MAC hex>`), replacing hardcoded names.
 
@@ -64,55 +64,55 @@ Implemented, tested with `arduino-cli`, and documented in `docs/FIRMWARE_ALIGNME
 
 ```
 smsb/
-├── AGENTS.md                        ← root DOX doc (this file)
-├── README.md                        ← GitHub front page (architecture, quickstart)
-├── .gitignore                       ← excludes secrets (.env/passwd/cert.key), dbs, build output
-├── docs/                            ← design + guides (see below)
-│   ├── 2026-07-01-iot-temperature-monitoring-design.md
-│   ├── FIRMWARE_ALIGNMENT_REPORT.md ← firmware alignment and protocol reference
-│   ├── LOCAL_TESTING_GUIDE.md       ← local test stack guide
-│   ├── PRODUCTION_DEPLOYMENT_GUIDE.md ← production VPS and Pi deployment runbook
-│   ├── HUB_BACKUP_GUIDE.md          ← Raspberry Pi mandatory backup gate guide
-│   ├── SESSION_HANDOVER.md          ← session continuation handover
-│   └── researcher_notes.md          ← scratch research notes
-├── start_dev.bat                    ← 1-click batch launcher for HubGate V5 & Vite SPA
-├── start_dev.ps1                    ← 1-click PowerShell launcher with IP & Pi reachability check
-├── docker-compose.yml               ← local PostgreSQL & Mosquitto container stack
-├── firmware/                        ← all node sketches, one folder per sketch (Arduino IDE compatible)
-│   ├── WEMOS_TS/WEMOS_TS.ino        ← temperature/humidity node (ESP8266)
-│   ├── WEMOS_AC/WEMOS_AC.ino        ← AC/IR controller node (ESP8266)
-│   ├── fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino ← ATS Wemos bridge (ESP8266)
-│   ├── WEMOS_ATS/WEMOS_ATS.ino      ← ATS Wemos bridge, realigned fork (ESP8266)
-│   ├── fsm_w_serial/fsm_w_serial.ino ← ATS FSM controller (Arduino Uno-class)
-│   ├── PROMINI/PROMINI.ino          ← ATS FSM controller (Pro Mini/Uno-class)
-│   └── HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino ← I2C bus recovery / OLED diagnostic
-├── clients/
-│   └── gui-app/                     ← SPA (see its AGENTS.md for details)
-├── SERVERv5/
-│   └── v5/                          ← HubGate V5 FastAPI (see its AGENTS.md)
-├── HUBV5/
-│   └── V5/                          ← HubBrain V5 edge gateway (see its AGENTS.md)
-├── openspec/
-│   └── changes/                     ← spec-driven change proposals (see its AGENTS.md)
-├── tests/                           ← repo-level E2E & verifier tests (see its AGENTS.md)
-├── tools/                           ← ops utilities: Pi deploy/backup, seeding, sniffers (see its AGENTS.md)
-├── deploy/                          ← Nginx configs & production deploy script (see its AGENTS.md)
-├── mosquitto/                       ← local Mosquitto broker config for Docker (passwd gitignored)
-└── firmware_build/                  ← arduino-cli build snapshots (gitignored, regenerable)
+â”œâ”€â”€ AGENTS.md                        â† root DOX doc (this file)
+â”œâ”€â”€ README.md                        â† GitHub front page (architecture, quickstart)
+â”œâ”€â”€ .gitignore                       â† excludes secrets (.env/passwd/cert.key), dbs, build output
+â”œâ”€â”€ docs/                            â† design + guides (see below)
+â”‚   â”œâ”€â”€ 2026-07-01-iot-temperature-monitoring-design.md
+â”‚   â”œâ”€â”€ FIRMWARE_ALIGNMENT_REPORT.md â† firmware alignment and protocol reference
+â”‚   â”œâ”€â”€ LOCAL_TESTING_GUIDE.md       â† local test stack guide
+â”‚   â”œâ”€â”€ PRODUCTION_DEPLOYMENT_GUIDE.md â† production VPS and Pi deployment runbook
+â”‚   â”œâ”€â”€ HUB_BACKUP_GUIDE.md          â† Raspberry Pi mandatory backup gate guide
+â”‚   â”œâ”€â”€ SESSION_HANDOVER.md          â† session continuation handover
+â”‚   â””â”€â”€ researcher_notes.md          â† scratch research notes
+â”œâ”€â”€ start_dev.bat                    â† 1-click batch launcher for HubGate V5 & Vite SPA
+â”œâ”€â”€ start_dev.ps1                    â† 1-click PowerShell launcher with IP & Pi reachability check
+â”œâ”€â”€ docker-compose.yml               â† local PostgreSQL & Mosquitto container stack
+â”œâ”€â”€ firmware/                        â† all node sketches, one folder per sketch (Arduino IDE compatible)
+â”‚   â”œâ”€â”€ WEMOS_TS/WEMOS_TS.ino        â† temperature/humidity node (ESP8266)
+â”‚   â”œâ”€â”€ WEMOS_AC/WEMOS_AC.ino        â† AC/IR controller node (ESP8266)
+â”‚   â”œâ”€â”€ fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino â† ATS Wemos bridge (ESP8266)
+â”‚   â”œâ”€â”€ WEMOS_ATS/WEMOS_ATS.ino      â† ATS Wemos bridge, realigned fork (ESP8266)
+â”‚   â”œâ”€â”€ fsm_w_serial/fsm_w_serial.ino â† ATS FSM controller (Arduino Uno-class)
+â”‚   â”œâ”€â”€ PROMINI/PROMINI.ino          â† ATS FSM controller (Pro Mini/Uno-class)
+â”‚   â””â”€â”€ HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino â† I2C bus recovery / OLED diagnostic
+â”œâ”€â”€ clients/
+â”‚   â””â”€â”€ gui-app/                     â† SPA (see its AGENTS.md for details)
+â”œâ”€â”€ server/
+â”‚   â””â”€â”€ v5/                          â† HubGate V5 FastAPI (see its AGENTS.md)
+â”œâ”€â”€ hub/
+â”‚   â””â”€â”€ V5/                          â† HubBrain V5 edge gateway (see its AGENTS.md)
+â”œâ”€â”€ openspec/
+â”‚   â””â”€â”€ changes/                     â† spec-driven change proposals (see its AGENTS.md)
+â”œâ”€â”€ tests/                           â† repo-level E2E & verifier tests (see its AGENTS.md)
+â”œâ”€â”€ tools/                           â† ops utilities: Pi deploy/backup, seeding, sniffers (see its AGENTS.md)
+â”œâ”€â”€ deploy/                          â† Nginx configs & production deploy script (see its AGENTS.md)
+â”œâ”€â”€ mosquitto/                       â† local Mosquitto broker config for Docker (passwd gitignored)
+â””â”€â”€ firmware_build/                  â† arduino-cli build snapshots (gitignored, regenerable)
 ```
 
 ## Key TypeScript Quirks
 
-- `erasableSyntaxOnly: true` — no enums, no namespaces, no `import type =`
-- `verbatimModuleSyntax: true` — must use `import type` for type-only imports
-- `@/*` → `./src/*` (aliased in Vite + tsconfig paths)
+- `erasableSyntaxOnly: true` â€” no enums, no namespaces, no `import type =`
+- `verbatimModuleSyntax: true` â€” must use `import type` for type-only imports
+- `@/*` â†’ `./src/*` (aliased in Vite + tsconfig paths)
 - Project references: `tsc -b` compiles app + node configs
 
 ## Non-Obvious Facts
 
-- `routeTree.gen.ts` is auto-generated (TanStack Router Vite plugin) — never edit
+- `routeTree.gen.ts` is auto-generated (TanStack Router Vite plugin) â€” never edit
 - `App.css`/`mockData.ts` removed (were dead Vite template code)
-- Same-origin topology: Vite proxy locally (`/api` → `8000`) and Nginx in production forward cookies transparently without CORS preflight
+- Same-origin topology: Vite proxy locally (`/api` â†’ `8000`) and Nginx in production forward cookies transparently without CORS preflight
 - Alerts evaluate synchronously during ingestion in `receive_iot` with per-device debounce windows and hysteresis recovery
 - Edge HubBrain queues telemetry in local SQLite WAL (`edge_cache.db`) on upstream failure and replays FIFO on reconnect
 - TanStack Query server-state modules live at `src/lib/api.ts` + `src/lib/queryKeys.ts` (+ `queryClient.ts`), types at `src/types/api.ts`
@@ -123,15 +123,15 @@ The repo currently tracks **live credentials** by explicit decision (private whi
 
 | Tier | Location | Secret |
 |---|---|---|
-| 1 | `HUBV5/V5/.env` (gitignored — keep it that way), `firmware/common/secrets.h` (gitignored — live WiFi/MQTT creds via `WIFI_PASS`/`MQTT_PASS` macros) | live MQTT_PASS / HUB_KEY / Pi SSH creds |
+| 1 | `hub/.env` (gitignored â€” keep it that way), `firmware/common/secrets.h` (gitignored â€” live WiFi/MQTT creds via `WIFI_PASS`/`MQTT_PASS` macros) | live MQTT_PASS / HUB_KEY / Pi SSH creds |
 | 1 | `tests/test_verify_prod_env.py` L111/L113 | real secrets as test fixtures (banned-value literals for verifier) |
-| 2 | `SERVERv5/v5/README.txt`, `HUBV5/V5/README.txt` sample configs; `start_dev.*` printed dev logins; `docker-compose.yml` postgres creds | weak/sample credentials |
+| 2 | `server/README.txt`, `hub/README.txt` sample configs; `start_dev.*` printed dev logins; `docker-compose.yml` postgres creds | weak/sample credentials |
 
-> **Note (afb9c46)**: `tools/` scripts are now env-driven with no hardcoded live defaults — `deploy_pi_edge.py`, `send_ac_command.py`, `sniff_pi*.py`, `stream_live_telemetry.py`, `seed_demo_data.py` and others require `MQTT_PASS`/`HUB_KEY`/`PI_PASSWORD` via env or CLI args. `tools/verify_prod_env.py` banned-value literals are verifier fixtures, not deployed secrets. Field `.ino` sketches no longer embed secrets — they include `firmware/common/secrets.h` (gitignored; see `secrets.h.example`).
+> **Note (afb9c46)**: `tools/` scripts are now env-driven with no hardcoded live defaults â€” `deploy_pi_edge.py`, `send_ac_command.py`, `sniff_pi*.py`, `stream_live_telemetry.py`, `seed_demo_data.py` and others require `MQTT_PASS`/`HUB_KEY`/`PI_PASSWORD` via env or CLI args. `tools/verify_prod_env.py` banned-value literals are verifier fixtures, not deployed secrets. Field `.ino` sketches no longer embed secrets â€” they include `firmware/common/secrets.h` (gitignored; see `secrets.h.example`).
 
 Rules until then:
 - NEVER add new hardcoded secrets; read from env/args (see `tools/AGENTS.md`)
-- `.gitignore` already blocks `.env*`, `mosquitto/config/passwd`, `cert.key`, `*.db` — never weaken it
+- `.gitignore` already blocks `.env*`, `mosquitto/config/passwd`, `cert.key`, `*.db` â€” never weaken it
 - If a secret ever does get committed: rotate it immediately, then rewrite history before publishing
 
 ## CSS / Styling
@@ -146,22 +146,22 @@ Rules until then:
 - Server state queries & mutations must use TanStack Query hooks and the `queryKeys` factory
 - Search params validated with Zod (`validateSearch` + `Route.useSearch()`)
 - Sort/filter state in URL params, not component state
-- File-based routing via TanStack Router — add new `.tsx` in `routes/`, gen file updates automatically
+- File-based routing via TanStack Router â€” add new `.tsx` in `routes/`, gen file updates automatically
 - Run `pytest` to verify all 107 backend, edge, and pipeline integration tests
 
 ## Verification
 
-- `npm run lint` (oxlint) in `clients/gui-app/` before submitting changes
-- `npm run build` in `clients/gui-app/` for typecheck + production build check
+- `npm run lint` (oxlint) in `apps/web/` before submitting changes
+- `npm run build` in `apps/web/` for typecheck + production build check
 - `pytest` across repo for full automated test suite
 
 ## Child DOX Index
 
 | Path | Scope |
 |---|---|
-| `clients/gui-app/AGENTS.md` | SPA development: routes, TanStack Query hooks, UI store, components |
-| `SERVERv5/AGENTS.md` | Cloud gateway (HubGate V5): FastAPI endpoints, auth/RBAC, DB models, migrations, tests |
-| `HUBV5/AGENTS.md` | Edge gateway (HubBrain V5): MQTT bridge, whitelist, offline WAL cache, topic resolver |
+| `apps/web/AGENTS.md` | SPA development: routes, TanStack Query hooks, UI store, components |
+| `server/AGENTS.md` | Cloud gateway (HubGate V5): FastAPI endpoints, auth/RBAC, DB models, migrations, tests |
+| `hub/AGENTS.md` | Edge gateway (HubBrain V5): MQTT bridge, whitelist, offline WAL cache, topic resolver |
 | `openspec/AGENTS.md` | Spec-driven change proposals & capability specs |
 | `tests/AGENTS.md` | Repo-level E2E pipeline & deployment-verifier tests |
 | `tools/AGENTS.md` | Ops utilities: Pi deploy/backup, DB seeding, mock publishers, sniffers, verifiers |

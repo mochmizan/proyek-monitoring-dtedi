@@ -1,19 +1,19 @@
-# SMSB — Smart Building Monitoring System
+﻿# SMSB â€” Smart Building Monitoring System
 
-IoT monitoring & control platform for building infrastructure: temperature/humidity sensing, AC (IR) control, and ATS (Automatic Transfer Switch) supervision across multiple rooms — with a live web dashboard, alerting with debounce/hysteresis, offline-tolerant edge buffering, and role-based access control.
+IoT monitoring & control platform for building infrastructure: temperature/humidity sensing, AC (IR) control, and ATS (Automatic Transfer Switch) supervision across multiple rooms â€” with a live web dashboard, alerting with debounce/hysteresis, offline-tolerant edge buffering, and role-based access control.
 
 ## Architecture
 
 ```
 ESP8266 field nodes (firmware/)          Raspberry Pi 4              Cloud / VPS
-┌─────────────────────────────┐   MQTT   ┌──────────────────┐  HTTPS   ┌─────────────────────────┐
-│ WEMOS_TS   (SHT30 + OLED)   │ ───────▶ │ HubBrain V5      │ ───────▶ │ HubGate V5 (FastAPI)    │
-│ WEMOS_AC   (2x IR Gree AC)  │ hs109rs/#│ edge gateway     │  X-Hub-* │ ├ REST API + RBAC       │
-│ ATS bridge ↔ FSM (serial)   │ ◀─────── │ ├ whitelist      │ ◀─────── │ ├ PostgreSQL            │
-└─────────────────────────────┘ downlink │ ├ WAL offline buf│ commands └───────────┬─────────────┘
-                                         └──────────────────┘                      │ same-origin
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   MQTT   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  HTTPS   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ WEMOS_TS   (SHT30 + OLED)   â”‚ â”€â”€â”€â”€â”€â”€â”€â–¶ â”‚ HubBrain V5      â”‚ â”€â”€â”€â”€â”€â”€â”€â–¶ â”‚ HubGate V5 (FastAPI)    â”‚
+â”‚ WEMOS_AC   (2x IR Gree AC)  â”‚ hs109rs/#â”‚ edge gateway     â”‚  X-Hub-* â”‚ â”œ REST API + RBAC       â”‚
+â”‚ ATS bridge â†” FSM (serial)   â”‚ â—€â”€â”€â”€â”€â”€â”€â”€ â”‚ â”œ whitelist      â”‚ â—€â”€â”€â”€â”€â”€â”€â”€ â”‚ â”œ PostgreSQL            â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ downlink â”‚ â”œ WAL offline bufâ”‚ commands â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                      â”‚ same-origin
                                                                            Nginx (443, TLS) / Vite proxy
-                                                                                     │
+                                                                                     â”‚
                                                                             React SPA (gui-app)
 ```
 
@@ -27,9 +27,9 @@ ESP8266 field nodes (firmware/)          Raspberry Pi 4              Cloud / VPS
 | Path | What it is |
 |---|---|
 | `firmware/` | ESP8266/Arduino node sketches (one folder per sketch, Arduino IDE compatible; `firmware/common/secrets.h` gitignored) |
-| `HUBV5/V5/` | HubBrain V5 — Python edge gateway daemon for Raspberry Pi |
-| `SERVERv5/v5/` | HubGate V5 — FastAPI cloud gateway, auth/RBAC, DB models, tests |
-| `clients/gui-app/` | React SPA |
+| `hub/` | HubBrain V5 â€” Python edge gateway daemon for Raspberry Pi |
+| `server/` | HubGate V5 â€” FastAPI cloud gateway, auth/RBAC, DB models, tests |
+| `apps/web/` | React SPA |
 | `docs/` | Canonical docs: design spec, firmware report, testing/deployment/backup guides, handover, research notes |
 | `openspec/` | Spec-driven change proposals & capability specs |
 | `tests/` | Repo-level E2E pipeline & deployment-verifier tests |
@@ -46,7 +46,7 @@ Prerequisites: Docker Desktop, Python 3.12+, Node 18+.
 docker compose up -d
 
 # 2. Initialize the API database (SQLite fallback works too)
-cd SERVERv5/v5
+cd server
 python -m venv venv && venv\Scripts\activate
 pip install -r requirements.txt
 python init_sqlv5.py
@@ -63,7 +63,7 @@ Default local dev logins: `admin/admin123`, `operator/operator123`, `viewer/view
 
 ```powershell
 pytest                # full suite at repo root (offline-safe, SQLite-backed)
-cd clients/gui-app
+cd apps/web
 npm run lint          # oxlint
 npm run build         # typecheck + production build
 ```
@@ -74,7 +74,7 @@ npm run build         # typecheck + production build
 |---|---|---|
 | `firmware/WEMOS_TS/` | Temperature/humidity (SHT30 + OLED) | dual I2C auto-probe, NaN-skip publishing, non-blocking loop |
 | `firmware/WEMOS_AC/` | Dual AC/IR controller (IRGreeAC) | EEPROM state persistence across reboot |
-| `firmware/fixed_wemos_mqtt_raspi/` | ATS bridge (MQTT ↔ serial FSM) | canonical serial framing `<SGM,on>` `<M,auto>` … |
+| `firmware/fixed_wemos_mqtt_raspi/` | ATS bridge (MQTT â†” serial FSM) | canonical serial framing `<SGM,on>` `<M,auto>` â€¦ |
 | `firmware/fsm_w_serial/` | ATS FSM controller (Arduino) | PLN/genset/backup-battery state machine |
 | `firmware/HARDWARE_OLED_TEST/` | I2C bus recovery & OLED diagnostic utility | |
 
@@ -95,6 +95,6 @@ See `docs/FIRMWARE_ALIGNMENT_REPORT.md` for the protocol reference.
 
 ## Security Notes
 
-- All hub↔server traffic is authenticated (`X-Hub-ID`/`X-Hub-Key` headers, constant-time compare) over verified TLS.
+- All hubâ†”server traffic is authenticated (`X-Hub-ID`/`X-Hub-Key` headers, constant-time compare) over verified TLS.
 - Sessions: Argon2id password hashing, timing-safe verification, sliding expiry with absolute cap, per-username lockout, SlowAPI rate limits.
 - **This repository intentionally excludes** real credentials (`.env`, broker passwd, TLS keys). Create your own from the `*.example` templates before deploying.

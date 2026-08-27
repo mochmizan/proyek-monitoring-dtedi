@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import json
 import time
@@ -8,7 +8,7 @@ import requests
 import pytest
 from unittest.mock import MagicMock, patch, call
 
-# Ensure HUBV5/V5 is in sys.path
+# Ensure hub is in sys.path
 hub_dir = os.path.dirname(os.path.abspath(__file__))
 if hub_dir not in sys.path:
     sys.path.insert(0, hub_dir)
@@ -490,7 +490,7 @@ def test_command_payload_validation():
 
 
 # =====================================================================
-# 6. Tests for Bounded Queue (MAX_PENDING_ROWS=20000) — T2
+# 6. Tests for Bounded Queue (MAX_PENDING_ROWS=20000) â€” T2
 # =====================================================================
 
 def test_bounded_queue_prunes_oldest(temp_db):

@@ -1,4 +1,4 @@
-# ===== Secrets & credentials (NEVER commit) =====
+﻿# ===== Secrets & credentials (NEVER commit) =====
 .env
 .env.*
 !.env.example
@@ -31,7 +31,7 @@ ENV/
 # ===== Node / SPA =====
 node_modules/
 dist/
-clients/gui-app/dist/
+apps/web/dist/
 *.tsbuildinfo
 .eslintcache
 .vite/
@@ -44,12 +44,12 @@ firmware/common/secrets.h
 
 # ===== Generated / tool output =====
 graphify-out/
-SERVERv5/v5/static/
+server/static/
 *.log
 .pre-commit-config.yaml.bak
 
 # ===== IDE / OS =====
-# .idea/ gitignored — JetBrains
+# .idea/ gitignored â€” JetBrains
 .idea/
 .vscode/
 *.swp

@@ -1,15 +1,15 @@
-# ==============================================================================
-# hubbrain.service — HubBrain V5 edge gateway unit template (Work Package F)
+﻿# ==============================================================================
+# hubbrain.service â€” HubBrain V5 edge gateway unit template (Work Package F)
 #
 # TARGET HOST: Raspberry Pi (edge), installed as /etc/systemd/system/hubbrain.service
-# NOTE: A hubbrain.service already exists on the Pi — this file is the canonical
+# NOTE: A hubbrain.service already exists on the Pi â€” this file is the canonical
 #       template; diff before overwriting.
 #
 # PLACEHOLDERS (adjust before install):
 #   - All paths below use explicit /home/hubadmin locations. If your deploy root
 #     differs, sed-replace them, or swap in %h (expands to User='s home):
-#         WorkingDirectory=%h/smsb/HUBV5/V5
-#   - ExecStart assumes a venv at <deploy root>/HUBV5/V5/venv running main.py.
+#         WorkingDirectory=%h/smsb/hub
+#   - ExecStart assumes a venv at <deploy root>/hub/venv running main.py.
 #     Adjust interpreter/script path to match tools/install_pi_service.py output.
 #
 # Install (Pi, as root):
@@ -31,13 +31,13 @@ Group=hubadmin
 
 # --- Working directory & environment ------------------------------------------
 # Placeholder: adjust to the actual Pi deploy root if it is not ~/smsb.
-WorkingDirectory=/home/hubadmin/smsb/HUBV5/V5
+WorkingDirectory=/home/hubadmin/smsb/hub
 # Secrets (MQTT_PASS, HUB_KEY, SERVER_URL) come from the gitignored .env only.
-EnvironmentFile=/home/hubadmin/smsb/HUBV5/V5/.env
+EnvironmentFile=/home/hubadmin/smsb/hub/.env
 
 # --- Process launch ------------------------------------------------------------
 # Placeholder: point at the real main.py under the Pi's venv.
-ExecStart=/home/hubadmin/smsb/HUBV5/V5/venv/bin/python /home/hubadmin/smsb/HUBV5/V5/main.py
+ExecStart=/home/hubadmin/smsb/hub/venv/bin/python /home/hubadmin/smsb/hub/main.py
 
 # --- Restart policy & resource ceiling -----------------------------------------
 # Long RestartSec=10 avoids hot-looping while the network/WAN is down; 150M cap
@@ -56,7 +56,7 @@ ProtectKernelTunables=yes
 ProtectControlGroups=yes
 # Single writable exception: directory holding edge_cache.db (SQLite WAL).
 # Placeholder: must match EDGE_CACHE_DB_PATH's parent dir in .env.
-ReadWritePaths=/home/hubadmin/smsb/HUBV5/V5
+ReadWritePaths=/home/hubadmin/smsb/hub
 
 [Install]
 WantedBy=multi-user.target

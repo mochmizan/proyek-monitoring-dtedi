@@ -1,4 +1,4 @@
-# Raspberry Pi Edge Gateway Backup Gate Guide (Milestone 9)
+﻿# Raspberry Pi Edge Gateway Backup Gate Guide (Milestone 9)
 
 ## 1. Overview & Policy
 
@@ -23,9 +23,9 @@ The automated backup tool (`tools/backup_hub.sh`) bundles the following critical
 | **Access Point (AP)** | `/etc/hostapd/hostapd.conf`, `/etc/dnsmasq.conf`, `/etc/dnsmasq.d/` | Hotspot SSID, WPA2 passphrase, DHCP range for ESP nodes |
 | **MQTT Broker** | `/etc/mosquitto/mosquitto.conf`, `/etc/mosquitto/passwd`, `/etc/mosquitto/conf.d/` | Mosquitto broker setup, user passwords (`hubadmin`, node users) |
 | **Systemd Units** | `/etc/systemd/system/hubbrain*.service` | Edge daemon auto-start service definitions and environment bindings |
-| **HubBrain Config & Secrets** | `<REPO>/HUBV5/V5/.env` | Hub HMAC key, MQTT broker credentials, server target endpoints |
-| **TLS Certificate Pin** | `<REPO>/HUBV5/V5/cert.crt` | Server public certificate used for HTTPS verification |
-| **Edge Cache Buffer** | `<REPO>/HUBV5/V5/edge_cache.db` | Local SQLite WAL offline telemetry queue |
+| **HubBrain Config & Secrets** | `<REPO>/hub/.env` | Hub HMAC key, MQTT broker credentials, server target endpoints |
+| **TLS Certificate Pin** | `<REPO>/hub/cert.crt` | Server public certificate used for HTTPS verification |
+| **Edge Cache Buffer** | `<REPO>/hub/edge_cache.db` | Local SQLite WAL offline telemetry queue |
 
 ---
 
@@ -63,8 +63,8 @@ Example output:
   [+] Found: /etc/NetworkManager/system-connections
   [+] Found: /etc/mosquitto
   [+] Found: /etc/systemd/system/hubbrain.service
-  [+] Found: /opt/smsb/HUBV5/V5/.env
-  [+] Found: /opt/smsb/HUBV5/V5/cert.crt
+  [+] Found: /opt/smsb/hub/.env
+  [+] Found: /opt/smsb/hub/cert.crt
 
 [*] Creating compressed tar archive...
 [*] Running integrity verification on backup archive...

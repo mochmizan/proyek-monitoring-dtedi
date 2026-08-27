@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ==============================================================================
 # HubBrain V5 Edge Gateway - Mandatory Backup Gate Script
 # 
@@ -74,9 +74,9 @@ CANDIDATE_ITEMS=(
     "/etc/dnsmasq.d"
     "/etc/mosquitto"
     "/etc/systemd/system/hubbrain.service"
-    "${APP_DIR}/HUBV5/V5/.env"
-    "${APP_DIR}/HUBV5/V5/cert.crt"
-    "${APP_DIR}/HUBV5/V5/edge_cache.db"
+    "${APP_DIR}/hub/.env"
+    "${APP_DIR}/hub/cert.crt"
+    "${APP_DIR}/hub/edge_cache.db"
 )
 
 # Also glob for any hubbrain*.service units in systemd

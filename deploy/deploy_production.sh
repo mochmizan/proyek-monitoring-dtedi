@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ==============================================================================
 # SMSB Central Server Production Deployment Script (Milestone 10)
 #
 # Execution Pipeline:
 #   Step 1: Pre-flight Environment Auditing (tools/verify_prod_env.py)
 #   Step 2: Frontend SPA Production Build (npm run build)
-#   Step 3: Additive Database Migrations (SERVERv5/v5/init_sqlv5.py)
+#   Step 3: Additive Database Migrations (server/init_sqlv5.py)
 #   Step 4: Nginx Same-Origin Topology Configuration & Validation (nginx -t)
 #   Step 5: Systemd / Uvicorn Service Reload & Live Verification
 #
@@ -32,8 +32,8 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-SERVER_DIR="${REPO_ROOT}/SERVERv5/v5"
-FRONTEND_DIR="${REPO_ROOT}/clients/gui-app"
+SERVER_DIR="${REPO_ROOT}/server"
+FRONTEND_DIR="${REPO_ROOT}/apps/web"
 NGINX_CONF_SRC="${REPO_ROOT}/deploy/nginx_smsb.conf"
 NGINX_CONF_DEST="/etc/nginx/sites-available/smsb"
 SYSTEMD_SERVICE_DEST="/etc/systemd/system/hubgate.service"
@@ -94,7 +94,7 @@ else
         echo -e "${GREEN}[PASS] Pre-flight environment check passed.${NC}"
     else
         echo -e "\n${RED}[FAIL] Pre-flight environment check failed! Refusing to deploy insecure configuration.${NC}"
-        echo -e "${RED}Fix the reported issues in SERVERv5/v5/.env or pass --allow-localhost if testing locally.${NC}"
+        echo -e "${RED}Fix the reported issues in server/.env or pass --allow-localhost if testing locally.${NC}"
         exit 1
     fi
 fi

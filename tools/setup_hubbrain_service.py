@@ -18,11 +18,11 @@ After=network.target mosquitto.service
 [Service]
 Type=simple
 User=hubadmin
-WorkingDirectory=/home/hubadmin/HUBV5/V5
-ExecStart=/home/hubadmin/venv/bin/python /home/hubadmin/HUBV5/V5/main.py
+WorkingDirectory=/home/hubadmin/hub
+ExecStart=/home/hubadmin/venv/bin/python /home/hubadmin/hub/main.py
 Restart=always
 RestartSec=3
-EnvironmentFile=/home/hubadmin/HUBV5/V5/.env
+EnvironmentFile=/home/hubadmin/hub/.env
 
 [Install]
 WantedBy=multi-user.target

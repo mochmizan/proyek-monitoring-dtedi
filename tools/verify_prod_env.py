@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 tools/verify_prod_env.py - Production Environment Verification Script (Milestone 10)
 
-Inspects production .env configuration files for SERVERv5 (Central Server) and
-HUBV5 (Edge Gateway). Validates that all required variables are set and asserts
+Inspects production .env configuration files for server (Central Server) and
+hub (Edge Gateway). Validates that all required variables are set and asserts
 that none match weak defaults, insecure placeholders, or development fallback values.
 
 Usage:
@@ -135,7 +135,7 @@ def verify_server_env(
     mode: str = "prod",
     allow_localhost: bool = False,
 ) -> None:
-    target = "SERVERv5"
+    target = "server"
 
     # 1. DATABASE_URL
     db_url = env_vars.get("DATABASE_URL", "").strip()
@@ -286,7 +286,7 @@ def verify_hub_env(
     mode: str = "prod",
     allow_localhost: bool = False,
 ) -> None:
-    target = "HUBV5"
+    target = "hub"
 
     # 1. MQTT_HOST & MQTT_PORT
     mqtt_host = env_vars.get("MQTT_HOST", "").strip()
@@ -550,8 +550,8 @@ def render_report(report: VerificationReport) -> None:
 # ==============================================================================
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify SMSB production environment configuration files.")
-    parser.add_argument("--server-env", help="Path to SERVERv5 .env file", default=None)
-    parser.add_argument("--hub-env", help="Path to HUBV5 .env file", default=None)
+    parser.add_argument("--server-env", help="Path to server .env file", default=None)
+    parser.add_argument("--hub-env", help="Path to hub .env file", default=None)
     parser.add_argument("--target", choices=["all", "server", "hub"], default="all", help="Target component to check")
     parser.add_argument("--mode", choices=["prod", "staging", "dev"], default="prod", help="Verification mode")
     parser.add_argument("--allow-localhost", action="store_true", help="Allow localhost in URLs (for local production testing)")
@@ -559,8 +559,8 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
-    server_env_path = Path(args.server_env) if args.server_env else repo_root / "SERVERv5" / "v5" / ".env"
-    hub_env_path = Path(args.hub_env) if args.hub_env else repo_root / "HUBV5" / "V5" / ".env"
+    server_env_path = Path(args.server_env) if args.server_env else repo_root / "server" / "v5" / ".env"
+    hub_env_path = Path(args.hub_env) if args.hub_env else repo_root / "hub" / "V5" / ".env"
 
     report = VerificationReport(mode=args.mode)
 
@@ -572,14 +572,14 @@ def main() -> int:
                 verify_server_env(server_vars, report, mode=args.mode, allow_localhost=args.allow_localhost)
             except Exception as e:
                 report.results.append(CheckResult(
-                    target="SERVERv5",
+                    target="server",
                     variable=".env",
                     status="FAIL",
                     message=f"Failed to read/parse {server_env_path}: {e}",
                 ))
         else:
             report.results.append(CheckResult(
-                target="SERVERv5",
+                target="server",
                 variable=".env",
                 status="FAIL",
                 message=f"Environment file not found at: {server_env_path}",
@@ -593,14 +593,14 @@ def main() -> int:
                 verify_hub_env(hub_vars, report, mode=args.mode, allow_localhost=args.allow_localhost)
             except Exception as e:
                 report.results.append(CheckResult(
-                    target="HUBV5",
+                    target="hub",
                     variable=".env",
                     status="FAIL",
                     message=f"Failed to read/parse {hub_env_path}: {e}",
                 ))
         else:
             report.results.append(CheckResult(
-                target="HUBV5",
+                target="hub",
                 variable=".env",
                 status="FAIL",
                 message=f"Environment file not found at: {hub_env_path}",

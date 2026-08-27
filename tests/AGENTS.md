@@ -1,24 +1,24 @@
-# AGENTS.md — tests (repo-level)
+﻿# AGENTS.md â€” tests (repo-level)
 
-Repository-wide automated suite: end-to-end pipeline tests and unit tests for the deployment tooling. Offline-safe — no Docker, network, or PostgreSQL required (SQLite-backed).
+Repository-wide automated suite: end-to-end pipeline tests and unit tests for the deployment tooling. Offline-safe â€” no Docker, network, or PostgreSQL required (SQLite-backed).
 
 ## Ownership
 
-- **tests/**: cross-component integration tests that span SERVERv5 ingestion, HubBrain behaviors, and tools/ verifiers
-- Owned by root AGENTS.md for repo-wide rules; component-internal tests live in `SERVERv5/v5/test_*.py`
+- **tests/**: cross-component integration tests that span server ingestion, HubBrain behaviors, and tools/ verifiers
+- Owned by root AGENTS.md for repo-wide rules; component-internal tests live in `server/test_*.py`
 
 ## Files
 
 | File | Coverage | Tests |
 |---|---|---|
-| `test_e2e_pipeline.py` | Mock publisher → HubBrain → HubGate → DB loop: payload schemas, TS/ATS/AC ingest + alert evaluation, downlink command dispatch, offline-cache FIFO replay (MQTT fully mocked) | 6 |
+| `test_e2e_pipeline.py` | Mock publisher â†’ HubBrain â†’ HubGate â†’ DB loop: payload schemas, TS/ATS/AC ingest + alert evaluation, downlink command dispatch, offline-cache FIFO replay (MQTT fully mocked) | 6 |
 | `test_verify_production_deployment.py` | Unit tests of `tools/verify_production_deployment.py`: report counting + fully mocked 7-step flow | 2 |
 | `test_verify_prod_env.py` | Unit tests of `tools/verify_prod_env.py`: masking, banned-value logic, env parsing, weak/valid env scenarios | 7 |
 
 ## Non-Obvious Facts
 
 - `test_e2e_pipeline.py` creates `test_hubgatev5.db` at the **repo root** (gitignored) and sets placeholder hub keys in-process
-- ⚠️ `test_verify_prod_env.py` embeds the project's **real** MQTT_PASS/HUB_KEY strings as banned-value fixtures — a pre-push-public sanitization target listed in the root AGENTS.md secrets checklist
+- âš ï¸ `test_verify_prod_env.py` embeds the project's **real** MQTT_PASS/HUB_KEY strings as banned-value fixtures â€” a pre-push-public sanitization target listed in the root AGENTS.md secrets checklist
 - All external effects are mocked (`TestClient`, monkeypatched MQTT/SSH); tests never touch the live Pi or broker
 
 ## Work Guidance
@@ -29,4 +29,4 @@ Repository-wide automated suite: end-to-end pipeline tests and unit tests for th
 
 ## Verification
 
-- `pytest` at repo root runs this directory plus `SERVERv5/v5` tests (100 total)
+- `pytest` at repo root runs this directory plus `server` tests (100 total)
