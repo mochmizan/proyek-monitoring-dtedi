@@ -1,63 +1,38 @@
-﻿# AGENTS.md â€” deploy (production & staging configs)
+﻿# AGENTS.md — deploy
 
-Deployment artifacts: the production deploy script, systemd unit templates, git push-to-deploy bootstrap, Nginx reverse-proxy configs, and journald sizing drop-in. Production topology is same-origin: Nginx terminates TLS on 443, serves the built SPA at `/`, proxies `/api/` and `/static/` to Uvicorn on `127.0.0.1:8000`.
+## Purpose
+
+Production deploy props: Nginx reverse-proxy, systemd units, and push-deploy bootstrap. Same-origin: Nginx terminates TLS on 443, serves SPA at `/`, proxies `/api/` and `/static/` to Uvicorn on `127.0.0.1:8000`.
 
 ## Ownership
 
-- **deploy/**: Nginx configs + production deploy orchestration + systemd unit templates
-- Owned by root AGENTS.md; runtime steps documented in root `PRODUCTION_DEPLOYMENT_GUIDE.md`
+- **deploy/** owns `nginx_smsb.conf`, `smsb-api.service`, `hubbrain.service`, `setup_push_deploy.sh` (plus staging/journald drop-ins)
+- Runtime steps owned by `docs/PRODUCTION_DEPLOYMENT_GUIDE.md`; this dir owns the artifact contracts
 
-## Files
+## Local Contracts
 
-| File | Purpose |
-|---|---|
-| `deploy_production.sh` | 5-step deploy: (1) `verify_prod_env.py --target server --mode prod` preflight, (2) `npm ci && npm run build` SPA, (3) venv + additive `init_sqlv5.py` migrations, (4) self-signed TLS fallback + Nginx install (expects repo at `/opt/smsb`), (5) `hubgate.service` systemd unit (uvicorn, 4 workers, `127.0.0.1:8000`). Flags: `--skip-env-check`, `--allow-localhost`, `--no-service`. **Legacy path** â€” superseded on the `genset` VPS by `smsb-api.service` + `setup_push_deploy.sh` |
-| `smsb-api.service` | Canonical HubGate V5 systemd unit for the `genset` VPS: `User=smsb`, `WorkingDirectory=/opt/smsb/server`, `EnvironmentFile=/opt/smsb/server/.env`, uvicorn via `/opt/smsb/venv` on `127.0.0.1:8000` (2 workers, `--limit-concurrency 50`, `--proxy-headers`), `Restart=always` (5s), `MemoryMax=500M`, `After=network-online.target postgresql.service`, full sandbox hardening; `ReadWritePaths=/opt/smsb/server` because the SQLite DB lives in the app dir. Comment blocks explain each section |
-| `hubbrain.service` | HubBrain V5 edge (Raspberry Pi) unit **template**: `User=hubadmin`, explicit `/home/hubadmin/smsb/...` path placeholders documented at top (swap or use `%h`), `After=network-online.target mosquitto.service`, `Restart=always` (10s), `MemoryMax=150M`, same hardening; `ReadWritePaths` points at the dir holding `edge_cache.db` (SQLite WAL) |
-| `setup_push_deploy.sh` | One-time VPS bootstrap (run as root on `genset`): creates bare repo `/opt/smsb.git` and installs a `post-receive` hook that on `git push prod main` does: `GIT_WORK_TREE=/opt/smsb git checkout -f` â†’ pip install into `/opt/smsb/venv` (if present) â†’ `npm ci && npm run build` (if node present) â†’ `rsync dist/` to `/var/www/gui-app` â†’ `systemctl restart smsb-api` â†’ smoke checks (`/api/auth/me` unauthenticated must be 401, SPA `<title>` grep, `systemctl is-active`) â†’ prints rollback hint on failure. Flags: `--dry-run` (print, don't execute), `--yes` (skip confirmation). Layout overridable via env: `DEPLOY_USER`, `BARE_REPO`, `WORK_TREE`, `VENV_DIR`, `SPA_DIR`, `WWW_DIR`, `SERVICE_NAME`. No secrets embedded |
-| `nginx_smsb.conf` | Production (site `hubgate` on `genset`): `:80` â†’ 301 HTTPS; `:443` ssl/http2, TLS 1.2/1.3, certs `/etc/nginx/ssl/smsb.crt|.key` (self-signed, SANs: campus IP `10.33.102.172` + public IP + Tailscale IP + genset), gzip (`json/css/js/svg` + `gzip_vary`), security headers (`nosniff`, `X-Frame-Options DENY`, `Referrer-Policy`), 10M upload cap. **No HSTS** â€” commented line documents when to enable (only after a trusted CA cert). Routes: `/api/` â†’ `127.0.0.1:8000`; `/static/` alias to `/opt/smsb/server/static/` with `@api_backend` proxy fallback; `/assets/` immutable 1y cache; `/` â†’ SPA at `/var/www/gui-app` with `try_files â†’ /index.html`; `index.html` no-cache |
-| `journald.conf.dropin` | `SystemMaxUse=100M` snippet for the 1 GB VPS; 3-line install instructions in header comments |
-| `nginx_staging_wsl.conf` | WSL staging: `:80` `default_server`; same `/api/` proxy; `/static/` and SPA served from the Windows checkout via `/mnt/c/...` |
-
-## Install Order (VPS 'genset', campus-day / VPS-day)
-
-1. Provision: user `smsb`, venv `/opt/smsb/venv`, code at `/opt/smsb`, `.env` at `/opt/smsb/server/.env` (mode 600), certs at `/etc/nginx/ssl/smsb.crt|.key`
-2. `sudo cp deploy/smsb-api.service /etc/systemd/system/`
-3. `sudo cp deploy/journald.conf.dropin /etc/systemd/journald.conf.d/99-smsb-size.conf` (mkdir -p first)
-4. `sudo cp deploy/nginx_smsb.conf /etc/nginx/sites-available/hubgate && sudo ln -sf /etc/nginx/sites-available/hubgate /etc/nginx/sites-enabled/ && sudo nginx -t`
-5. `sudo systemctl daemon-reload` (after ALL unit/dropin installs)
-6. `sudo systemctl enable --now smsb-api`
-7. `sudo systemctl restart nginx`
-8. `sudo bash deploy/setup_push_deploy.sh` (or `--dry-run` first)
-9. From each Windows dev machine **on the tailnet**: `git remote add prod ssh://genset@100.108.98.30/opt/smsb.git` â€” the Tailscale IP (100.108.98.30) resolves only from tailnet devices; use the public IP for non-tailnet access
-10. Deploy: `git push prod main`; watch: `ssh genset@100.108.98.30 'journalctl -u smsb-api -f'`
-
-Pi (edge): install `hubbrain.service` per its header (diff against the existing live `hubbrain.service` first), then `daemon-reload` â†’ `enable --now`. Mandatory backup gate (`tools/backup_hub.sh`) before any Pi change.
-
-## Non-Obvious Facts
-
-- **Ownership model is load-bearing**: app code = `genset:smsb` (group-inherited via setgid dirs), but `hubgatev5.db`, `.env`, and `static/` must be `smsb:smsb` â€” the service user `smsb` writes the SQLite DB. A blanket `chown -R genset:genset` (or losing the `smsb` group) causes `sqlite3.OperationalError: attempt to write a readonly database` â†’ HTTP 500 on every login. Restore with: `chown -R genset:smsb /opt/smsb && chmod -R g+rwX /opt/smsb && find /opt/smsb -type d -exec chmod g+s {} + && chown smsb:smsb /opt/smsb/server/hubgatev5.db* /opt/smsb/server/.env`
-
-- Nginx expects the deployment root at `/opt/smsb` (static uploads from `server/static/`), but the SPA is served from `/var/www/gui-app` (rsync target of the push-deploy hook) â€” not from `dashboard/dist` anymore
-- `server/static/` is a **generated** deploy target â€” gitignored
-- The staging config hardcodes the Windows checkout path `/mnt/c/Users/Mizan/Documents/smsb/...` â€” machine-specific, adjust per host
-- `deploy_production.sh` is additive-safe (`init_sqlv5.py` idempotent) but installs a legacy `hubgate.service` with 4 workers â€” on `genset` prefer `smsb-api.service`; do not enable both units simultaneously
-- Cookies work without CORS because SPA and API share the origin (`SameSite=Lax`)
-- The push-deploy hook only deploys `refs/heads/main`; other branch pushes are acknowledged but not deployed
-- The hook's smoke check expects **401** (not 000/403) from unauthenticated `/api/auth/me` â€” a 000 means nginx/uvicorn is down, not auth working
-- **`nginx_smsb.conf` is LIVE on `genset`** (installed 2026-08-24): until then the live site was a legacy friend-era all-proxy config (SPA never served). Old config backed up at `/home/genset/hubgate.bak.*`. Certs reissued with the campus IP SAN (`10.33.102.172`); dashboard serves at `https://10.33.102.172/` for all campus devices
-- **chrony is a new VPS service** (2026-08-24): the VPS acts as NTP server for campus IoT hubs (`allow 10.33.0.0/16`, UFW `123/udp`) since edge Pis have no internet
+- **nginx_smsb.conf**: `:80` → 301 `https`; `:443` ssl/http2 TLS 1.2/1.3 certs `/etc/nginx/ssl/smsb.crt|.key`, gzip (`json/css/js/svg` + `gzip_vary`), headers `X-Content-Type-Options nosniff` / `X-Frame-Options DENY` / `Referrer-Policy`, `client_max_body_size 10M`; routes `/api/` → `127.0.0.1:8000`, `/static/` alias `/opt/smsb/server/static/` with `@api_backend` fallback, `/assets/` immutable 1y, `/` → `/var/www/gui-app` (`try_files → /index.html`, `index.html` no-cache); no HSTS until trusted CA
+- **smsb-api.service**: canonical HubGate V5 unit — `User=smsb`, `WorkingDirectory=/opt/smsb/server`, `EnvironmentFile=/opt/smsb/server/.env`, uvicorn via `/opt/smsb/venv` on `127.0.0.1:8000` (2 workers, `--limit-concurrency 50`, `--proxy-headers`), `Restart=always` (5s), `MemoryMax=500M`, `After=network-online.target postgresql.service`, sandbox hardening, `ReadWritePaths=/opt/smsb/server` (SQLite DB in app dir)
+- **hubbrain.service**: Pi template — `User=hubadmin`, paths `/home/hubadmin/smsb/...` (swap per header), `After=network-online.target mosquitto.service`, `Restart=always` (10s), `MemoryMax=150M`, same hardening; `ReadWritePaths` covers `edge_cache.db` WAL
+- **setup_push_deploy.sh**: one-time root bootstrap — creates bare repo `/opt/smsb.git` with `post-receive` hook: `GIT_WORK_TREE=/opt/smsb git checkout -f` → pip install `venv` → `npm ci && npm run build` → `rsync dist/` to `/var/www/gui-app` → `systemctl restart smsb-api` → smoke checks (`/api/auth/me` unauthenticated must be 401, SPA `<title>`); overridable via `DEPLOY_USER`/`BARE_REPO`/`WORK_TREE`/`VENV_DIR`/`SPA_DIR`/`WWW_DIR`/`SERVICE_NAME`; flags `--dry-run`/`--yes`; deploys only `refs/heads/main`; no embedded secrets
+- Ancillaries: `deploy_production.sh` legacy 5-step (superseded by `smsb-api.service` + push-deploy, do not enable both), `journald.conf.dropin` (`SystemMaxUse=100M`), `nginx_staging_wsl.conf` (`:80` default, `/mnt/c/...` SPA path — machine-specific)
+- Ownership is load-bearing: `chown -R genset:smsb /opt/smsb && chmod -R g+rwX /opt/smsb && find /opt/smsb -type d -exec chmod g+s {} + && chown smsb:smsb /opt/smsb/server/hubgatev5.db* /opt/smsb/server/.env` — blanket `genset:genset` breaks SQLite writes
 
 ## Work Guidance
 
-- Any new proxied path must be added to **both** Nginx configs and keep the same-origin property
-- Never bind Uvicorn to a public interface â€” only `127.0.0.1`; Nginx is the sole ingress
-- Never hardcode secrets in unit files or scripts â€” secrets flow exclusively through `EnvironmentFile` (`.env`, gitignored)
-- Config changes must be reflected in `PRODUCTION_DEPLOYMENT_GUIDE.md` and verified with `tools/verify_production_deployment.py`
-- `setup_push_deploy.sh` and its generated hook must stay in sync: edit the heredoc in the setup script, never the installed hook
+- Same-origin invariant: any new proxied path must be added to both `nginx_smsb.conf` and `nginx_staging_wsl.conf`
+- Never bind Uvicorn to a public interface — only `127.0.0.1`; Nginx is sole ingress
+- Never hardcode secrets in units/scripts — secrets via `EnvironmentFile` (`.env` gitignored) only
+- Edit the heredoc in `setup_push_deploy.sh`, never the installed hook in `/opt/smsb.git`; keep hook and script in sync
+- Reflect config changes in `docs/PRODUCTION_DEPLOYMENT_GUIDE.md`
 
 ## Verification
 
-- `bash -n deploy/setup_push_deploy.sh` must pass (hook body is a quoted heredoc â€” also extract and `bash -n` it)
-- VPS: `sudo bash deploy/setup_push_deploy.sh --dry-run` before applying; then `python tools/verify_production_deployment.py --base-url https://<host>`
-- Staging: install `nginx_staging_wsl.conf`, run verifier with `--base-url http://localhost --allow-localhost`
+- `bash -n deploy/setup_push_deploy.sh` (also extract and `bash -n` the quoted heredoc hook)
+- Staging: `sudo bash deploy/setup_push_deploy.sh --dry-run`; VPS: `curl -k https://127.0.0.1/api/health` must return `{"status":"ok","db":"up"}`
+
+## Child DOX Index
+
+| Path | Scope |
+|---|---|
+| — | none |

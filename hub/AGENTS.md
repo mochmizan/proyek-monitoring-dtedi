@@ -1,68 +1,75 @@
-﻿# AGENTS.md â€” hub (HubBrain V5 Edge Gateway)
+﻿# AGENTS.md — hub (HubBrain V5)
 
-Raspberry Pi 4 edge gateway ("satpam" local): filters IoT node traffic via MQTT, enforces an authenticated whitelist, forwards clean telemetry upstream to HubGate V5 over HTTPS with strict TLS verification, and delivers downlink commands to nodes. Code lives in `hub/`.
+## Purpose
+
+HubBrain V5 edge gateway on Raspberry Pi 4. Bridges `hs109rs/#` MQTT → HTTPS upstream to HubGate V5, enforces whitelist sync, buffers offline telemetry in bounded WAL (`MAX_PENDING_ROWS=20000` FIFO, `0.35s` pacing), and dispatches downlink commands via dynamic `{hub_name}/{dev_type}/command`. Fleet AP `smsb-iot` at `192.168.72.242`; TLS-pinned upstream (`TLS_CERT_PATH`); `requirements.txt` pinned (`paho-mqtt==2.2.1`, `requests==2.32.3`, `python-dotenv==1.0.1`, `urllib3==2.2.3`).
 
 ## Ownership
 
-- **hub/**: edge gateway source â€” MQTT bridge, whitelist sync, command poller, AC control CLI, security script
-- Owned by root AGENTS.md for repo-wide rules and the DOX framework
-- Counterpart: `server/` (cloud HubGate V5) â€” this hub is its authenticated client
+- **hub/** owns edge: `main.py`, `requirements.txt`, `Dockerfile`, `edge_cache.db` (WAL, gitignored), `.env` (gitignored)
+- Counterpart: `server/` (HubGate V5) — hub authenticates as client via `X-Hub-ID`/`X-Hub-Key`
+- Root `AGENTS.md` owns global DOX rail, secrets policy, and Fleet AP contract
 
-## Commands (run from `hub/` on the Pi, venv active)
+## Local Contracts
 
-| Command | What it does |
-|---|---|
-| `python main.py` | Run gateway (headless daemon mode) |
-| `python main.py --interactive` | Run with AC-control CLI in terminal |
-| `bash CheckSecv5.sh` (Linux) | Local security audit (file permissions, TLS) |
-| `python m41n` | LEGACY script â€” do not run; see Non-Obvious Facts |
+### main.py Threads
 
-## Stack
+- Single-file gateway: 4 background threads + optional interactive CLI on main thread
+  - `whitelist sync` — every 30s `GET SERVER_DEVICES_URL` → local `whitelist` set of `DEV_ID` (MAC)
+  - `command poller` — every 2s `GET SERVER_COMMANDS_URL` (`/api/hub/commands`) → `derive_command_topic` → `{hub_name}/{dev_type}/command` publish → `POST /delivered` ack
+  - `WAL replay` — every 5s (`REPLAY_INTERVAL=5.0s`) FIFO replay of `edge_cache.db` with `REPLAY_PACING_DELAY=0.35s` and `REPLAY_BATCH_SIZE=25`
+  - `MQTT loop` — `paho-mqtt` subscribe `MQTT_TOPIC` (default `hs109rs/#`), `on_message` filter + forward
+- All loops use bounded timeouts (`timeout=5`) and never block MQTT loop.
 
-Python 3.10+ (Raspberry Pi OS), paho-mqtt 2.2.1, requests 2.32.3, python-dotenv 1.0.1, urllib3 2.2.3 â€” all pinned via `==` in `requirements.txt` for reproducible Pi builds. Local broker: Mosquitto with `allow_anonymous false` + password file. Firmware dedup: field `.ino` sketches share constants via `firmware/common/secrets.h` (gitignored) and fleet AP `smsb-iot` at `192.168.72.242` â€” no per-sketch credential forks.
+### WAL (edge_cache.db)
 
-## Architecture
+- SQLite WAL at `EDGE_CACHE_DB_PATH` (default `edge_cache.db`), 7-day TTL, at-least-once replay (server dedup on `(DEV_ID, created_at)` recommended)
+- Bounded FIFO: `MAX_PENDING_ROWS=20000` — oldest rows pruned on overflow (enforced since `afb9c46`)
+- Forward failure → `INSERT` to WAL; success → `DELETE` after `POST` 200; replay resumes on upstream recovery without blocking live `POST`
+- Paced replay: FIFO order, `0.35s` delay between rows, `REPLAY_BATCH_SIZE` cap per cycle
 
-- Single file `main.py`: 4 background threads â€” whitelist sync (30s), fast command polling (2s interval for sub-2-second latency), offline cache FIFO replay (5s), MQTT loop â€” plus optional interactive AC CLI on the main thread
-- **Edge filtering**: MQTT messages on `MQTT_TOPIC` (default `hs109rs/#`) whose `DEV_ID` (MAC) is not in the synced whitelist are dropped, logged as `[FILTER BLOCK]`, and throttled-reported to `/api/iot/unapproved`.
- - **Forwarding & Offline Cache**: whitelisted telemetry is POSTed to `SERVER_URL` with `X-Hub-ID`/`X-Hub-Key` headers and `verify=TLS_CERT_PATH`. On forward failure, payloads are buffered in local SQLite WAL (`edge_cache.db`) with 7-day TTL and bounded queue (`MAX_PENDING_ROWS=20000`, oldest-pruned FIFO; enforced since `afb9c46`; at-least-once replay â€” server dedup on `(DEV_ID, created_at)` recommended).
-- **Paced Replay**: background daemon replays buffered records in FIFO order with pacing delay upon upstream recovery, while live telemetry continues forwarding without backlog queueing.
-- **Dynamic Command Dispatch**: polls `SERVER_COMMANDS_URL` (`/api/hub/commands`), resolves topic dynamically via `derive_command_topic` (`{hub_name}/{dev_type}/command`), publishes payload to local MQTT, and acks delivery via `/delivered`.
-- **AC control**: publishes standard `{target, action, temp}` (and legacy `{AC_NUMBER, AC_COMMAND}`) JSON to `hs109rs/ac/command`; CLI accepts `AC1 ON`, `AC1 OFF`, `AC1 TEMP 20`.
+### Whitelist & Filtering
 
-## Environment (.env in `V5/`)
+- `MQTT_TOPIC=hs109rs/#` ingest; `DEV_ID` not in whitelist → drop, log `[FILTER BLOCK]`, throttled report to `POST /api/iot/unapproved`
+- Whitelisted telemetry → `POST SERVER_URL` (`/api/iot/telemetry`) with `X-Hub-ID`/`X-Hub-Key` headers
+- AC control publishes `{target, action, temp}` (legacy `{AC_NUMBER, AC_COMMAND}`) to `hs109rs/ac/command`; CLI accepts `AC1 ON`/`OFF`/`TEMP 20`
 
-`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`, `MQTT_TOPIC`, `HUB_ID`, `HUB_KEY`, `SERVER_URL`, `SERVER_DEVICES_URL`, `SERVER_COMMANDS_URL` (derived if unset), `TLS_CERT_PATH`, `EDGE_CACHE_DB_PATH` (default `edge_cache.db`), `ALLOW_INSECURE_DEV_KEYS` (set `true` for local laptop staging), `REPLAY_BATCH_SIZE` (default 25), `REPLAY_PACING_DELAY` (default 0.35s), `REPLAY_INTERVAL` (default 5.0s), `MAX_PENDING_ROWS` (default 20000, bounded FIFO).
+### TLS
 
-## Non-Obvious Facts
+- Upstream HTTPS uses `verify=TLS_CERT_PATH` (self-signed `cert.crt` copied from server); invalid cert aborts all upstream calls
+- `urllib3` SSL warnings disabled (expected for LAN IP + self-signed cert)
+- Startup hard-fails if `MQTT_PASS` or `HUB_KEY` missing or equals weak placeholder unless `ALLOW_INSECURE_DEV_KEYS=true` (local laptop staging only)
 
-- `main.py` supports `ALLOW_INSECURE_DEV_KEYS=true` for local laptop VPS staging without blocking on default test keys
-- `tools/deploy_pi_edge.py` establishes an SSH reverse tunnel (`Pi :8000 -> Laptop :8000`) for seamless local laptop staging
-- `main.py` hard-fails at startup if `MQTT_PASS` or `HUB_KEY` is missing or equals the weak placeholder hash unless `ALLOW_INSECURE_DEV_KEYS=true`
-- `m41n` is the old "brain of hub v.5" script without the weak-placeholder guard â€” superseded by `main.py`, kept as reference; README's `brain_of_hub_v5.py` name matches neither
-- Command poller resolves topic dynamically (`hs109rs/ats/command`, `hs109rs/ac/command`, `hs109rs/ts/command`) based on device type in local registry or payload structure
-- `MQTT_USER` default is `hubadmin` (main.py) vs `hub_user` (README/legacy) â€” broker credentials must match what Mosquitto actually has
-- Cert is a self-signed `cert.crt` copied from the server; invalid certs abort all upstream calls
-- Disables `urllib3` SSL warnings â€” expected, local IP + self-signed cert
+### Systemd & Networking
 
-## Pi Networking & System Facts (final design, live since 2026-08-24)
+- `wlan0` AP: hidden `smsb-iot` WPA2 at `192.168.72.242/24` via `hostapd` + `dnsmasq` (`/etc/dnsmasq.d/smsb-ap.conf`; main `/etc/dnsmasq.conf` empty) + `wlan0-addr.service` (`After=hostapd.service`: `ip link set wlan0 up` + `ip addr add 192.168.72.242/24`)
+- `eth0` only in netplan: `dhcp4: true` + static `10.33.102.10/24` + `via: 10.33.102.254` (campus LAN); never add `wifis:` stanzas (fights hostapd)
+- Clock: no RTC battery; `chrony 4.8` client of `10.33.102.172` (`makestep` corrects fake boot timestamps); `timesyncd` disabled; no internet (wall-port LAN only)
+- `hubbrain.service` runs `python main.py` headless; `main.py --interactive` for AC CLI; `hub/.env` chmod 600
 
-- **netplan contains eth0 ONLY**: `dhcp4: true` plus static `10.33.102.10/24` (moved 2026-08-24 from 10.33.36.81 â€” server segment) and `routes: [{to: default, via: 10.33.102.254}]` *(current file still has via 10.33.36.254 â€” fix gateway to 10.33.102.254, not on-link otherwise)*. Never add wifi stanzas: `wifis:` without `access-points` is silently dropped by the generator, and with them networkd spawns wpa_supplicant that fights hostapd (bubble AP flaps).
-- **wlan0 IP comes from `/etc/systemd/system/wlan0-addr.service`** (oneshot, `After=hostapd.service`: `ip link set wlan0 up` + `ip addr add 192.168.72.242/24`) â€” not netplan.
-- **dnsmasq real config = `/etc/dnsmasq.d/smsb-ap.conf`**; the main `/etc/dnsmasq.conf` must stay empty/comment-only (duplicate keywords make dnsmasq fail to start, killing DHCP leases for the bubble).
-- **Clock**: the Pi has NO RTC battery â€” boot logs carry fake timestamps until time sync; don't trust file mtimes for ordering. It runs **chrony 4.8 (NOT timesyncd)** as a client of the VPS NTP server (`server 10.33.102.172 iburst prefer`; Ubuntu's default NTS pool sources are disabled because **the Pi has NO internet** â€” the wall port is LAN-only). chrony `makestep` corrects the fake boot clock within seconds.
-- eth0 is cabled to a UGM wall port (campus LAN, same `10.33.102.0/24` as VPS); VPSâ†”Pi path verified on current `10.33.102.10` (`ping`, 0% loss; old `10.33.36.81` historic).
+### Environment (.env)
+
+`MQTT_HOST`, `MQTT_PORT`, `MQTT_USER` (default `hubadmin`), `MQTT_PASS`, `MQTT_TOPIC`, `HUB_ID`, `HUB_KEY`, `SERVER_URL`, `SERVER_DEVICES_URL`, `SERVER_COMMANDS_URL` (derived if unset), `TLS_CERT_PATH`, `EDGE_CACHE_DB_PATH`, `ALLOW_INSECURE_DEV_KEYS`, `REPLAY_BATCH_SIZE` (25), `REPLAY_PACING_DELAY` (0.35s), `REPLAY_INTERVAL` (5.0s), `MAX_PENDING_ROWS` (20000).
 
 ## Work Guidance
 
-- Keep whitelist sync / poll / forward loops non-blocking with bounded timeouts (`timeout=5`)
-- Never commit real `MQTT_PASS`/`HUB_KEY` values â€” they're secrets in `.env` (chmod 600 on Linux)
-- Match existing logging style: `[SYNC ...]`, `[FILTER ...]`, `[POST ...]`, `[CONTROL ...]`, `[CACHE ...]`, `[REPLAY ...]` tags
-- Changes touching MQTT topics must be cross-checked against firmware `.ino` topics and `server` schemas
+- Keep WAL bounded — never raise `MAX_PENDING_ROWS` without FIFO prune verification; keep `0.35s` pacing and `REPLAY_BATCH_SIZE` to avoid upstream burst
+- Keep serial/MQTT bounded — `char[65]` payloads, `512B` buf in firmware bridge; hub `on_message` must not allocate unbounded or block
+- Keep loops non-blocking with `timeout=5`; match log tags `[SYNC ...]` `[FILTER ...]` `[POST ...]` `[CONTROL ...]` `[CACHE ...]` `[REPLAY ...]`
+- Cross-check any MQTT topic change against `firmware/**/*.ino` topics and `server/app/routers/iot.py` + `server/app/services/*`
+- Never commit `.env`, `edge_cache.db`, `cert.crt`, or real `MQTT_PASS`/`HUB_KEY` — all gitignored
+- `m41n` and `brain_of_hub_v5.py` are legacy — do not run; use `main.py`
+- `tools/deploy_pi_edge.py` reverse tunnel (`Pi :8000 -> Laptop :8000`) is the only supported local staging path
 
 ## Verification
 
-- `pytest hub/test_edge_resilience.py` for edge offline caching, FIFO replay, and dynamic topic dispatch tests
-- Manual: run `python main.py`, watch logs for `[SYNC SUCCESS]` and successful `[POST SUCCESS]` on telemetry
-- Cross-check whitelist sync via `GET /api/devices` against `server` (hub auth headers required)
+- `pytest hub/test_edge_resilience.py` — WAL FIFO bound, 7-day TTL, paced replay, dynamic `derive_command_topic` dispatch (primary gate)
+- `pytest` at repo root — 107 tests (includes `hub` 13)
+- Manual: `python main.py` → expect `[SYNC SUCCESS]` then `[POST SUCCESS]` on whitelisted telemetry; `GET /api/devices` with hub headers matches local whitelist
+- `bash -n hub/CheckSecv5.sh` (on Pi, Linux) — file perms + TLS cert check
 
+## Child DOX Index
+
+| Path | Scope |
+|---|---|
+| — | No child docs — `hub/` is a leaf. |
