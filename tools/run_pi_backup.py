@@ -13,10 +13,10 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description="Automate remote Raspberry Pi backup and off-device download")
-    parser.add_argument("--host", default="10.33.36.81", help="Raspberry Pi IP address")
+    parser.add_argument("--host", default=os.getenv("PI_HOST", "10.33.36.81"), help="Raspberry Pi IP address (env PI_HOST)")
     parser.add_argument("--port", type=int, default=22, help="SSH port")
-    parser.add_argument("--user", default="hubadmin", help="SSH username")
-    parser.add_argument("--password", default="hubadmin", help="SSH password")
+    parser.add_argument("--user", default=os.getenv("PI_USER", "hubadmin"), help="SSH username (env PI_USER)")
+    parser.add_argument("--password", default=None, help="SSH password (env PI_PASSWORD, required)")
     parser.add_argument("--local-dir", default="./pi_backups", help="Local directory to store downloaded backups")
     parser.add_argument("--app-dir", default="/home/hubadmin", help="Path to repo/app on the Pi")
     args = parser.parse_args()
@@ -27,13 +27,16 @@ def main():
     print("====================================================================")
     print("      Raspberry Pi Edge Gateway - Remote Backup Execution Tool      ")
     print("====================================================================")
+    password = args.password or os.getenv("PI_PASSWORD") or os.getenv("SSH_PASSWORD")
+    if not password:
+        parser.error("PI_PASSWORD env required (or --password). No hardcoded live secret.")
     print(f"Connecting to {args.user}@{args.host}:{args.port}...")
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
-        ssh.connect(args.host, port=args.port, username=args.user, password=args.password, timeout=10)
+        ssh.connect(args.host, port=args.port, username=args.user, password=password, timeout=10)
         print("[+] SSH connection established successfully!")
     except Exception as e:
         print(f"[!] Failed to connect to Raspberry Pi: {e}")
@@ -48,7 +51,7 @@ def main():
     sftp.put(str(local_script_path), remote_script_path)
 
     # Step 2: Make executable and run with sudo
-    cmd = f"chmod +x {remote_script_path} && echo {args.password} | sudo -S bash {remote_script_path} --out-dir /home/{args.user}/backups --app-dir {args.app_dir}"
+    cmd = f"chmod +x {remote_script_path} && echo {password} | sudo -S bash {remote_script_path} --out-dir /home/{args.user}/backups --app-dir {args.app_dir}"
     print(f"[*] Executing backup script remotely on {args.host}...")
     
     stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)

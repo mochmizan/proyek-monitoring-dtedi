@@ -3,20 +3,34 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// Ganti sesuai WiFi kamu
-const char* ssid = "smsb-iot";
-const char* password = "SmsbRoomNet2026";
+// Secrets (gitignored) — copy firmware/common/secrets.h.example to firmware/common/secrets.h
+// For Arduino IDE: copy firmware/common/secrets.h into this sketch folder and use #include "secrets.h"
+#if __has_include("../common/secrets.h")
+#include "../common/secrets.h"
+#elif __has_include("secrets.h")
+#include "secrets.h"
+#else
+#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#endif
+#ifndef WIFI_PASS
+#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#endif
+
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASS;
 
 // MQTT Broker (Hub)
-const char* mqtt_server = "192.168.72.242";
+const char* mqtt_server = MQTT_HOST;
 const uint16_t mqtt_port = 1883;
 const char* mqtt_topic_data = "hs109rs/ats/data";
 const char* mqtt_topic_command = "hs109rs/ats/command";
 char device_name[16];  // Derived at boot: ATS-last4ofMAC
-const char* HUB_NAME = "hs109rs-hub-01";
+static const char* _HUB_NAME_VAL_FIX = HUB_NAME;
+#undef HUB_NAME
+const char* HUB_NAME = _HUB_NAME_VAL_FIX;
 const char* DEV_TYPE = "ATS";
-const char* mqtt_user = "hubadmin";
-const char* mqtt_pass = "414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1";
+const char* mqtt_user = MQTT_USER;
+const char* mqtt_pass = MQTT_PASS;
 
 WiFiClient espClient;
 PubSubClient client(espClient);

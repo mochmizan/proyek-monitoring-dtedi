@@ -487,3 +487,72 @@ def test_command_payload_validation():
     assert main.validate_ats_payload({"start_genset": "on"})[0] is True
     assert main.validate_ats_payload({"reset": "rst"})[0] is True
     assert main.validate_ats_payload({"invalid_key": 123})[0] is False
+
+
+# =====================================================================
+# 6. Tests for Bounded Queue (MAX_PENDING_ROWS=20000) — T2
+# =====================================================================
+
+def test_bounded_queue_prunes_oldest(temp_db):
+    """Bounded WAL cache prunes oldest rows FIFO when MAX_PENDING_ROWS exceeded."""
+    # Sanity: MAX_PENDING_ROWS is defined and defaults to 20000
+    assert hasattr(main, "MAX_PENDING_ROWS")
+    assert main.MAX_PENDING_ROWS == 20000
+
+    # Fast bulk pre-fill 20000 rows via direct SQL (avoid 20001 slow enqueue loops),
+    # then one more enqueue to trigger bounded-queue prune. Total inserted = 20001.
+    total = main.MAX_PENDING_ROWS + 1  # 20001
+    bulk_count = main.MAX_PENDING_ROWS  # 20000 pre-filled
+
+    # Bulk insert 0..19999 directly for speed (single transaction)
+    conn_bulk = main.create_db_connection(temp_db)
+    now = time.time()
+    rows_to_insert = [(json.dumps({"DEV_ID": f"DEV_{i:05d}", "seq": i}), now + i * 0.0001) for i in range(bulk_count)]
+    conn_bulk.executemany("INSERT INTO pending_telemetry (payload, created_at) VALUES (?, ?)", rows_to_insert)
+    conn_bulk.commit()
+    conn_bulk.close()
+
+    # Verify pre-fill
+    conn = main.create_db_connection(temp_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM pending_telemetry")
+    assert cursor.fetchone()[0] == bulk_count
+    conn.close()
+
+    # Insert the 20001st row via enqueue_pending_telemetry (exercises TTL + bounded logic)
+    ok = main.enqueue_pending_telemetry({"DEV_ID": f"DEV_{bulk_count:05d}", "seq": bulk_count}, temp_db)
+    assert ok is True
+
+    conn = main.create_db_connection(temp_db)
+    cursor = conn.cursor()
+
+    # Count must be capped at MAX_PENDING_ROWS
+    cursor.execute("SELECT COUNT(*) FROM pending_telemetry")
+    count = cursor.fetchone()[0]
+    assert count == main.MAX_PENDING_ROWS == 20000
+
+    # Verify FIFO: oldest id pruned, newest preserved, strict order
+    cursor.execute("SELECT payload FROM pending_telemetry ORDER BY id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+
+    payloads = [json.loads(r[0]) for r in rows]
+    seqs = [p["seq"] for p in payloads]
+
+    # Oldest seq 0 should have been pruned
+    assert 0 not in seqs
+    assert seqs[0] == 1  # first surviving is seq 1
+    # Newest preserved
+    assert seqs[-1] == bulk_count  # 20000
+    # FIFO order strictly increasing
+    assert seqs == sorted(seqs)
+    assert seqs == list(range(1, total))
+
+    # Also verify IDs are monotonic increasing (FIFO replay order)
+    conn2 = main.create_db_connection(temp_db)
+    cursor2 = conn2.cursor()
+    cursor2.execute("SELECT id FROM pending_telemetry ORDER BY id ASC")
+    ids = [r[0] for r in cursor2.fetchall()]
+    conn2.close()
+    assert ids == sorted(ids)
+    assert len(ids) == 20000

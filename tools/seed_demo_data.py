@@ -15,10 +15,13 @@ def seed():
         # 1. Ensure Hub
         hub = db.query(hub_table).filter(hub_table.hub_id == 'hs109rs-hub-01').first()
         if not hub:
+            hub_key = os.getenv("HUB_KEY")
+            if not hub_key:
+                raise SystemExit("HUB_KEY env required for seeding (no hardcoded live secret).")
             hub = hub_table(
                 hub_id='hs109rs-hub-01',
                 hub_name='HS109 Edge Hub',
-                hub_key='70999354dda0638bbbe04b2e6d26e9f6484168193cdfdbcd517bbdf608134ee4',
+                hub_key=hub_key,
                 is_active=True
             )
             db.add(hub)

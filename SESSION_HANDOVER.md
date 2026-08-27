@@ -1,7 +1,7 @@
 ﻿# SESSION HANDOVER DOCUMENT — SMSB IOT MONITORING PLATFORM
 
-**Last Updated:** August 24, 2026
-**Repository State:** main @ `0b6f871` clean | 105/105 pytest green | lint/build clean | VPS LIVE
+**Last Updated:** August 24, 2026 (evening)
+**Repository State:** main @ `4674a1b` | 106/106 pytest green | lint/build clean | VPS LIVE | history downsampled + gap-aware chart live
 **Current Blocker:** none — system is deployed and serving campus-wide
 
 ---
@@ -16,7 +16,7 @@
 | Public IP inbound | **BLOCKED by Azure/campus NSG** — not usable |
 
 - nginx `hubgate` site now runs the **repo's `deploy/nginx_smsb.conf`**: SPA served from `/var/www/gui-app`, `/api/` proxied to uvicorn, certs `/etc/nginx/ssl/smsb.crt|.key` reissued with `IP:10.33.102.172` SAN. Old friend-era all-proxy config backed up at `/home/genset/hubgate.bak.*`.
-- History API bug fixed today: `GET /api/devices/{id}/history` previously returned the OLDEST rows (`ORDER BY timestamp ASC LIMIT 1000`) so devices looked frozen; now fetches latest-first then reverses.
+- History API: downsamples to ~1000 time buckets via AVG when >1000 rows (was `ORDER BY ASC LIMIT 1000` returning only ~11 min for ATS at 1.5 Hz). Frontend chart is gap-aware: `5 min / 10×median` threshold breaks lines, shades offline spans (including leading window-start→first-point) and renders isolated dots.
 - Unknown ESP device `68:C6:3A:D7:60:47` keeps transmitting & is auto-reported unapproved — needs pairing/approval or removal.
 
 ### B. Cloud Gateway — VPS `genset` (LIVE)
@@ -34,8 +34,8 @@
 | Aspect | Value |
 |---|---|
 | Bubble AP | hidden `smsb-iot` @ `192.168.72.242`, moved off crowded ch11 to a quieter channel (hostapd-only change; fleet firmware scans all channels). Channel survey found ch11 with 8 APs (UGM-Hotspot/Secure/Guest, eduroam, STARLINK) |
-| Wall port | eth0 cabled to UGM wall port → `[SYNC SUCCESS]` flowing; VPS↔Pi ping 0% loss. Static `10.33.36.81/24` + default route via `10.33.36.254` |
-| Networking | netplan = **eth0 ONLY** (`dhcp4:true` + static fallback + default route). wlan0 IP from `/etc/systemd/system/wlan0-addr.service` (oneshot, After=hostapd.service). Real dnsmasq config = `/etc/dnsmasq.d/smsb-ap.conf`; main conf stays empty |
+| Wall port | eth0 cabled to UGM wall port → `[SYNC SUCCESS]` flowing; VPS↔Pi ping 0% loss. Static `10.33.102.10/24` (server segment, moved from 10.33.36.81) + default via `10.33.102.254` *(fix current file still via 10.33.36.254 — not on-link)* |
+| Networking | netplan = **eth0 ONLY** (`dhcp4:true` + static `10.33.102.10/24` + default via gateway). wlan0 IP from `/etc/systemd/system/wlan0-addr.service` (oneshot, After=hostapd.service). Real dnsmasq config = `/etc/dnsmasq.d/smsb-ap.conf`; main conf stays empty |
 | Clock | Pi has NO RTC battery and NO internet (wall port is LAN-only); chrony client → `server 10.33.102.172 iburst prefer` (chrony 4.8, NOT timesyncd; NTS pool sources disabled), makestep corrects fake boot clock within seconds |
 | Services | `hubbrain.service`, mosquitto :1883, hostapd + dnsmasq |
 
@@ -66,7 +66,7 @@ Historical debugging notes (netplan wlan0 drop rules, dnsmasq duplicate-keyword 
 
 ```powershell
 .\start_dev.bat            # API :8000 + SPA :5173
-pytest                     # full suite (105 tests)
+pytest                     # full suite (106 tests)
 cd clients\gui-app; npm run lint; npm run build
 ```
 Dashboard logins: `admin/admin123`, `operator/operator123`, `viewer/viewer123`.

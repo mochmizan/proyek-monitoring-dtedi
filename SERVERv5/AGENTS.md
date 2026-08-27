@@ -53,7 +53,7 @@ Python 3.14 (venv), FastAPI, Uvicorn, Pydantic v2 (discriminated unions), SQLAlc
 | `POST /api/devices/{id}/pair` | `require_role("admin")` | 30/min | Pair pending device (name, room, marker, thresholds) |
 | `POST /api/devices/{id}/unpair` | `require_role("admin")` | 30/min | Unpair device (clears room/marker, deactivates) |
 | `PUT /api/devices/{id}/thresholds` | `require_role("admin")` | 30/min | Update warning/critical/hysteresis/debounce thresholds |
-| `GET /api/devices/{id}/history` | authenticated user | 60/min | Historical telemetry time-series (`?range=6h,24h,7d,30d,all`). **Latest-first pagination semantics**: fetches the newest rows first (ORDER BY timestamp DESC, LIMIT) then reverses to ascending for output — a device always shows its most recent data, never frozen at oldest rows (fixed 2026-08-24; previously ASC+LIMIT returned stale head-of-table rows) |
+| `GET /api/devices/{id}/history` | authenticated user | 60/min | Historical telemetry time-series (`?range=6h,24h,7d,30d,all`). **Downsampling**: fetch latest-first (DESC,LIMIT) for ≤1000 rows, else bucket-average into ~1000 time buckets (SQLite `strftime` / Postgres `extract epoch`) so dense windows (ATS ~1.5 Hz = 11 min per 1000 rows) now span the full window |
 | `GET /api/alerts` | authenticated user | 60/min | Filterable alerts list (rooms, devices, severity, status, times) |
 | `POST /api/iot/unapproved` | hub headers | 60/min | Report unknown MAC blocked at edge |
 | `POST /api/iot` | hub headers | 120/min | Receive telemetry (TS/ATS/AC) and evaluate thresholds |

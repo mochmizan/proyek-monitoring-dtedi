@@ -63,10 +63,12 @@ def set_user_password(file_path: str, username: str, password: str, append_only:
 def main():
     parser = argparse.ArgumentParser(description="Generate Eclipse Mosquitto 2.x password entries.")
     parser.add_argument("--user", "-u", default="hubadmin", help="MQTT username (default: hubadmin)")
-    parser.add_argument("--password", "-p", default="hubadmin_local_secret_pass_2026", help="MQTT password plain-text")
+    parser.add_argument("--password", "-p", default=os.getenv("MQTT_PASS"), help="MQTT password plain-text (or env MQTT_PASS); required")
     parser.add_argument("--file", "-f", default=os.path.join("mosquitto", "config", "passwd"), help="Path to output passwd file")
     
     args = parser.parse_args()
+    if not args.password:
+        parser.error("--password / MQTT_PASS env required (no hardcoded default)")
     set_user_password(args.file, args.user, args.password)
 
 

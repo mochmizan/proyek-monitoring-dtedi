@@ -31,6 +31,7 @@ ENV/
 # ===== Node / SPA =====
 node_modules/
 dist/
+clients/gui-app/dist/
 *.tsbuildinfo
 .eslintcache
 .vite/
@@ -39,11 +40,13 @@ yarn-error.log*
 
 # ===== Firmware tooling =====
 firmware_build/
+firmware/common/secrets.h
 
 # ===== Generated / tool output =====
 graphify-out/
 SERVERv5/v5/static/
 *.log
+.pre-commit-config.yaml.bak
 
 # ===== IDE / OS =====
 .idea/

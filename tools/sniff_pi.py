@@ -1,8 +1,17 @@
-﻿import paramiko
+﻿import os
+import paramiko
+host = os.getenv("PI_HOST", "10.33.36.81")
+user = os.getenv("PI_USER", "hubadmin")
+password = os.getenv("PI_PASSWORD") or os.getenv("SSH_PASSWORD")
+if not password:
+    raise SystemExit("PI_PASSWORD env required. No hardcoded live secret.")
+mqtt_pass = os.getenv("MQTT_PASS")
+if not mqtt_pass:
+    raise SystemExit("MQTT_PASS env required. No hardcoded live secret.")
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("10.33.36.81", username="hubadmin", password="hubadmin")
-cmd = "timeout 8 mosquitto_sub -v -t 'hs109rs/#' -u hubadmin -P 414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1"
+ssh.connect(host, username=user, password=password)
+cmd = f"timeout 8 mosquitto_sub -v -t 'hs109rs/#' -u hubadmin -P {mqtt_pass}"
 stdin, stdout, stderr = ssh.exec_command(cmd)
 out = stdout.read().decode()
 err = stderr.read().decode()

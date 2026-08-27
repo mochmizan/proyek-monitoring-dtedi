@@ -2,6 +2,19 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
+// Secrets (gitignored) — copy firmware/common/secrets.h.example to firmware/common/secrets.h
+// For Arduino IDE: copy firmware/common/secrets.h into this sketch folder and use #include "secrets.h"
+#if __has_include("../common/secrets.h")
+#include "../common/secrets.h"
+#elif __has_include("secrets.h")
+#include "secrets.h"
+#else
+#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#endif
+#ifndef WIFI_PASS
+#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#endif
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -30,13 +43,13 @@ bool isShtPresent  = false;
 //========================
 // WiFi Config
 //========================
-const char* NAMA_WIFI     = "smsb-iot";
-const char* NAMA_PASSWORD = "SmsbRoomNet2026";
+const char* NAMA_WIFI     = WIFI_SSID;
+const char* NAMA_PASSWORD = WIFI_PASS;
 
 //========================
 // MQTT Broker Config (Hub)
 //========================
-const char* MQTT_IP     = "192.168.72.242";   // IP Raspberry Pi Hub
+const char* MQTT_IP     = MQTT_HOST;   // IP Raspberry Pi Hub (from secrets.h)
 const int   MQTT_PORT   = 1883;
 const char* DATA_TOPIC  = "hs109rs/ts/data";
 
@@ -45,9 +58,16 @@ const char* DATA_TOPIC  = "hs109rs/ts/data";
 //========================
 char DEV_NAME[16];                         // Derived at boot: TS-last4ofMAC
 const char* DEV_TYPE  = "TS";              // Temperature Sensor Node
-const char* HUB_NAME  = "hs109rs-hub-01";    // Target Hub Name
-const char* MQTT_USER = "hubadmin";
-const char* MQTT_PASS = "414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1";
+// HUB_NAME / MQTT_USER / MQTT_PASS are #defined in secrets.h — capture then undef to avoid macro collision
+static const char* _HUB_NAME_VAL = HUB_NAME;
+static const char* _MQTT_USER_VAL = MQTT_USER;
+static const char* _MQTT_PASS_VAL = MQTT_PASS;
+#undef HUB_NAME
+#undef MQTT_USER
+#undef MQTT_PASS
+const char* HUB_NAME  = _HUB_NAME_VAL;    // Target Hub Name
+const char* MQTT_USER = _MQTT_USER_VAL;
+const char* MQTT_PASS = _MQTT_PASS_VAL;
 
 //========================
 // Timing & Intervals (ms)

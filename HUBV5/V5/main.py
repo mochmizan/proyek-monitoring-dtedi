@@ -86,6 +86,7 @@ DB_PATH = EDGE_CACHE_DB_PATH
 REPLAY_BATCH_SIZE = int(os.getenv("REPLAY_BATCH_SIZE", "25"))
 REPLAY_PACING_DELAY = float(os.getenv("REPLAY_PACING_DELAY", "0.35"))
 REPLAY_INTERVAL = float(os.getenv("REPLAY_INTERVAL", "5.0"))
+MAX_PENDING_ROWS = int(os.getenv("MAX_PENDING_ROWS", "20000"))
 
 # RAM Cache untuk Whitelist dan Registry Perangkat Aktif
 WHITELIST_DEVICES = set()
@@ -140,7 +141,11 @@ def init_db(db_path: str = None):
 
 
 def enqueue_pending_telemetry(payload_dict: dict, db_path: str = None) -> bool:
-    """Stores telemetry payload in SQLite WAL cache on upstream failure with bounded capacity."""
+    """Stores telemetry payload in SQLite WAL cache on upstream failure with bounded capacity.
+
+    Note: at-least-once replay semantics; server-side deduplication recommended on
+    (DEV_ID, created_at) to handle duplicate delivery after replay/retries.
+    """
     target_path = db_path or EDGE_CACHE_DB_PATH
     try:
         payload_str = json.dumps(payload_dict)
@@ -148,8 +153,15 @@ def enqueue_pending_telemetry(payload_dict: dict, db_path: str = None) -> bool:
             # 7-day TTL cleanup to protect SD card storage
             cutoff = time.time() - (7 * 86400)
             conn.execute("DELETE FROM pending_telemetry WHERE created_at < ?", (cutoff,))
-            
-            # Enqueue new record
+
+            # Bounded-queue: prune oldest rows if at capacity to protect SD card storage
+            cursor = conn.execute("SELECT COUNT(*) FROM pending_telemetry")
+            count = cursor.fetchone()[0]
+            if count >= MAX_PENDING_ROWS:
+                overflow = count - MAX_PENDING_ROWS + 1
+                conn.execute("DELETE FROM pending_telemetry WHERE id IN (SELECT id FROM pending_telemetry ORDER BY id ASC LIMIT ?)", (overflow,))
+
+            # Enqueue new record (at-least-once replay; server dedup recommended on (DEV_ID, created_at))
             conn.execute(
                 "INSERT INTO pending_telemetry (payload, created_at) VALUES (?, ?)",
                 (payload_str, time.time())

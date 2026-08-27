@@ -1,7 +1,13 @@
-﻿import paramiko
+﻿import os
+import paramiko
+host = os.getenv("PI_HOST", "10.33.36.81")
+user = os.getenv("PI_USER", "hubadmin")
+password = os.getenv("PI_PASSWORD") or os.getenv("SSH_PASSWORD")
+if not password:
+    raise SystemExit("PI_PASSWORD env required. No hardcoded live secret.")
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("10.33.36.81", username="hubadmin", password="hubadmin")
+ssh.connect(host, username=user, password=password)
 
 sftp = ssh.open_sftp()
 with sftp.open("/tmp/hubbrain.service", "w") as f:
@@ -23,7 +29,7 @@ WantedBy=multi-user.target
 """)
 sftp.close()
 
-stdin, stdout, stderr = ssh.exec_command("echo hubadmin | sudo -S cp /tmp/hubbrain.service /etc/systemd/system/hubbrain.service && echo hubadmin | sudo -S systemctl daemon-reload && echo hubadmin | sudo -S systemctl enable --now hubbrain.service")
+stdin, stdout, stderr = ssh.exec_command(f"echo {password} | sudo -S cp /tmp/hubbrain.service /etc/systemd/system/hubbrain.service && echo {password} | sudo -S systemctl daemon-reload && echo {password} | sudo -S systemctl enable --now hubbrain.service")
 stdout.channel.recv_exit_status()
 
 stdin, stdout, stderr = ssh.exec_command("sleep 2 && systemctl is-active hubbrain.service")

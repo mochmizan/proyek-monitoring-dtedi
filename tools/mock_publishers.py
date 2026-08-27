@@ -37,7 +37,7 @@ DEFAULT_HUB_NAME = os.getenv("HUB_NAME", "hs109rs-hub-01")
 DEFAULT_MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 DEFAULT_MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 DEFAULT_MQTT_USER = os.getenv("MQTT_USER", "hubadmin")
-DEFAULT_MQTT_PASS = os.getenv("MQTT_PASS", "hubadmin_local_secret_pass_2026")
+DEFAULT_MQTT_PASS = os.getenv("MQTT_PASS")  # no hardcoded fallback; use --password or MQTT_PASS env (dev: export MQTT_PASS=hubadmin_local_secret_pass_2026)
 
 DEVICE_PROFILES = {
     "ts": {

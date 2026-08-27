@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks: [{id: gitleaks}]
+  - repo: local
+    hooks:
+      - id: oxlint
+        name: oxlint (SPA)
+        entry: bash -c "npm --prefix clients/gui-app run lint"
+        language: system
+        files: ^clients/gui-app/
+        pass_filenames: false
+      - id: check-merge-conflict
+        name: check-merge-conflict
+        entry: bash -c "! grep -r '<<<<<<<' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.ino' ."
+        language: system

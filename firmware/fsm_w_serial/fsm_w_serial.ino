@@ -58,6 +58,7 @@ bool isAkiOn = false;
 bool hasilWait = false;
 bool isWarmup = false;
 bool warmupStarted = false;
+bool rtcAvailable = false;
 unsigned int relayOrder = 0;
 
 double teganganPln = 0;
@@ -102,34 +103,37 @@ void setup() {
   sensorGenset.setSensitivity(SENSITIVITAS_SENSOR_AC);
 
   if (!rtc.begin()) {
-    Serial.println("<RTC tidak ditemukan!>");
-    while (1);
-  }
+    rtcAvailable = false;
+    Serial.println(F("<RTC tidak ditemukan! Mode degradasi: warmup countdown nonaktif, FSM tetap jalan>"));
+    // Tidak ada while(1); - sistem lanjut operasi normal tanpa RTC (mirror PROMINI.ino:181)
+  } else {
+    rtcAvailable = true;
 
-  // // Jika RTC kehilangan power
-  if (rtc.lostPower()) {
-    Serial.println("<RTC kehilangan power, set waktu!>");
-    
-    // SET waktu sesuai waktu compile
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // Jika RTC kehilangan power
+    if (rtc.lostPower()) {
+      Serial.println(F("<RTC kehilangan power, set waktu!>"));
 
-    // // ATAU set manual:
-    // rtc.adjust(DateTime(2026, 4, 18, 19, 39, 0));
-  }
+      // SET waktu sesuai waktu compile
+      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
-  unsigned long now = rtc.now().unixtime();
-  unsigned long savedTime;
+      // ATAU set manual:
+      // rtc.adjust(DateTime(2026, 4, 18, 19, 39, 0));
+    }
 
-  EEPROM.get(0, savedTime);
+    unsigned long now = rtc.now().unixtime();
+    unsigned long savedTime;
 
-  if (savedTime > 1700000000 && savedTime < now) {
-    lastWarmup = DateTime(savedTime);
-    Serial.println("<Data warmup berhasil dimuat>");
-  }
-  else {
-    Serial.println("<Data EEPROM kosong / invalid>");
-    EEPROM.put(0, now);
-    lastWarmup = rtc.now(); // fallback
+    EEPROM.get(0, savedTime);
+
+    if (savedTime > 1700000000 && savedTime < now) {
+      lastWarmup = DateTime(savedTime);
+      Serial.println(F("<Data warmup berhasil dimuat>"));
+    }
+    else {
+      Serial.println(F("<Data EEPROM kosong / invalid>"));
+      EEPROM.put(0, now);
+      lastWarmup = rtc.now(); // fallback
+    }
   }
 
   delay(1000);
@@ -262,7 +266,10 @@ void processCommand(String msg) {
 void loop() {
   wdt_reset();
 
-  nowTime = rtc.now();
+  if (rtcAvailable) {
+    nowTime = rtc.now();
+  }
+
   auto countdown = getWarmupCountdown();
 
   sisaDetik = countdown.remSec;
@@ -525,9 +532,11 @@ void loop() {
               isWarmup = false;
               warmupStarted = false;
 
-              unsigned long now = rtc.now().unixtime();
-              EEPROM.put(0, now);
-              lastWarmup = rtc.now();
+              if (rtcAvailable) {
+                unsigned long now = rtc.now().unixtime();
+                EEPROM.put(0, now);
+                lastWarmup = rtc.now();
+              }
 
             }
           }
@@ -624,6 +633,11 @@ double readVDC(int pin){
 }
 
 warmupCountdown getWarmupCountdown(){
+
+  if (!rtcAvailable) {
+    // Mode degradasi: warmup dianggap selesai, FSM langsung lanjut tanpa RTC (mirror PROMINI.ino:848)
+    return {0, 0, 0, 0};
+  }
 
   TimeSpan diff = nowTime - lastWarmup;
 

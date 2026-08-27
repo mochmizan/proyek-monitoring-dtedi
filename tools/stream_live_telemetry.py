@@ -5,9 +5,12 @@ import requests
 import json
 import sys
 
-SERVER_URL = "http://127.0.0.1:8000/api/iot"
-HUB_ID = "hs109rs-hub-01"
-HUB_KEY = "70999354dda0638bbbe04b2e6d26e9f6484168193cdfdbcd517bbdf608134ee4"
+import os
+SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000/api/iot")
+HUB_ID = os.getenv("HUB_NAME", "hs109rs-hub-01")
+HUB_KEY = os.getenv("HUB_KEY")
+if not HUB_KEY:
+    raise SystemExit("HUB_KEY env required. No hardcoded live secret.")
 
 DEVICES = [
     {"dev_id": "AA:BB:CC:11:22:01", "dev_name": "Server Room Temp", "dev_type": "TS", "base_temp": 24.5, "base_hum": 55.0},

@@ -36,10 +36,17 @@ def purge_dummy():
 
     # Clear Raspberry Pi edge_cache.db
     try:
+        import os
         import paramiko
+        pi_host = os.getenv("PI_HOST", "10.33.36.81")
+        pi_user = os.getenv("PI_USER", "hubadmin")
+        pi_password = os.getenv("PI_PASSWORD") or os.getenv("SSH_PASSWORD")
+        if not pi_password:
+            print("[!] PI_PASSWORD env required for Pi cache clear (no hardcoded secret). Skipping.")
+            return
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect('10.33.36.81', port=22, username='hubadmin', password='hubadmin', timeout=10)
+        ssh.connect(pi_host, port=22, username=pi_user, password=pi_password, timeout=10)
         stdin, stdout, stderr = ssh.exec_command('python3 -c "import sqlite3; conn = sqlite3.connect(\'/home/hubadmin/HUBV5/V5/edge_cache.db\'); conn.execute(\'DELETE FROM offline_queue\'); conn.commit(); print(\'Cleared Pi offline_queue\')"')
         print(f"[*] Pi Edge Cache: {stdout.read().decode('utf-8').strip()}")
         ssh.close()

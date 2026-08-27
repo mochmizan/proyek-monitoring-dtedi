@@ -27,7 +27,7 @@ AGENTS.md files are binding work contracts for their subtrees. Parent docs defin
 | `npm run dev` (in `clients/gui-app/`) | Vite HMR dev server with `/api` and `/static` proxy |
 | `npm run build` (in `clients/gui-app/`) | `tsc -b && vite build` (typecheck first) |
 | `npm run lint` (in `clients/gui-app/`) | `oxlint` (no ESLint/Prettier) |
-| `pytest` (at repo root) | Run full automated test suite (105 tests) |
+| `pytest` (at repo root) | Run full automated test suite (106 tests) |
 | `docker compose up -d` (at repo root) | Start local PostgreSQL and Eclipse Mosquitto containers |
 
 ## Stack
@@ -37,7 +37,7 @@ React 19.2.7, TypeScript 6.0.3, Vite 8.1.3, TanStack Router 1.170.17, TanStack Q
 ## Architecture
 
 - **Frontend**: TanStack Query manages server state (`api.ts`, `queryKeys.ts`) with live polling (3s interval) on Dashboard, Room Detail, Device Detail, Map, and Alerts. Minimal Zustand store handles client UI state (`sidebarOpen`, `selectedRoomId`). Session validation via `GET /api/auth/me`.
-- **Backend (HubGate V5)**: FastAPI app with Argon2id auth, session cookies, rate limiting, and REST endpoints for rooms CRUD, device pairing/unpairing, floor plans, alerts with debounce/hysteresis, and telemetry ingestion.
+- **Backend (HubGate V5)**: FastAPI app with Argon2id auth, session cookies, rate limiting, and REST endpoints for rooms CRUD, device pairing/unpairing, floor plans, alerts with debounce/hysteresis, and telemetry ingestion. History endpoint downsamples to ~1000 time buckets via AVG when >1000 rows in window (prevents "frozen at oldest" cap).
 - **Edge (HubBrain V5)**: Raspberry Pi daemon bridging MQTT topics (`hs109rs/#`) to upstream HTTPS with SQLite WAL offline buffer and FIFO replay on reconnection. Dynamic downlink topic resolution (`{hub_name}/{dev_type}/command`).
 - **Firmware**: Non-blocking I2C probing, NaN sensor read skips, EEPROM AC state persistence, and canonical serial command framing (`<SGM,on>`, `<SGM,off>`, `<RST,rst>`, `<M,auto>`, `<M,manual>`).
 
@@ -141,7 +141,7 @@ Rules until then:
 - Search params validated with Zod (`validateSearch` + `Route.useSearch()`)
 - Sort/filter state in URL params, not component state
 - File-based routing via TanStack Router — add new `.tsx` in `routes/`, gen file updates automatically
-- Run `pytest` to verify all 105 backend, edge, and pipeline integration tests
+- Run `pytest` to verify all 106 backend, edge, and pipeline integration tests
 
 ## Verification
 

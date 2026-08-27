@@ -61,7 +61,7 @@ src/
 ## State & Data Flow
 
 - **Live Data Polling**: Dashboard, Room Detail, Device Detail, Map, and Alerts use TanStack Query hooks (`useQuery`) with 3s refetch intervals.
-- **History Analytics**: `device.$deviceId.tsx` queries `GET /api/devices/{id}/history?range=6h|24h|7d|30d|all` with time-proportional X-axis scaling, Zod URL parameter synchronization, and Jakarta Time (`Asia/Jakarta` / WIB) display formatting.
+- **History Analytics**: `device.$deviceId.tsx` queries `GET /api/devices/{id}/history?range=6h|24h|7d|30d|all` with time-proportional X-axis scaling, Zod URL parameter synchronization, and Jakarta Time (`Asia/Jakarta` / WIB) display formatting. Chart is gap-aware: `GAP_FLOOR 5 min` + `10×median interval` threshold breaks lines (`M` vs `L`), shades offline spans (including leading window-start→first-point gap), renders isolated-point dots, and per-segment area fill (Grafana/uPlot pattern).
 - **Air Conditioner Control**: `device.$deviceId.tsx` dispatches IR commands (`ON`, `OFF`, `SET_TEMP` 16–30°C) to dual units (`AC1`, `AC2`) via `sendDeviceCommand`.
 - **Admin Actions**: Setting rooms, pairing devices, configuring thresholds, and uploading floor plans trigger TanStack Query mutations that invalidate relevant query keys.
 

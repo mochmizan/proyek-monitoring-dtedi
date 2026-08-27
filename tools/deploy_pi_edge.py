@@ -5,6 +5,8 @@ Deploys updated HubBrain V5 to the Raspberry Pi, sets up .env, establishes rever
 and runs HubBrain edge gateway connected to the laptop's HubGate V5 server.
 """
 
+import argparse
+import os
 import sys
 import time
 import socket
@@ -47,9 +49,25 @@ def handler(chan, host, port):
     sock.close()
 
 def main():
-    host = "10.33.36.81"
-    user = "hubadmin"
-    password = "hubadmin"
+    parser = argparse.ArgumentParser(description="Deploy HubBrain V5 to Raspberry Pi (no hardcoded secrets)")
+    parser.add_argument("--host", default=os.getenv("PI_HOST", "10.33.36.81"), help="Pi host (env PI_HOST)")
+    parser.add_argument("--user", default=os.getenv("PI_USER", "hubadmin"), help="SSH user (env PI_USER)")
+    parser.add_argument("--password", default=None, help="SSH password (env PI_PASSWORD, required)")
+    parser.add_argument("--mqtt-pass", default=None, help="MQTT password (env MQTT_PASS, required)")
+    parser.add_argument("--hub-key", default=None, help="Hub key (env HUB_KEY, required)")
+    args = parser.parse_args()
+
+    host = args.host
+    user = args.user
+    password = args.password or os.getenv("PI_PASSWORD") or os.getenv("SSH_PASSWORD")
+    if not password:
+        parser.error("PI_PASSWORD env required (or --password). No hardcoded live secret.")
+    mqtt_pass = args.mqtt_pass or os.getenv("MQTT_PASS")
+    if not mqtt_pass:
+        parser.error("MQTT_PASS env required (or --mqtt-pass). No hardcoded live secret.")
+    hub_key = args.hub_key or os.getenv("HUB_KEY")
+    if not hub_key:
+        parser.error("HUB_KEY env required (or --hub-key). No hardcoded live secret.")
 
     print("====================================================================")
     print("      SMSB Platform - Raspberry Pi HubBrain V5 Edge Deployer        ")
@@ -70,15 +88,15 @@ def main():
     print(f"[*] Uploading updated main.py to {remote_main}...")
     sftp.put(str(local_main), remote_main)
 
-    # Step 2: Write updated .env for local staging
+    # Step 2: Write updated .env for local staging (values from env/args, never hardcoded)
     staging_env_content = f"""# Local Hardware Staging .env for HubBrain V5
 MQTT_HOST=localhost
 MQTT_PORT=1883
 MQTT_TOPIC=hs109rs/#
 MQTT_USER=hubadmin
-MQTT_PASS=414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1
+MQTT_PASS={mqtt_pass}
 HUB_NAME=hs109rs-hub-01
-HUB_KEY=70999354dda0638bbbe04b2e6d26e9f6484168193cdfdbcd517bbdf608134ee4
+HUB_KEY={hub_key}
 ALLOW_INSECURE_DEV_KEYS=true
 
 # Upstream endpoints directly to Laptop HubGate V5 on LAN

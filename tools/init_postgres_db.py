@@ -36,10 +36,13 @@ for uname, pwd, dname, urole in users_seed:
 
 # 2. Hub
 if not db.get(hub_table, 'hs109rs-hub-01'):
+    hub_key = os.getenv("HUB_KEY")
+    if not hub_key:
+        raise SystemExit("HUB_KEY env required (no hardcoded live secret).")
     hub = hub_table(
         hub_id='hs109rs-hub-01',
         hub_name='Hub hs109rs (Lab IoT)',
-        hub_key='414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1',
+        hub_key=hub_key,
         room='Server Room',
         is_active=True
     )

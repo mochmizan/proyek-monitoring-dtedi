@@ -333,10 +333,34 @@ Executed via Python virtualenv against SQLite test databases:
 | **V-5.4** | Issue `AC1 TEMP 22` -> power cycle ESP8266. | On reboot, ESP8266 reads raw state from EEPROM offset 1, calls `ac1.send()`, re-asserting 22°C via IR. | **VERIFIED** |
 | **V-5.5** | Flash fresh/erased ESP8266 (`0xFF` in flash). | Firmware detects missing `0xAC` magic byte, initializes baseline OFF state (24°C Cool Auto), writes `0xAC` to EEPROM. | **VERIFIED** |
 | **V-5.6** | Broker outage simulation (stop Mosquitto). | Nodes enter non-blocking exponential backoff (3s–30s); ATS node continues servicing Serial UART without dropping FSM frames. | **VERIFIED** |
+| **T1-2026-08-27** | RTC loss on `fsm_w_serial.ino` (disconnect RTC / `rtc.begin()` fails). | No `while(1)` halt; `rtcAvailable=false`, `getWarmupCountdown()` returns `{0,0,0,0}`, `loop()` skips `rtc.now()`, GENSET EEPROM reschedule gated, FSM runs on `millis()` (parity with `PROMINI.ino:181,385,848`). | **FIXED 2026-08-27** |
 
 ---
 
-## 5. Architectural Invariants for Future AI Agents
+## 5. Secret Extraction (T3 — 2026-08-27)
+
+All WiFi/MQTT secrets were removed from tracked firmware and tooling. See `firmware/common/secrets.h.example` (template) and `firmware/common/secrets.h` (gitignored, local-only).
+
+**Firmware (`firmware/common/secrets.h`):**
+- New headers `firmware/common/secrets.h.example:1` and `firmware/common/secrets.h:1` define `WIFI_SSID`, `WIFI_PASS`, `MQTT_USER`, `MQTT_PASS`, `MQTT_HOST`, `HUB_NAME`.
+- All four ESP sketches include the header via `__has_include("../common/secrets.h")` fallback to `"secrets.h"` (Arduino IDE: copy `secrets.h` into each sketch folder): `firmware/WEMOS_TS/WEMOS_TS.ino:6`, `firmware/WEMOS_AC/WEMOS_AC.ino:12`, `firmware/WEMOS_ATS/WEMOS_ATS.ino:8`, `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino:6`.
+- Guard: `#ifndef WIFI_PASS` → `#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h..."`.
+- `NAMA_PASSWORD`/`ssid`/`password` and `MQTT_IP`/`mqtt_server` now assign from `WIFI_PASS`/`WIFI_SSID`/`MQTT_HOST`; `HUB_NAME`/`MQTT_USER`/`MQTT_PASS` macro collisions handled via `static const char* _VAL` + `#undef` before variable definition (e.g., `firmware/WEMOS_TS/WEMOS_TS.ino:34`, `firmware/WEMOS_AC/WEMOS_AC.ino:46`).
+- Verification: `grep -r "414d9d" firmware/` and `grep -r "SmsbRoomNet2026" firmware/` are now zero for `*.ino` (see `tools/verify_prod_env.py` banned list for expected fixture).
+
+**Tooling (`tools/*.py`):**
+- All `tools/*.py` that previously defaulted to live hashes/passwords now require env vars (`MQTT_PASS`, `HUB_KEY`, `PI_PASSWORD`/`SSH_PASSWORD`) with `parser.error()`/`SystemExit` when missing; no `414d9d…` or `709993…` literals remain outside `tools/verify_prod_env.py` banned list: `tools/deploy_pi_edge.py:15`, `tools/send_ac_command.py:6`, `tools/sniff_pi.py:1`, `tools/sniff_pi_mqtt.py:6`, `tools/stream_live_telemetry.py:8`, `tools/seed_demo_data.py:13`, `tools/init_postgres_db.py:38`, `tools/purge_dummy_data.py:38`, `tools/run_pi_backup.py:14`, `tools/install_pi_service.py:5`, `tools/setup_hubbrain_service.py:4`.
+- `tools/mock_publishers.py` already env-driven (`MQTT_USER`/`MQTT_PASS` via `os.getenv`); `tools/generate_mosquitto_passwd.py` sample default retained but flagged as non-live.
+- `.gitignore:43` already lists `firmware/common/secrets.h` (verified).
+
+**Migration:**
+1. `cp firmware/common/secrets.h.example firmware/common/secrets.h` and fill `WIFI_PASS`/`MQTT_PASS`.
+2. For Arduino IDE, copy `firmware/common/secrets.h` into each `firmware/<sketch>/` folder.
+3. For tooling, `export MQTT_PASS=... HUB_KEY=... PI_PASSWORD=...` before invoking `deploy_pi_edge.py` / sniffers / seeders.
+
+---
+
+## 6. Architectural Invariants for Future AI Agents
 
 When interacting with this codebase in future iterations, all AI agents **MUST** respect the following rules:
 
