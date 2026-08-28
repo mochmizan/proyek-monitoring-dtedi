@@ -37,10 +37,10 @@ export const Route = createFileRoute('/hubs')({
 });
 
 function DeviceTypeIcon({ devType }: { devType?: string | null }) {
-  if (devType === 'AC') return <Snowflake className="size-3.5 text-sky-400" />;
-  if (devType === 'TS') return <Thermometer className="size-3.5 text-amber-400" />;
-  if (devType === 'ATS') return <Zap className="size-3.5 text-indigo-400" />;
-  return <HelpCircle className="size-3.5 text-muted-foreground" />;
+  if (devType === 'AC') return <Snowflake className="h-3.5 w-3.5 text-sky-400" />;
+  if (devType === 'TS') return <Thermometer className="h-3.5 w-3.5 text-amber-400" />;
+  if (devType === 'ATS') return <Zap className="h-3.5 w-3.5 text-indigo-400" />;
+  return <HelpCircle className="h-3.5 w-3.5 text-zinc-500" />;
 }
 
 function formatRelative(lastSeen?: string | null): string {
@@ -69,12 +69,12 @@ function HubCard({
   const online = hub.status === 'online';
 
   return (
-    <div className="rounded-xl bg-card border p-5 flex flex-col justify-between">
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col justify-between">
       <div>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h4 className="font-bold text-foreground truncate">{hub.hub_name}</h4>
-            <p className="font-mono text-xs text-muted-foreground truncate">
+            <h4 className="font-bold text-zinc-100 truncate">{hub.hub_name}</h4>
+            <p className="font-mono text-xs text-zinc-500 truncate">
               {hub.hub_id}
               {hub.room ? ` · ${hub.room}` : ''}
             </p>
@@ -87,18 +87,18 @@ function HubCard({
           />
         </div>
 
-        <ul className="mt-4 flex flex-col gap-2">
+        <ul className="mt-4 space-y-2">
           {hub.devices.map((dev) => (
             <HubDeviceRow key={dev.dev_id} dev={dev} />
           ))}
           {hub.devices.length === 0 && (
-            <li className="text-xs text-muted-foreground italic">No connected devices</li>
+            <li className="text-xs text-zinc-600 italic">No connected devices</li>
           )}
         </ul>
       </div>
 
-      <div className="mt-4 pt-3 border-t flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">
+      <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between">
+        <span className="text-xs font-medium text-zinc-400">
           {hub.device_count} device{hub.device_count === 1 ? '' : 's'}
         </span>
         {isAdmin && (
@@ -134,17 +134,17 @@ function HubDeviceRow({ dev }: { dev: HubDeviceSummary }) {
     <li className="flex items-center justify-between gap-2 text-xs">
       <span className="flex items-center gap-2 min-w-0">
         <DeviceTypeIcon devType={dev.dev_type} />
-        <span className="text-foreground font-medium truncate">
+        <span className="text-zinc-300 font-medium truncate">
           {dev.dev_name || dev.dev_id}
         </span>
-        <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+        <span className="font-mono text-[10px] text-zinc-500 shrink-0">
           {dev.dev_type || '?'}
         </span>
       </span>
       <span
         className={cn(
           'tabular-nums shrink-0 font-medium',
-          fresh ? 'text-emerald-400' : 'text-muted-foreground'
+          fresh ? 'text-emerald-400' : 'text-zinc-500'
         )}
       >
         {formatRelative(dev.last_seen)}
@@ -206,23 +206,23 @@ function HubsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Edge Hubs</h1>
-          <p className="text-xs text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold text-zinc-100">Edge Hubs</h1>
+          <p className="text-xs text-zinc-500 mt-1">
             Live presence and device roster for every registered edge gateway.
           </p>
         </div>
         <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-          <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-semibold text-emerald-400">Live</span>
         </div>
       </div>
 
       {actionError && (
-        <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded flex items-center gap-2">
-          <AlertTriangle className="size-4 flex-shrink-0" />
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
           <span>{actionError}</span>
         </div>
       )}
@@ -230,22 +230,22 @@ function HubsPage() {
       {isPending ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="rounded-xl bg-card border p-5 animate-pulse flex flex-col gap-3">
-              <div className="h-4 w-1/2 bg-muted rounded" />
-              <div className="h-3 w-1/3 bg-muted rounded" />
-              <div className="flex flex-col gap-2 pt-2">
-                <div className="h-3 w-full bg-muted/70 rounded" />
-                <div className="h-3 w-5/6 bg-muted/70 rounded" />
+            <div key={i} className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 animate-pulse space-y-3">
+              <div className="h-4 w-1/2 bg-zinc-800 rounded" />
+              <div className="h-3 w-1/3 bg-zinc-800 rounded" />
+              <div className="space-y-2 pt-2">
+                <div className="h-3 w-full bg-zinc-800/70 rounded" />
+                <div className="h-3 w-5/6 bg-zinc-800/70 rounded" />
               </div>
-              <div className="h-3 w-1/4 bg-muted rounded pt-1" />
+              <div className="h-3 w-1/4 bg-zinc-800 rounded pt-1" />
             </div>
           ))}
         </div>
       ) : hubs.length === 0 ? (
-        <div className="bg-card border rounded-xl p-10 flex flex-col items-center justify-center gap-3 text-center">
-          <Radio className="size-8 text-muted-foreground" />
-          <p className="text-sm font-semibold text-foreground">No hubs paired yet</p>
-          <p className="text-xs text-muted-foreground max-w-xs">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-10 flex flex-col items-center justify-center gap-3 text-center">
+          <Radio className="h-8 w-8 text-zinc-600" />
+          <p className="text-sm font-semibold text-zinc-300">No hubs paired yet</p>
+          <p className="text-xs text-zinc-500 max-w-xs">
             Power on an edge gateway and complete its bootstrap pairing — it will appear here automatically for admin approval.
           </p>
         </div>
@@ -262,10 +262,10 @@ function HubsPage() {
               />
             ))}
           </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-xs text-zinc-500">
             <FreshnessBadge dataUpdatedAt={dataUpdatedAt} />
             <span className="flex items-center gap-1.5">
-              <RefreshCw className={cn('size-3', isPending && 'animate-spin')} />
+              <RefreshCw className={cn('h-3 w-3', isPending && 'animate-spin')} />
               Polling every 3s
             </span>
           </div>
@@ -273,9 +273,9 @@ function HubsPage() {
       )}
 
       {(approveMutation.isPending || revokeMutation.isPending) && (
-        <div className="fixed bottom-6 right-6 bg-card border rounded-lg px-4 py-3 flex items-center gap-2 shadow-2xl">
-          <Loader2 className="size-4 animate-spin text-primary" />
-          <span className="text-xs text-foreground">Applying hub action...</span>
+        <div className="fixed bottom-6 right-6 bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 flex items-center gap-2 shadow-2xl">
+          <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+          <span className="text-xs text-zinc-300">Applying hub action...</span>
         </div>
       )}
     </div>

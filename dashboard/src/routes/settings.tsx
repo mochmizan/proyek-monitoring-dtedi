@@ -29,12 +29,12 @@ function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'rooms' | 'devices' | 'thresholds'>(search.tab ?? 'rooms');
 
   return (
-    <div className="flex flex-col gap-8">
-      <div><h1 className="text-2xl font-bold text-foreground">System Administration</h1><p className="text-xs text-muted-foreground mt-1">Manage facility rooms, self-discovered device pairing, and global telemetry threshold configuration.</p></div>
-      <div className="flex border-b gap-4 text-sm font-semibold">
-        <button onClick={() => setActiveTab('rooms')} className={cn("pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer", activeTab === 'rooms' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}><Layers className="size-4" /><span>Rooms Management</span></button>
-        <button onClick={() => setActiveTab('devices')} className={cn("pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer", activeTab === 'devices' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}><Cpu className="size-4" /><span>Device Pairing</span></button>
-        <button onClick={() => setActiveTab('thresholds')} className={cn("pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer", activeTab === 'thresholds' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}><Sliders className="size-4" /><span>Global Thresholds</span></button>
+    <div className="space-y-8">
+      <div><h1 className="text-2xl font-bold text-zinc-100">System Administration</h1><p className="text-xs text-zinc-500 mt-1">Manage facility rooms, self-discovered device pairing, and global telemetry threshold configuration.</p></div>
+      <div className="flex border-b border-zinc-800 gap-4 text-sm font-semibold">
+        <button onClick={() => setActiveTab('rooms')} className={cn("pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer", activeTab === 'rooms' ? "border-indigo-500 text-indigo-400" : "border-transparent text-zinc-500 hover:text-zinc-300")}><Layers className="h-4 w-4" /><span>Rooms Management</span></button>
+        <button onClick={() => setActiveTab('devices')} className={cn("pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer", activeTab === 'devices' ? "border-indigo-500 text-indigo-400" : "border-transparent text-zinc-500 hover:text-zinc-300")}><Cpu className="h-4 w-4" /><span>Device Pairing</span></button>
+        <button onClick={() => setActiveTab('thresholds')} className={cn("pb-3 px-1 border-b-2 flex items-center gap-2 transition-colors cursor-pointer", activeTab === 'thresholds' ? "border-indigo-500 text-indigo-400" : "border-transparent text-zinc-500 hover:text-zinc-300")}><Sliders className="h-4 w-4" /><span>Global Thresholds</span></button>
       </div>
       {activeTab === 'rooms' && <RoomsTab />}
       {activeTab === 'devices' && <DevicesTab />}

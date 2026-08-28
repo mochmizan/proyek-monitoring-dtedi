@@ -1,42 +1,29 @@
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  Wind,
-  CheckCircle,
-  AlertTriangle,
-  Thermometer,
-  Zap,
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { 
+  ArrowLeft, 
+  Wind, 
+  CheckCircle, 
+  AlertTriangle, 
+  Thermometer, 
+  Zap, 
   Loader2,
   RefreshCw,
-  HelpCircle,
-  MapPin,
-} from "lucide-react";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
-import { z } from "zod";
-import { queryKeys } from "@/lib/queryKeys";
-import { fetchRooms, fetchRoomMap, fetchCurrentUser, sendDeviceCommand, fetchAlerts } from "@/lib/api";
-import { POLL_MS } from "@/lib/constants";
-import type { RoomMapMarker, ATSCommand } from "@/types/api";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia, EmptyContent } from "@/components/ui/empty";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+  HelpCircle
+} from 'lucide-react';
+import { useState } from 'react';
+import { cn } from '../lib/utils';
+import { z } from 'zod';
+import { queryKeys } from '../lib/queryKeys';
+import { fetchRooms, fetchRoomMap, fetchCurrentUser, sendDeviceCommand, fetchAlerts } from '../lib/api'
+import { POLL_MS } from '../lib/constants';
+import type { RoomMapMarker, ATSCommand } from '../types/api';
 
 const roomSearchSchema = z.object({
-  range: z.enum(["6h", "24h", "7d", "30d"]).optional(),
+  range: z.enum(['6h', '24h', '7d', '30d']).optional(),
 });
 
-export const Route = createFileRoute("/room/$roomId")({
+export const Route = createFileRoute('/room/$roomId')({
   validateSearch: (search) => roomSearchSchema.parse(search),
   component: RoomDetailPage,
 });
@@ -72,15 +59,17 @@ function RoomDetailPage() {
     refetchIntervalInBackground: false,
   });
 
+  // ATS / Device Command State
   const [selectedDeviceForCmd, setSelectedDeviceForCmd] = useState<RoomMapMarker | null>(null);
   const [commandPayload, setCommandPayload] = useState<ATSCommand>({});
   const [cmdError, setCmdError] = useState<string | null>(null);
   const [cmdSuccess, setCmdSuccess] = useState<string | null>(null);
 
   const commandMutation = useMutation({
-    mutationFn: ({ devId, payload }: { devId: string; payload: ATSCommand }) => sendDeviceCommand(devId, payload),
+    mutationFn: ({ devId, payload }: { devId: string; payload: ATSCommand }) =>
+      sendDeviceCommand(devId, payload),
     onSuccess: () => {
-      setCmdSuccess("Command queued successfully for edge delivery");
+      setCmdSuccess('Command queued successfully for edge delivery');
       queryClient.invalidateQueries({ queryKey: queryKeys.rooms.map(roomId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.alerts.all });
       setTimeout(() => {
@@ -90,7 +79,7 @@ function RoomDetailPage() {
       }, 1500);
     },
     onError: (err: Error) => {
-      setCmdError(err.message || "Failed to dispatch command");
+      setCmdError(err.message || 'Failed to dispatch command');
     },
   });
 
@@ -98,35 +87,28 @@ function RoomDetailPage() {
 
   if (!room && !roomMap) {
     return (
-      <div className="flex flex-col gap-6">
-        <Button variant="ghost" size="sm" onClick={() => router.navigate({ to: "/" })} className="w-fit gap-1.5">
-          <ArrowLeft data-icon="inline-start" />
-          Back to Dashboard
-        </Button>
-        <Card>
-          <CardContent className="py-10">
-            <Empty className="border-0">
-              <EmptyMedia>
-                <HelpCircle className="size-8 text-muted-foreground" />
-              </EmptyMedia>
-              <EmptyHeader>
-                <EmptyTitle>Room not found</EmptyTitle>
-                <EmptyDescription>The requested room does not exist or has been removed.</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </CardContent>
-        </Card>
+      <div className="space-y-6">
+        <button 
+          onClick={() => router.navigate({ to: '/' })}
+          className="flex items-center gap-2 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back to Dashboard</span>
+        </button>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center">
+          <p className="text-zinc-400">Room not found.</p>
+        </div>
       </div>
     );
   }
 
-  const roomName = roomMap?.room_name || room?.name || "Room";
+  const roomName = roomMap?.room_name || room?.name || 'Room';
   const devices = roomMap?.devices || [];
   const activeAlerts = (roomAlertsData?.alerts || []).filter((a) => !a.resolved_at);
 
-  const role = currentUser?.role || "viewer";
-  const canControl = role === "admin" || role === "operator";
-  const isAdmin = role === "admin";
+  const role = currentUser?.role || 'viewer';
+  const canControl = role === 'admin' || role === 'operator';
+  const isAdmin = role === 'admin';
 
   const handleOpenCommandModal = (device: RoomMapMarker) => {
     setSelectedDeviceForCmd(device);
@@ -140,6 +122,7 @@ function RoomDetailPage() {
     if (!selectedDeviceForCmd) return;
     setCmdError(null);
     setCmdSuccess(null);
+
     commandMutation.mutate({
       devId: selectedDeviceForCmd.dev_id,
       payload: commandPayload,
@@ -147,382 +130,346 @@ function RoomDetailPage() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="space-y-8">
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 min-w-0">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => router.navigate({ to: "/" })}
-            className="size-9 shrink-0"
-            aria-label="Back to dashboard"
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => router.navigate({ to: '/' })}
+            className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
           >
-            <ArrowLeft data-icon="inline-start" />
-          </Button>
-          <div className="flex flex-col gap-1 min-w-0">
-            <h1 className="font-serif text-2xl font-semibold tracking-tight truncate">{roomName}</h1>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline" className="font-mono text-xs">
-                {devices.length} assigned {devices.length === 1 ? "device" : "devices"}
-              </Badge>
-              <Separator orientation="vertical" className="h-3" />
-              <Badge variant={activeAlerts.length > 0 ? "destructive" : "secondary"} className="gap-1.5 text-xs">
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full shrink-0",
-                    activeAlerts.length > 0 ? "bg-destructive-foreground animate-pulse" : "bg-emerald-400 animate-pulse",
-                  )}
-                  aria-hidden
-                />
-                {activeAlerts.length > 0 ? `${activeAlerts.length} Alert Active` : "Normal Status"}
-              </Badge>
-            </div>
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-100">{roomName}</h1>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {devices.length} assigned devices · {activeAlerts.length} active alerts
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          {isFetchingMap ? (
-            <Badge variant="outline" className="gap-1.5 font-mono text-xs">
-              <RefreshCw data-icon="inline-start" className="size-3 animate-spin text-primary" />
-              Live 3s Polling
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="gap-1.5 font-mono text-xs">
-              <span className="size-1.5 rounded-full bg-primary animate-pulse shrink-0" aria-hidden />
-              Live
-            </Badge>
+        <div className="flex items-center gap-3">
+          {isFetchingMap && (
+            <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800">
+              <RefreshCw className="h-3 w-3 animate-spin text-indigo-400" />
+              <span>Live 3s Polling</span>
+            </div>
           )}
+          <div className={cn(
+            "px-3 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5",
+            activeAlerts.length > 0
+              ? "bg-red-500/10 text-red-400 border-red-500/20"
+              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+          )}>
+            <span className={cn(
+              "h-1.5 w-1.5 rounded-full animate-pulse",
+              activeAlerts.length > 0 ? "bg-red-400" : "bg-emerald-400"
+            )} />
+            <span>{activeAlerts.length > 0 ? `${activeAlerts.length} Alert Active` : 'Normal Status'}</span>
+          </div>
         </div>
       </div>
 
-      {/* Floor Plan Overview */}
+      {/* Floor Plan Overview (if available) */}
       {roomMap && (
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold tracking-tight">Room Floor Plan Layout</CardTitle>
-            <CardDescription className="text-xs">Spatial placement of assigned devices — markers show live status</CardDescription>
-          </CardHeader>
-          <Separator />
-          <CardContent className="pt-6">
-            {isFetchingMap && !roomMap.has_image ? (
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-[320px] w-full max-w-3xl mx-auto" />
-                <div className="flex gap-2 justify-center">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-20" />
-                </div>
-              </div>
-            ) : roomMap.has_image && roomMap.floor_plan_url ? (
-              <div className="relative w-full max-w-3xl mx-auto aspect-[16/9] bg-muted border rounded-lg overflow-hidden select-none">
-                <img src={roomMap.floor_plan_url} alt={`${roomName} Floor Plan`} className="h-full w-full object-cover opacity-60" />
-                <TooltipProvider>
-                  {devices.map((device) => {
-                    const x = device.marker_x !== null && device.marker_x !== undefined ? device.marker_x : 50;
-                    const y = device.marker_y !== null && device.marker_y !== undefined ? device.marker_y : 50;
-                    const markerBg = !device.is_active
-                      ? "bg-muted-foreground border-border"
-                      : "bg-emerald-500 border-emerald-300 shadow-lg";
-                    return (
-                      <div key={device.dev_id} style={{ left: `${x}%`, top: `${y}%` }} className="absolute -translate-x-1/2 -translate-y-1/2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Link
-                              to="/device/$deviceId"
-                              params={{ deviceId: device.dev_id }}
-                              className={cn(
-                                "size-8 rounded-full border-2 flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-transform duration-150",
-                                markerBg,
-                              )}
-                            >
-                              {device.dev_type === "TS" && <Thermometer className="size-4 text-primary-foreground" />}
-                              {device.dev_type === "ATS" && <Zap className="size-4 text-primary-foreground" />}
-                              {(device.dev_type === "AC" || device.dev_type === "ACC") && <Wind className="size-4 text-primary-foreground" />}
-                              {!["TS", "ATS", "AC", "ACC"].includes(device.dev_type || "") && (
-                                <HelpCircle className="size-4 text-primary-foreground" />
-                              )}
-                            </Link>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-[14rem]">
-                            <div className="flex flex-col gap-1">
-                              <span className="font-semibold text-xs truncate">{device.dev_name || device.dev_id}</span>
-                              <span className="font-mono text-[10px] text-muted-foreground">{device.dev_type || "Device"}</span>
-                              {device.latest_reading && (
-                                <span className="text-xs font-semibold text-primary">
-                                  {device.dev_type === "TS" && typeof device.latest_reading.temp === "number" && (
-                                    <span>
-                                      {device.latest_reading.temp.toFixed(1)}°C / {String(device.latest_reading.humid ?? "")}%
-                                    </span>
-                                  )}
-                                  {device.dev_type === "ATS" && <span>State: {String(device.latest_reading.state ?? "N/A")}</span>}
-                                </span>
-                              )}
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    );
-                  })}
-                </TooltipProvider>
-              </div>
-            ) : (
-              <Empty>
-                <EmptyMedia>
-                  <MapPin className="size-8 text-muted-foreground" />
-                </EmptyMedia>
-                <EmptyHeader>
-                  <EmptyTitle>No floor plan uploaded</EmptyTitle>
-                  <EmptyDescription>Upload a diagram in Settings to enable interactive spatial positioning.</EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Badge variant="outline" className="font-mono text-xs">
-                    {roomName}
-                  </Badge>
-                </EmptyContent>
-              </Empty>
-            )}
-          </CardContent>
-        </Card>
-      )}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-3">Room Floor Plan Layout</h3>
+          {roomMap.has_image && roomMap.floor_plan_url ? (
+            <div className="relative w-full max-w-3xl mx-auto aspect-[16/9] bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden select-none">
+              <img 
+                src={roomMap.floor_plan_url} 
+                alt={`${roomName} Floor Plan`} 
+                className="w-full h-full object-cover opacity-60" 
+              />
+              {devices.map((device) => {
+                const x = device.marker_x !== null && device.marker_x !== undefined ? device.marker_x : 50;
+                const y = device.marker_y !== null && device.marker_y !== undefined ? device.marker_y : 50;
 
-      {/* Devices in Room */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Assigned Room Devices</h3>
-          <Badge variant="outline" className="font-mono text-xs gap-1.5">
-            <span className="size-1.5 rounded-full bg-primary shrink-0" aria-hidden />
-            {devices.length} total
-          </Badge>
-        </div>
+                let markerBg = 'bg-emerald-500 border-emerald-300';
+                if (!device.is_active) {
+                  markerBg = 'bg-zinc-500 border-zinc-400';
+                }
 
-        {devices.length === 0 ? (
-          <Card className="overflow-hidden">
-            <CardContent className="p-0">
-              <Empty>
-                <EmptyMedia>
-                  <HelpCircle className="size-8 text-muted-foreground" />
-                </EmptyMedia>
-                <EmptyHeader>
-                  <EmptyTitle>No devices assigned</EmptyTitle>
-                  <EmptyDescription>No devices currently assigned to this room. You can pair devices in Settings.</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {devices.map((device) => {
-              const reading = device.latest_reading;
-              const isTS = device.dev_type === "TS";
-              const isATS = device.dev_type === "ATS";
-              const isAC = device.dev_type === "AC" || device.dev_type === "ACC";
-              return (
-                <Card
-                  key={device.dev_id}
-                  className="flex flex-col gap-0 py-0 overflow-hidden card-stagger hover:border-border/80 transition-colors"
-                >
-                  <CardHeader className="flex flex-row items-start justify-between gap-2 gap-0 pb-3 pt-5">
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <CardTitle className="text-sm font-semibold truncate leading-none">{device.dev_name || device.dev_id}</CardTitle>
-                      <CardDescription className="font-mono text-xs truncate">{device.dev_id}</CardDescription>
-                    </div>
-                    <Badge variant="secondary" className="font-mono text-xs shrink-0">
-                      {device.dev_type || "Generic"}
-                    </Badge>
-                  </CardHeader>
-
-                  <CardContent className="flex flex-col gap-3 pb-4">
-                    <Separator />
-                    <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 min-h-[5.5rem]">
-                      {isTS && reading && typeof reading.temp === "number" ? (
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Temperature</span>
-                            <span className="text-xl font-bold tabular-nums font-mono truncate">
-                              {typeof reading.temp === "number" ? `${reading.temp.toFixed(1)}°C` : "—"}
-                            </span>
-                          </div>
-                          <Separator orientation="vertical" className="h-10" />
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Humidity</span>
-                            <span className="text-xl font-bold tabular-nums font-mono text-primary truncate">
-                              {typeof reading.humid === "number" ? `${reading.humid.toFixed(1)}%` : String(reading.humid ?? "—")}
-                            </span>
-                          </div>
-                        </div>
-                      ) : isATS && reading ? (
-                        <div className="flex flex-col gap-1.5 text-xs">
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground truncate">State:</span>
-                            <span className="font-bold font-mono uppercase truncate">{String(reading.state ?? "N/A")}</span>
-                          </div>
-                          <Separator />
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">PLN Voltage:</span>
-                            <span className="font-mono tabular-nums truncate">{String(reading.pln ?? "—")} V</span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">Genset Voltage:</span>
-                            <span className="font-mono tabular-nums truncate">{String(reading.genset ?? "—")} V</span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">Battery (AKI):</span>
-                            <span className="font-mono tabular-nums truncate">{String(reading.aki ?? "—")} V</span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">Mode:</span>
-                            <Badge
-                              variant={reading.auto_mode ? "default" : "secondary"}
-                              className="text-[10px] font-semibold uppercase"
-                            >
-                              {reading.auto_mode ? "AUTO" : "MANUAL"}
-                            </Badge>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center py-4">
-                          <span className="text-xs text-muted-foreground text-center truncate">
-                            {device.is_active ? "Awaiting telemetry packet…" : "Device pending pairing"}
-                          </span>
+                return (
+                  <div
+                    key={device.dev_id}
+                    style={{ left: `${x}%`, top: `${y}%` }}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 z-20 group"
+                  >
+                    <Link
+                      to="/device/$deviceId"
+                      params={{ deviceId: device.dev_id }}
+                      className={cn(
+                        "h-8 w-8 rounded-full border-2 flex items-center justify-center cursor-pointer shadow-lg hover:scale-110 active:scale-95 transition-all duration-150",
+                        markerBg
+                      )}
+                    >
+                      {device.dev_type === 'TS' && <Thermometer className="h-4 w-4 text-white" />}
+                      {device.dev_type === 'ATS' && <Zap className="h-4 w-4 text-white" />}
+                      {(device.dev_type === 'AC' || device.dev_type === 'ACC') && <Wind className="h-4 w-4 text-white" />}
+                      {!['TS', 'ATS', 'AC', 'ACC'].includes(device.dev_type || '') && (
+                        <HelpCircle className="h-4 w-4 text-white" />
+                      )}
+                    </Link>
+                    {/* Tooltip */}
+                    <div className="absolute left-10 top-1/2 -translate-y-1/2 bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 shadow-2xl z-30 w-48 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="font-bold text-zinc-100 text-xs truncate">{device.dev_name || device.dev_id}</div>
+                      <div className="text-[10px] text-zinc-500 font-mono">{device.dev_type || 'Device'}</div>
+                      {device.latest_reading && (
+                        <div className="text-xs text-indigo-400 font-semibold mt-1">
+                          {device.dev_type === 'TS' && typeof device.latest_reading.temp === 'number' && (
+                            <span>{device.latest_reading.temp.toFixed(1)}°C / {String(device.latest_reading.humid ?? '')}%</span>
+                          )}
+                          {device.dev_type === 'ATS' && (
+                            <span>State: {String(device.latest_reading.state ?? 'N/A')}</span>
+                          )}
                         </div>
                       )}
                     </div>
-                  </CardContent>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-zinc-950 border border-zinc-850 rounded-lg p-6 text-center text-zinc-500 text-xs">
+              No floor plan uploaded for this room. Upload a diagram in Settings to enable interactive spatial positioning.
+            </div>
+          )}
+        </div>
+      )}
 
-                  <Separator />
-                  <CardFooter className="flex items-center justify-between gap-2 py-3">
-                    <Button variant="link" size="sm" asChild className="h-auto p-0 text-xs gap-1">
-                      <Link to="/device/$deviceId" params={{ deviceId: device.dev_id }}>
-                        View Device
-                        <ArrowLeft data-icon="inline-end" className="rotate-180" />
-                      </Link>
-                    </Button>
-                    {(isATS || isAC) && canControl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenCommandModal(device)}
-                        className="h-7 gap-1.5 text-xs"
-                      >
-                        <Zap data-icon="inline-start" />
-                        Command Control
-                      </Button>
+      {/* Devices in Room */}
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4">Assigned Room Devices</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {devices.map((device) => {
+            const reading = device.latest_reading;
+            const isTS = device.dev_type === 'TS';
+            const isATS = device.dev_type === 'ATS';
+            const isAC = device.dev_type === 'AC' || device.dev_type === 'ACC';
+
+            return (
+              <div 
+                key={device.dev_id} 
+                className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h4 className="font-bold text-zinc-100">{device.dev_name || device.dev_id}</h4>
+                      <p className="text-xs text-zinc-500 font-mono">{device.dev_id}</p>
+                    </div>
+                    <span className="bg-zinc-800 text-zinc-300 text-xs px-2.5 py-1 rounded font-mono font-medium">
+                      {device.dev_type || 'Generic'}
+                    </span>
+                  </div>
+
+                  {/* Telemetry Display */}
+                  <div className="my-4 p-3 bg-zinc-950 rounded border border-zinc-850 space-y-2">
+                    {isTS && reading && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] text-zinc-500 uppercase font-semibold">Temperature</div>
+                          <div className="text-xl font-bold text-zinc-100">
+                            {typeof reading.temp === 'number' ? `${reading.temp.toFixed(1)}°C` : '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-zinc-500 uppercase font-semibold">Humidity</div>
+                          <div className="text-xl font-bold text-indigo-400">
+                            {typeof reading.humid === 'number' ? `${reading.humid.toFixed(1)}%` : String(reading.humid ?? '—')}
+                          </div>
+                        </div>
+                      </div>
                     )}
-                  </CardFooter>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+
+                    {isATS && reading && (
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">State:</span>
+                          <span className="font-bold text-zinc-200 uppercase">{String(reading.state ?? 'N/A')}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">PLN Voltage:</span>
+                          <span className="font-mono text-zinc-200">{String(reading.pln ?? '—')} V</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Genset Voltage:</span>
+                          <span className="font-mono text-zinc-200">{String(reading.genset ?? '—')} V</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Battery (AKI):</span>
+                          <span className="font-mono text-zinc-200">{String(reading.aki ?? '—')} V</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Mode:</span>
+                          <span className={cn("font-semibold", reading.auto_mode ? "text-emerald-400" : "text-amber-400")}>
+                            {reading.auto_mode ? 'AUTO' : 'MANUAL'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {(!reading || (!isTS && !isATS)) && (
+                      <div className="text-xs text-zinc-500 text-center py-2">
+                        {device.is_active ? 'Awaiting telemetry packet...' : 'Device pending pairing'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card footer / Actions */}
+                <div className="flex items-center justify-between pt-3 border-t border-zinc-800/80">
+                  <Link
+                    to="/device/$deviceId"
+                    params={{ deviceId: device.dev_id }}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                  >
+                    View Device →
+                  </Link>
+
+                  {(isATS || isAC) && canControl && (
+                    <button
+                      onClick={() => handleOpenCommandModal(device)}
+                      className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 rounded text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      Command Control
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {devices.length === 0 && (
+            <div className="col-span-full bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center text-zinc-500 text-sm">
+              No devices currently assigned to this room. You can pair devices in Settings.
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Command Control Dialog */}
-      <Dialog open={!!selectedDeviceForCmd} onOpenChange={(o) => !o && setSelectedDeviceForCmd(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Command Control: {selectedDeviceForCmd?.dev_name || selectedDeviceForCmd?.dev_id}</DialogTitle>
-            <DialogDescription className="font-mono text-xs">
-              {selectedDeviceForCmd?.dev_type} Node · queued via pending_commands
-            </DialogDescription>
-          </DialogHeader>
+      {/* Command Control Modal */}
+      {selectedDeviceForCmd && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="font-bold text-zinc-100">
+                  Command Control: {selectedDeviceForCmd.dev_name || selectedDeviceForCmd.dev_id}
+                </h3>
+                <p className="text-xs text-zinc-500 font-mono">{selectedDeviceForCmd.dev_type} Node</p>
+              </div>
+              <button 
+                onClick={() => setSelectedDeviceForCmd(null)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm"
+              >
+                ✕
+              </button>
+            </div>
 
-          {cmdError && (
-            <Alert variant="destructive">
-              <AlertTriangle data-icon="inline-start" />
-              <AlertTitle>Failed</AlertTitle>
-              <AlertDescription>{cmdError}</AlertDescription>
-            </Alert>
-          )}
-          {cmdSuccess && (
-            <Alert>
-              <CheckCircle data-icon="inline-start" />
-              <AlertTitle>Queued</AlertTitle>
-              <AlertDescription>{cmdSuccess}</AlertDescription>
-            </Alert>
-          )}
+            {cmdError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>{cmdError}</span>
+              </div>
+            )}
 
-          <form onSubmit={handleExecuteCommand} className="flex flex-col gap-4">
-            <FieldGroup>
-              <Field>
-                <FieldLabel>Operating Mode</FieldLabel>
-                <ToggleGroup
-                  type="single"
-                  value={commandPayload.mode || ""}
-                  onValueChange={(v) =>
-                    setCommandPayload({ ...commandPayload, mode: (v as "auto" | "manual") || undefined })
-                  }
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start gap-2"
+            {cmdSuccess && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{cmdSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleExecuteCommand} className="space-y-4">
+              {/* ATS Mode Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  Operating Mode
+                </label>
+                <select
+                  value={commandPayload.mode || ''}
+                  onChange={(e) => setCommandPayload({ 
+                    ...commandPayload, 
+                    mode: (e.target.value as 'auto' | 'manual') || undefined 
+                  })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-200 text-sm focus:outline-none focus:border-indigo-500"
                 >
-                  <ToggleGroupItem value="auto" className="flex-1 gap-1.5">
-                    Auto
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="manual" className="flex-1 gap-1.5">
-                    Manual
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </Field>
+                  <option value="">No Mode Change</option>
+                  <option value="auto">Auto Mode</option>
+                  <option value="manual">Manual Mode</option>
+                </select>
+              </div>
 
-              <Field>
-                <FieldLabel>Genset Ignition (Manual Only)</FieldLabel>
-                <ToggleGroup
-                  type="single"
-                  value={commandPayload.start_genset || ""}
-                  onValueChange={(v) =>
-                    setCommandPayload({ ...commandPayload, start_genset: (v as "on" | "off") || undefined })
-                  }
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start gap-2"
+              {/* Genset Control (only valid in manual mode) */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  Genset Ignition (Manual Mode Only)
+                </label>
+                <select
+                  value={commandPayload.start_genset || ''}
+                  onChange={(e) => setCommandPayload({ 
+                    ...commandPayload, 
+                    start_genset: (e.target.value as 'on' | 'off') || undefined 
+                  })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-200 text-sm focus:outline-none focus:border-indigo-500"
                 >
-                  <ToggleGroupItem value="on" className="flex-1 gap-1.5">
-                    Start ON
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="off" className="flex-1 gap-1.5">
-                    Stop OFF
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </Field>
+                  <option value="">No Genset Action</option>
+                  <option value="on">Start Genset (ON)</option>
+                  <option value="off">Stop Genset (OFF)</option>
+                </select>
+              </div>
 
+              {/* Admin Reset */}
               {isAdmin && (
-                <Field>
-                  <FieldLabel>Controller Reset (Admin Only)</FieldLabel>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="reset-rst"
-                      checked={commandPayload.reset === "rst"}
-                      onCheckedChange={(c) => setCommandPayload({ ...commandPayload, reset: c ? "rst" : undefined })}
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    Controller Reset (Admin Only)
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={commandPayload.reset === 'rst'}
+                      onChange={(e) => setCommandPayload({
+                        ...commandPayload,
+                        reset: e.target.checked ? 'rst' : undefined
+                      })}
+                      className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500"
                     />
-                    {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-                    <label htmlFor="reset-rst" className="text-sm text-muted-foreground cursor-pointer">
-                      Issue hardware reset command
-                    </label>
-                  </div>
-                </Field>
+                    <span>Issue hardware reset command</span>
+                  </label>
+                </div>
               )}
-            </FieldGroup>
 
-            <Separator />
-
-            <DialogFooter className="gap-2 sm:gap-2">
-              <Button type="button" variant="outline" onClick={() => setSelectedDeviceForCmd(null)} disabled={commandMutation.isPending}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={commandMutation.isPending} className="gap-1.5">
-                {commandMutation.isPending ? (
-                  <>
-                    <Loader2 data-icon="inline-start" className="size-3.5 animate-spin" />
-                    Sending…
-                  </>
-                ) : (
-                  "Queue Command"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeviceForCmd(null)}
+                  disabled={commandMutation.isPending}
+                  className="px-4 py-2 border border-zinc-800 rounded hover:bg-zinc-800 text-zinc-300 text-xs font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={commandMutation.isPending}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded text-xs font-medium cursor-pointer flex items-center gap-2"
+                >
+                  {commandMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <span>Queue Command</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import type { TelemetryHistoryPoint } from '../types/api';
 import { GAP_FLOOR_MIN } from './constants';
 
 export const GAP_FLOOR_MS = GAP_FLOOR_MIN * 60 * 1000;
@@ -79,34 +78,4 @@ export function getOutages(
     list.unshift({ start: minTimeMs, end: firstValid });
   }
   return list;
-}
-
-export type ChartDatum = {
-  t: string;
-  ts: number;
-  temp: number | null;
-  humid: number | null;
-  pln: number | null;
-  genset: number | null;
-  aki: number | null;
-  state?: string | null;
-};
-
-export function toChartData(points: TelemetryHistoryPoint[], gapThresholdMs: number): ChartDatum[] {
-  const times = points.map((p) => (p.timestamp ? parseToDate(p.timestamp).getTime() : NaN));
-  return points.map((p, i) => {
-    const t = times[i];
-    const prev = times[i - 1];
-    const isGap = i > 0 && Number.isFinite(t) && Number.isFinite(prev) && t - prev > gapThresholdMs;
-    return {
-      t: p.timestamp,
-      ts: Number.isFinite(t) ? t : Date.now(),
-      temp: isGap ? null : typeof p.temp === 'number' && !Number.isNaN(p.temp) ? p.temp : null,
-      humid: isGap ? null : typeof p.humid === 'number' && !Number.isNaN(p.humid) ? p.humid : null,
-      pln: isGap ? null : typeof p.pln === 'number' && !Number.isNaN(p.pln) ? p.pln : null,
-      genset: isGap ? null : typeof p.genset === 'number' && !Number.isNaN(p.genset) ? p.genset : null,
-      aki: isGap ? null : typeof p.aki === 'number' && !Number.isNaN(p.aki) ? p.aki : null,
-      state: p.state ?? null,
-    };
-  });
 }

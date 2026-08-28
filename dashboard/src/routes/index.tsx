@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   Layers,
@@ -6,27 +6,17 @@ import {
   HardDrive,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown,
-  HelpCircle,
+  ArrowUpDown
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '../lib/utils';
 import { z } from 'zod';
-import { queryKeys } from '@/lib/queryKeys';
-import { fetchRooms, fetchDevices, fetchAlerts } from '@/lib/api';
-import { POLL_MS, STALE_MS } from '@/lib/constants';
-import type { DeviceResponse } from '@/types/api';
-import { RoomCard, RoomCardSkeleton } from '@/components/RoomCard';
-import type { RoomCardStatus } from '@/components/RoomCard';
-import { StatusDot } from '@/components/StatusDot';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { queryKeys } from '../lib/queryKeys';
+import { fetchRooms, fetchDevices, fetchAlerts } from '../lib/api'
+import { POLL_MS, STALE_MS } from '../lib/constants';
+import type { DeviceResponse } from '../types/api';
+import { RoomCard, RoomCardSkeleton } from '../components/RoomCard';
+import type { RoomCardStatus } from '../components/RoomCard';
+import { StatusDot } from '../components/StatusDot';
 
 const dashboardSearchSchema = z.object({
   sortBy: z.enum(['name', 'type', 'room', 'devId', 'status', 'created']).optional().catch('name'),
@@ -77,43 +67,34 @@ function DashboardPage() {
     return 'Normal';
   };
 
-  const renderSortHead = (
+  const renderHeader = (
     label: string,
-    sortKey: 'name' | 'type' | 'room' | 'devId' | 'status' | 'created',
+    key: 'name' | 'type' | 'room' | 'devId' | 'status' | 'created'
   ): React.ReactNode => {
-    const active = sortBy === sortKey;
+    const isActive = sortBy === key;
     return (
-      <TableHead
-        aria-sort={active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
-        className="px-4"
-      >
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 -ml-2 font-semibold uppercase tracking-wider text-xs active:scale-[0.97] transition-transform duration-[120ms]"
-          onClick={() =>
-            navigate({
-              to: '.',
-              search: (prev) => ({
-                ...prev,
-                sortBy: sortKey,
-                sortOrder: active ? (prev.sortOrder === 'asc' ? 'desc' : 'asc') : 'asc',
-              }),
-            })
-          }
+      <th className="px-6 py-4">
+        <Link
+          to="."
+          search={(prev) => ({
+            ...prev,
+            sortBy: key,
+            sortOrder: isActive ? (prev.sortOrder === 'asc' ? 'desc' : 'asc') : 'asc',
+          })}
+          className="group inline-flex items-center gap-1.5 hover:text-indigo-400 transition-colors cursor-pointer select-none"
         >
-          <span className="truncate">{label}</span>
-          {active ? (
+          <span>{label}</span>
+          {isActive ? (
             sortOrder === 'asc' ? (
-              <ArrowUp className="size-3.5 shrink-0" data-icon="inline-end" />
+              <ArrowUp className="h-3.5 w-3.5 text-indigo-400" />
             ) : (
-              <ArrowDown className="size-3.5 shrink-0" data-icon="inline-end" />
+              <ArrowDown className="h-3.5 w-3.5 text-indigo-400" />
             )
           ) : (
-            <ArrowUpDown className="size-3.5 shrink-0 opacity-40" data-icon="inline-end" />
+            <ArrowUpDown className="h-3.5 w-3.5 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" />
           )}
-        </Button>
-      </TableHead>
+        </Link>
+      </th>
     );
   };
 
@@ -156,286 +137,163 @@ function DashboardPage() {
   const isInitialLoading = roomsStatus === 'pending';
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Overview stats — Card composition */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="card-stagger overflow-hidden hover:border-border transition-colors">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 gap-0 pb-2">
-            <CardTitle className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Total Rooms
-            </CardTitle>
-            <Layers className="size-4 text-muted-foreground shrink-0" data-icon="inline-end" />
-          </CardHeader>
-          <Separator className="mx-6 w-auto" />
-          <CardContent className="pt-4">
-            {isInitialLoading ? (
-              <Skeleton className="h-7 w-12" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums font-mono truncate">{rooms.length}</p>
-            )}
-            <p className="text-xs text-muted-foreground mt-1 truncate">Configured rooms</p>
-          </CardContent>
-        </Card>
-
-        <Card className="card-stagger overflow-hidden hover:border-border transition-colors">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 gap-0 pb-2">
-            <CardTitle className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Active Devices
-            </CardTitle>
-            <HardDrive className="size-4 text-muted-foreground shrink-0" data-icon="inline-end" />
-          </CardHeader>
-          <Separator className="mx-6 w-auto" />
-          <CardContent className="pt-4">
-            {isInitialLoading ? (
-              <Skeleton className="h-7 w-12" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums font-mono truncate">
-                {devices.filter((d) => d.is_active).length}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground mt-1 truncate">
-              {devices.length === 0 ? 'No devices paired' : `${devices.filter((d) => d.is_active).length} of ${devices.length} active`}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="card-stagger overflow-hidden hover:border-border transition-colors">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 gap-0 pb-2">
-            <CardTitle className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Warning Alerts
-            </CardTitle>
-            <AlertTriangle className="size-4 text-amber-500/70 shrink-0" data-icon="inline-end" />
-          </CardHeader>
-          <Separator className="mx-6 w-auto" />
-          <CardContent className="pt-4">
-            {isInitialLoading ? (
-              <Skeleton className="h-7 w-12" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums font-mono truncate text-amber-500">{warningCount}</p>
-            )}
-            <p className="text-xs text-muted-foreground mt-1 truncate">Needs attention</p>
-          </CardContent>
-        </Card>
-
-        <Card className="card-stagger overflow-hidden hover:border-border transition-colors">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 gap-0 pb-2">
-            <CardTitle className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Critical Alerts
-            </CardTitle>
-            <AlertTriangle className="size-4 text-destructive/70 shrink-0" data-icon="inline-end" />
-          </CardHeader>
-          <Separator className="mx-6 w-auto" />
-          <CardContent className="pt-4">
-            {isInitialLoading ? (
-              <Skeleton className="h-7 w-12" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums font-mono truncate text-destructive">{criticalCount}</p>
-            )}
-            <p className="text-xs text-muted-foreground mt-1 truncate">Immediate action</p>
-          </CardContent>
-        </Card>
+    <div className="space-y-8">
+      {/* Overview stats bar */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mb-1">Total Rooms</p>
+            <h3 className="text-2xl font-bold text-zinc-100">{rooms.length}</h3>
+          </div>
+          <Layers className="h-8 w-8 text-indigo-500/40" />
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mb-1">Active Devices</p>
+            <h3 className="text-2xl font-bold text-zinc-100">
+              {devices.filter((d) => d.is_active).length}
+            </h3>
+          </div>
+          <HardDrive className="h-8 w-8 text-indigo-500/40" />
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mb-1">Warning Alerts</p>
+            <h3 className="text-2xl font-bold text-amber-400">
+              {warningCount}
+            </h3>
+          </div>
+          <AlertTriangle className="h-8 w-8 text-amber-500/40" />
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mb-1">Critical Alerts</p>
+            <h3 className="text-2xl font-bold text-red-500">
+              {criticalCount}
+            </h3>
+          </div>
+          <AlertTriangle className="h-8 w-8 text-red-500/40" />
+        </div>
       </div>
 
       {/* Rooms Section */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Rooms</h3>
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Rooms</h3>
           {!isInitialLoading && (
-            <Badge variant="outline" className="gap-1.5 text-xs font-mono" role="status">
-              <span className="size-1.5 rounded-full bg-primary animate-pulse shrink-0" aria-hidden="true" />
-              Live
-            </Badge>
+            <div className="flex items-center gap-1.5 text-xs text-zinc-400" role="status">
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" aria-hidden="true" />
+              <span>Live</span>
+            </div>
           )}
         </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {isInitialLoading &&
-            Array.from({ length: 6 }, (_, i) => (
-              <div key={`room-skeleton-${i}`} className="card-stagger" style={{ animationDelay: `${i * 40}ms` }}>
-                <RoomCardSkeleton />
-              </div>
-            ))}
+            Array.from({ length: 6 }, (_, i) => <RoomCardSkeleton key={`room-skeleton-${i}`} />)}
           {!isInitialLoading &&
-            rooms.map((room, idx) => {
+            rooms.map((room) => {
               const status = getRoomStatus(room.id);
-              return (
-                <div key={room.id} className="card-stagger" style={{ animationDelay: `${idx * 40}ms` }}>
-                  <RoomCard room={room} status={status} />
-                </div>
-              );
+              return <RoomCard key={room.id} room={room} status={status} />;
             })}
           {!isInitialLoading && rooms.length === 0 && (
-            <Card className="col-span-full overflow-hidden">
-              <CardContent className="p-0">
-                <Empty>
-                  <EmptyMedia>
-                    <Layers className="size-8 text-muted-foreground" />
-                  </EmptyMedia>
-                  <EmptyHeader>
-                    <EmptyTitle>No rooms yet</EmptyTitle>
-                    <EmptyDescription>Create a room in Settings to begin organizing devices.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              </CardContent>
-            </Card>
+            <div className="col-span-full bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center text-zinc-400 text-sm">
+              No rooms created yet. Create a room in Settings to begin organizing devices.
+            </div>
           )}
         </div>
       </div>
 
-      {/* All Connected Nodes — shadcn Table */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">All Connected Nodes</h3>
+      {/* Node Table (Devices) */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">All Connected Nodes</h3>
         </div>
-
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    {renderSortHead('Device Name', 'name')}
-                    {renderSortHead('Type', 'type')}
-                    {renderSortHead('Room', 'room')}
-                    {renderSortHead('MAC / ID', 'devId')}
-                    {renderSortHead('Status', 'status')}
-                    <TableHead className="px-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Thresholds
-                    </TableHead>
-                    {renderSortHead('Created', 'created')}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isInitialLoading &&
-                    Array.from({ length: 5 }, (_, i) => (
-                      <TableRow key={`device-skeleton-${i}`}>
-                        <TableCell className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Skeleton className="size-8 rounded-full shrink-0" />
-                            <Skeleton className="h-4 w-24" />
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <Skeleton className="h-5 w-14 rounded-full" />
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <Skeleton className="h-5 w-16 rounded-full" />
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-
-                  {!isInitialLoading &&
-                    sortedDevices.map((device) => {
-                      const room = rooms.find((r) => r.id === device.room_id);
-                      const isOnline = device.status === 'online';
-                      const isPending = !device.is_active || device.status === 'pending';
-                      const statusLabel = isPending ? 'Pending' : isOnline ? 'Online' : 'Offline';
-                      const initials = (device.dev_name || device.dev_id).charAt(0).toUpperCase();
-                      return (
-                        <TableRow
-                          key={device.dev_id}
-                          onClick={() => navigate({ to: '/device/$deviceId', params: { deviceId: device.dev_id } })}
-                          className={cn(
-                            'hover:bg-muted/50 cursor-pointer transition-colors',
-                            !device.is_active && 'opacity-60',
-                          )}
-                        >
-                          <TableCell className="px-4 py-3">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Avatar className="size-8 shrink-0">
-                                <AvatarFallback className="text-xs font-mono">{initials}</AvatarFallback>
-                              </Avatar>
-                              <span className="font-semibold text-foreground truncate">{device.dev_name || device.dev_id}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-4 py-3">
-                            <Badge variant="secondary" className="font-mono text-xs">
-                              {device.dev_type || 'Generic'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="px-4 py-3">
-                            {room ? (
-                              <Badge variant="outline" className="truncate max-w-[12rem]">
-                                {room.name}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground italic text-xs">Unassigned</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 font-mono text-xs text-muted-foreground truncate max-w-[10rem]">
-                            {device.dev_id}
-                          </TableCell>
-                          <TableCell className="px-4 py-3">
-                            <Badge
-                              variant={isPending ? 'secondary' : isOnline ? 'default' : 'outline'}
-                              className="gap-1.5 text-xs"
-                            >
-                              <StatusDot
-                                tone={isPending ? 'amber' : isOnline ? 'emerald' : 'zinc'}
-                                label={`Status: ${statusLabel}`}
-                                pulse={isOnline}
-                              />
-                              {statusLabel}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="px-4 py-3">
-                            {device.threshold_config ? (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge variant="outline" className="font-mono text-xs cursor-help">
-                                      W: {device.threshold_config.warning}°C / C: {device.threshold_config.critical}°C
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top">
-                                    Warning {device.threshold_config.warning}°C / Critical {device.threshold_config.critical}°C
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">Default</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-xs text-muted-foreground tabular-nums">
-                            {device.created_at ? new Date(device.created_at).toLocaleString() : '—'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            </div>
-
-            {!isInitialLoading && sortedDevices.length === 0 && (
-              <>
-                <Separator />
-                <div className="px-6 py-10">
-                  <Empty>
-                    <EmptyMedia>
-                      <HelpCircle className="size-8 text-muted-foreground" />
-                    </EmptyMedia>
-                    <EmptyHeader>
-                      <EmptyTitle>No devices found</EmptyTitle>
-                      <EmptyDescription>Pair a device in Settings to get started.</EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-zinc-300">
+              <thead className="bg-zinc-950 text-xs font-semibold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
+                <tr>
+                  {renderHeader('Device Name', 'name')}
+                  {renderHeader('Type', 'type')}
+                  {renderHeader('Room', 'room')}
+                  {renderHeader('MAC / ID', 'devId')}
+                  {renderHeader('Status', 'status')}
+                  <th className="px-6 py-4">Thresholds</th>
+                  {renderHeader('Created', 'created')}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/60">
+                {sortedDevices.map((device) => {
+                  const room = rooms.find((r) => r.id === device.room_id);
+                  const isOnline = device.status === 'online';
+                  const isPending = !device.is_active || device.status === 'pending';
+                  const statusLabel = isPending ? 'Pending' : isOnline ? 'Online' : 'Offline';
+                  return (
+                    <tr
+                      key={device.dev_id}
+                      onClick={() => navigate({ to: '/device/$deviceId', params: { deviceId: device.dev_id } })}
+                      className={cn(
+                        "hover:bg-zinc-850/50 transition-colors cursor-pointer",
+                        !device.is_active && "opacity-60"
+                      )}
+                    >
+                      <td className="px-6 py-4 font-semibold text-zinc-100">
+                        {device.dev_name || device.dev_id}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="bg-zinc-800 text-zinc-300 text-xs px-2.5 py-1 rounded font-mono font-medium">
+                          {device.dev_type || 'Generic'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-zinc-300 font-medium">
+                        {room ? room.name : <span className="text-zinc-500 italic">Unassigned</span>}
+                      </td>
+                      <td className="px-6 py-4 font-mono text-xs text-zinc-300">
+                        {device.dev_id}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          "px-2.5 py-0.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5",
+                          isPending
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                            : isOnline
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : "bg-zinc-800/80 text-zinc-300 border-zinc-700/50"
+                        )}>
+                          <StatusDot
+                            tone={isPending ? 'amber' : isOnline ? 'emerald' : 'zinc'}
+                            label={`Status: ${statusLabel}`}
+                            pulse={isOnline}
+                          />
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-mono text-zinc-300">
+                        {device.threshold_config ? (
+                          <span>
+                            W: {device.threshold_config.warning}°C / C: {device.threshold_config.critical}°C
+                          </span>
+                        ) : (
+                          <span className="text-zinc-400">Default</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-zinc-400">
+                        {device.created_at ? new Date(device.created_at).toLocaleString() : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {sortedDevices.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-zinc-400 text-sm">
+                      No devices found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

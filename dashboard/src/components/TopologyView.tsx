@@ -1,29 +1,33 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "@tanstack/react-router";
-import { Background, BackgroundVariant, Controls, Handle, MiniMap, Position, ReactFlow } from "@xyflow/react";
-import type { Edge, Node, NodeProps } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import { Cpu, HelpCircle, Server, Snowflake, Thermometer, Zap } from "lucide-react";
-import { queryKeys } from "@/lib/queryKeys";
-import { fetchDevices, fetchHubs, fetchRooms } from "@/lib/api";
-import { POLL_MS } from "@/lib/constants";
-import { StatusDot } from "./StatusDot";
-import type { StatusTone } from "./StatusDot";
-import { cn } from "@/lib/utils";
-import type { HubDeviceSummary, RoomResponse } from "@/types/api";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from "@/components/ui/empty";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useRouter } from '@tanstack/react-router';
+import {
+  Background,
+  BackgroundVariant,
+  Controls,
+  Handle,
+  MiniMap,
+  Position,
+  ReactFlow,
+} from '@xyflow/react';
+import type { Edge, Node, NodeProps } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { Cpu, HelpCircle, Server, Snowflake, Thermometer, Zap } from 'lucide-react';
+import { queryKeys } from '../lib/queryKeys';
+import { fetchDevices, fetchHubs, fetchRooms } from '../lib/api'
+import { POLL_MS } from '../lib/constants';
+import { StatusDot } from './StatusDot';
+import type { StatusTone } from './StatusDot';
+import { cn } from '../lib/utils';
+import type { HubDeviceSummary, RoomResponse } from '../types/api';
 
 const REDUCED_MOTION =
-  typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-type TopologyKind = "vps" | "hub" | "device";
-type TopologyStatus = "online" | "offline" | "unknown";
+type TopologyKind = 'vps' | 'hub' | 'device';
+type TopologyStatus = 'online' | 'offline' | 'unknown';
 
 interface TopologyNodeData extends Record<string, unknown> {
   kind: TopologyKind;
@@ -33,7 +37,7 @@ interface TopologyNodeData extends Record<string, unknown> {
   iconType?: string | null;
 }
 
-type TopologyNodeType = Node<TopologyNodeData, "topology">;
+type TopologyNodeType = Node<TopologyNodeData, 'topology'>;
 
 interface Descriptor {
   id: string;
@@ -57,92 +61,80 @@ interface TopologyModel {
 const ROW_Y = [0, 190, 380];
 const HUB_SPACING = 320;
 const DEVICE_SPACING = 220;
-const EDGE_BASE_STROKE = "#52525b";
-const EDGE_HOVER_STROKE = "#6366f1";
+const EDGE_BASE_STROKE = '#52525b';
+const EDGE_HOVER_STROKE = '#6366f1';
 
 const nodeTypes = { topology: TopologyNodeView };
 
 const STATUS_TONES: Record<TopologyStatus, StatusTone> = {
-  online: "emerald",
-  offline: "red",
-  unknown: "zinc",
-};
-
-const STATUS_BADGE_VARIANT: Record<TopologyStatus, "default" | "destructive" | "outline" | "secondary"> = {
-  online: "default",
-  offline: "destructive",
-  unknown: "outline",
+  online: 'emerald',
+  offline: 'red',
+  unknown: 'zinc',
 };
 
 function DeviceTypeIcon({ devType }: { devType?: string | null }) {
-  if (devType === "AC") return <Snowflake className="size-3.5 shrink-0 text-sky-400" />;
-  if (devType === "TS") return <Thermometer className="size-3.5 shrink-0 text-amber-400" />;
-  if (devType === "ATS") return <Zap className="size-3.5 shrink-0 text-indigo-400" />;
-  return <HelpCircle className="size-3.5 shrink-0 text-muted-foreground" />;
+  if (devType === 'AC') return <Snowflake className="h-3.5 w-3.5 shrink-0 text-sky-400" />;
+  if (devType === 'TS') return <Thermometer className="h-3.5 w-3.5 shrink-0 text-amber-400" />;
+  if (devType === 'ATS') return <Zap className="h-3.5 w-3.5 shrink-0 text-indigo-400" />;
+  return <HelpCircle className="h-3.5 w-3.5 shrink-0 text-zinc-500" />;
 }
 
 export function TopologyNodeView({ data }: NodeProps<TopologyNodeType>) {
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            className={cn(
-              "w-44 bg-card border rounded-lg px-3 py-2 text-xs shadow-lg hover:border-primary/30 transition-colors cursor-pointer",
-              data.status === "offline" ? "border-destructive/50" : "border-border",
-            )}
-          >
-            <div className="flex items-center gap-2">
-              {data.kind === "vps" ? (
-                <Server className="size-3.5 shrink-0 text-primary" />
-              ) : data.kind === "hub" ? (
-                <Cpu className="size-3.5 shrink-0 text-emerald-400" />
-              ) : (
-                <DeviceTypeIcon devType={data.iconType} />
-              )}
-              <span className="font-semibold text-card-foreground truncate flex-1">{data.name}</span>
-              <StatusDot
-                tone={STATUS_TONES[data.status]}
-                label={`${data.name} ${data.status}`}
-                pulse={!REDUCED_MOTION && data.status === "online"}
-              />
-            </div>
-            <div className="mt-1 flex items-center gap-1.5">
-              <Badge variant={STATUS_BADGE_VARIANT[data.status]} className="text-[10px] px-1.5 py-0 h-4 gap-1 font-mono">
-                {data.status}
-              </Badge>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground truncate tabular-nums flex-1">
-                {data.sublabel}
-              </span>
-            </div>
-            <Handle type="target" position={Position.Top} isConnectable={false} className="size-1.5! bg-muted-foreground! border-0!" />
-            <Handle type="source" position={Position.Bottom} isConnectable={false} className="size-1.5! bg-muted-foreground! border-0!" />
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[16rem]">
-          <div className="flex flex-col gap-1">
-            <span className="font-semibold text-xs truncate">{data.name}</span>
-            <span className="text-xs text-muted-foreground truncate">{data.sublabel}</span>
-            <span className="text-xs font-mono">Status: {data.status}</span>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <div
+      className={cn(
+        'w-44 bg-zinc-900 border rounded-lg px-3 py-2 text-xs shadow-lg',
+        data.status === 'offline' ? 'border-red-900/70' : 'border-zinc-700'
+      )}
+    >
+      <div className="flex items-center gap-2">
+        {data.kind === 'vps' ? (
+          <Server className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+        ) : data.kind === 'hub' ? (
+          <Cpu className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+        ) : (
+          <DeviceTypeIcon devType={data.iconType} />
+        )}
+        <span className="font-semibold text-zinc-100 truncate flex-1">{data.name}</span>
+        <StatusDot
+          tone={STATUS_TONES[data.status]}
+          label={`${data.name} ${data.status}`}
+          pulse={!REDUCED_MOTION && data.status === 'online'}
+        />
+      </div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-500 truncate tabular-nums">
+        {data.sublabel}
+      </div>
+      <Handle
+        type="target"
+        position={Position.Top}
+        isConnectable={false}
+        className="h-1.5! w-1.5! bg-zinc-600! border-0!"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        isConnectable={false}
+        className="h-1.5! w-1.5! bg-zinc-600! border-0!"
+      />
+    </div>
   );
 }
 
 function buildModel(
   hubs: Awaited<ReturnType<typeof fetchHubs>>,
   devices: Awaited<ReturnType<typeof fetchDevices>>,
-  rooms: RoomResponse[],
+  rooms: RoomResponse[]
 ): TopologyModel {
   const roomNameById = new Map(rooms.map((r) => [r.id, r.name]));
   const deviceMeta = new Map(devices.map((d) => [d.dev_id, d]));
-  const offlineDevIds = new Set(devices.filter((d) => d.status === "offline").map((d) => d.dev_id));
+  const offlineDevIds = new Set(
+    devices.filter((d) => d.status === 'offline').map((d) => d.dev_id)
+  );
 
   const roomLabel = (devId: string): string => {
     const meta = deviceMeta.get(devId);
-    if (!meta?.room_id) return "";
+    if (!meta?.room_id) return '';
     return roomNameById.get(meta.room_id) ?? meta.room_id;
   };
 
@@ -151,66 +143,74 @@ function buildModel(
   const devicesByHub = new Map<string, string[]>();
   for (const hub of sortedHubs) {
     const ids = hub.devices.map((d) => d.dev_id);
-    ids.sort((a, b) => roomLabel(a).localeCompare(roomLabel(b)) || a.localeCompare(b));
+    ids.sort(
+      (a, b) =>
+        roomLabel(a).localeCompare(roomLabel(b)) || a.localeCompare(b)
+    );
     devicesByHub.set(hub.hub_id, ids);
   }
 
   const descriptors: Descriptor[] = [
     {
-      id: "vps",
+      id: 'vps',
       data: {
-        kind: "vps",
-        name: "HubGate VPS",
-        sublabel: "Cloud Gateway",
-        status: "online",
+        kind: 'vps',
+        name: 'HubGate VPS',
+        sublabel: 'Cloud Gateway',
+        status: 'online',
       },
     },
   ];
   const hubGroups: HubGroup[] = [];
 
   for (const hub of sortedHubs) {
-    const online = hub.status === "online";
+    const online = hub.status === 'online';
     const deviceIds = devicesByHub.get(hub.hub_id) ?? [];
     descriptors.push({
       id: `hub:${hub.hub_id}`,
       data: {
-        kind: "hub",
+        kind: 'hub',
         name: hub.hub_name,
-        sublabel: `${hub.room || "Unassigned"} · ${deviceIds.length}/${hub.device_count} devices`,
-        status: online ? "online" : "offline",
+        sublabel: `${hub.room || 'Unassigned'} · ${deviceIds.length}/${hub.device_count} devices`,
+        status: online ? 'online' : 'offline',
       },
     });
     hubGroups.push({ hubId: hub.hub_id, online, deviceIds });
 
-    const summaries = new Map<string, HubDeviceSummary>(hub.devices.map((d) => [d.dev_id, d]));
+    const summaries = new Map<string, HubDeviceSummary>(
+      hub.devices.map((d) => [d.dev_id, d])
+    );
     for (const devId of deviceIds) {
       const summary = summaries.get(devId);
       const meta = deviceMeta.get(devId);
       const devType = summary?.dev_type ?? meta?.dev_type ?? null;
-      const devOnline = !offlineDevIds.has(devId) && (meta ? meta.status !== "offline" : false);
+      const devOnline = !offlineDevIds.has(devId) && (meta ? meta.status !== 'offline' : false);
       descriptors.push({
         id: `dev:${devId}`,
         data: {
-          kind: "device",
+          kind: 'device',
           name: summary?.dev_name || devId,
-          sublabel: `${devType ?? "Device"} · ${roomLabel(devId) || "No room"}`,
-          status: meta || summary ? (devOnline ? "online" : "offline") : "unknown",
+          sublabel: `${devType ?? 'Device'} · ${roomLabel(devId) || 'No room'}`,
+          status: meta || summary ? (devOnline ? 'online' : 'offline') : 'unknown',
           iconType: devType,
         },
       });
     }
   }
 
-  const signature = descriptors.map((d) => d.id).sort().join("|");
+  const signature = descriptors.map((d) => d.id).sort().join('|');
 
   return { descriptors, hubGroups, devicesByHub, offlineDevIds, signature };
 }
 
-function computeLayout(hubGroups: HubGroup[], devicesByHub: Map<string, string[]>): Map<string, { x: number; y: number }> {
+function computeLayout(
+  hubGroups: HubGroup[],
+  devicesByHub: Map<string, string[]>
+): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   const count = Math.max(hubGroups.length, 1);
 
-  positions.set("vps", { x: ((count - 1) / 2) * HUB_SPACING, y: ROW_Y[0] });
+  positions.set('vps', { x: ((count - 1) / 2) * HUB_SPACING, y: ROW_Y[0] });
 
   const hubX = new Map<string, number>();
   hubGroups.forEach((group, i) => {
@@ -237,15 +237,15 @@ function computeLayout(hubGroups: HubGroup[], devicesByHub: Map<string, string[]
 export function TopologyView() {
   const router = useRouter();
 
-  const { data: hubs = [], isPending: hubsPending } = useQuery({
+  const { data: hubs = [] } = useQuery({
     queryKey: queryKeys.hubs.list(),
     queryFn: fetchHubs,
     refetchInterval: POLL_MS,
   });
 
-  const { data: devices = [], isPending: devicesPending } = useQuery({
+  const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.active(),
-    queryFn: () => fetchDevices("active"),
+    queryFn: () => fetchDevices('active'),
     refetchInterval: POLL_MS,
   });
 
@@ -256,10 +256,13 @@ export function TopologyView() {
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
-  const model = useMemo(() => buildModel(hubs, devices, rooms), [hubs, devices, rooms]);
+  const model = useMemo(
+    () => buildModel(hubs, devices, rooms),
+    [hubs, devices, rooms]
+  );
 
   const positionsRef = useRef(new Map<string, { x: number; y: number }>());
-  const signatureRef = useRef("");
+  const signatureRef = useRef('');
   if (signatureRef.current !== model.signature) {
     signatureRef.current = model.signature;
     positionsRef.current = computeLayout(model.hubGroups, model.devicesByHub);
@@ -269,11 +272,11 @@ export function TopologyView() {
     () =>
       model.descriptors.map((d) => ({
         id: d.id,
-        type: "topology" as const,
+        type: 'topology' as const,
         position: positionsRef.current.get(d.id) ?? { x: 0, y: 0 },
         data: d.data,
       })),
-    [model],
+    [model]
   );
 
   const edges = useMemo<Edge[]>(() => {
@@ -285,11 +288,11 @@ export function TopologyView() {
       const hubNodeId = `hub:${group.hubId}`;
       const hubDown = !group.online || group.deviceIds.some((id) => model.offlineDevIds.has(id));
       const edgeId = `edge:vps:${hubNodeId}`;
-      const connected = isConnected("vps", hubNodeId);
+      const connected = isConnected('vps', hubNodeId);
       const dimmed = hoveredNodeId !== null && !connected;
       out.push({
         id: edgeId,
-        source: "vps",
+        source: 'vps',
         target: hubNodeId,
         animated: hubDown && !REDUCED_MOTION,
         style: {
@@ -322,118 +325,61 @@ export function TopologyView() {
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: TopologyNodeType) => {
-      if (node.data.kind === "device") {
+      if (node.data.kind === 'device') {
         void router.navigate({
-          to: "/device/$deviceId",
+          to: '/device/$deviceId',
           params: { deviceId: node.id.slice(4) },
         });
-      } else if (node.data.kind === "hub") {
-        void router.navigate({ to: "/hubs" });
+      } else if (node.data.kind === 'hub') {
+        void router.navigate({ to: '/hubs' });
       }
     },
-    [router],
+    [router]
   );
-
-  const isLoading = hubsPending || devicesPending;
-
-  if (isLoading) {
-    return (
-      <Card className="overflow-hidden min-h-[500px] flex flex-col">
-        <CardHeader className="flex flex-row items-center justify-between gap-2 gap-0">
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-3 w-48" />
-          </div>
-          <Skeleton className="h-6 w-20 rounded-full" />
-        </CardHeader>
-        <Separator />
-        <CardContent className="flex-1 flex items-center justify-center p-6">
-          <div className="flex flex-col gap-3 w-full max-w-md">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-32 w-full" />
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (model.hubGroups.length === 0) {
     return (
-      <Card className="overflow-hidden min-h-[500px] flex flex-col">
-        <CardContent className="flex-1 p-0 flex items-center justify-center">
-          <Empty>
-            <EmptyMedia>
-              <HelpCircle className="size-8 text-muted-foreground" />
-            </EmptyMedia>
-            <EmptyHeader>
-              <EmptyTitle>No edge hubs registered yet</EmptyTitle>
-              <EmptyDescription>Approved hubs and their devices will appear here automatically.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </CardContent>
-      </Card>
+      <div className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg min-h-[500px] flex flex-col items-center justify-center text-zinc-500 gap-2">
+        <HelpCircle className="h-8 w-8 text-zinc-600" />
+        <p className="text-sm">No edge hubs registered yet.</p>
+        <p className="text-xs text-zinc-600">
+          Approved hubs and their devices will appear here automatically.
+        </p>
+      </div>
     );
   }
 
-  const totalDevices = model.descriptors.filter((d) => d.data.kind === "device").length;
-
   return (
-    <Card className="overflow-hidden min-h-[500px] flex flex-col">
-      <CardHeader className="flex flex-row items-center justify-between gap-4 gap-0">
-        <div className="flex flex-col gap-1 min-w-0">
-          <CardTitle className="text-sm font-semibold tracking-tight flex items-center gap-2">
-            Network Topology
-            <Badge variant="outline" className="font-mono text-xs gap-1.5">
-              <span className="size-1.5 rounded-full bg-primary shrink-0" aria-hidden />
-              {model.hubGroups.length} hubs · {totalDevices} devices
-            </Badge>
-          </CardTitle>
-          <CardDescription className="text-xs truncate">HubGate → Pi bridge → Devices · click node to drill down</CardDescription>
-        </div>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge variant="secondary" className="font-mono text-xs shrink-0">
-                {model.hubGroups.filter((g) => g.online).length}/{model.hubGroups.length} online
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent side="top">Hub online status — live 3s polling</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </CardHeader>
-      <Separator />
-      <CardContent className="flex-1 p-0 overflow-hidden min-h-[420px]" onMouseLeave={() => setHoveredNodeId(null)}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodeClick={onNodeClick}
-          onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
-          onNodeMouseLeave={() => setHoveredNodeId(null)}
-          fitView
-          fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
-          minZoom={0.3}
-          maxZoom={1.75}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          proOptions={{ hideAttribution: false }}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#27272a" />
-          <Controls
-            showInteractive={false}
-            className="bg-card border-border [&>button]:bg-card [&>button]:border-border [&>button]:fill-muted-foreground [&>button:hover]:bg-muted"
-          />
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor="#3f3f46"
-            nodeStrokeWidth={0}
-            maskColor="rgba(9, 9, 11, 0.75)"
-            className="bg-card border border-border rounded"
-          />
-        </ReactFlow>
-      </CardContent>
-    </Card>
+    <div
+      className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg min-h-[500px] overflow-hidden"
+      onMouseLeave={() => setHoveredNodeId(null)}
+    >
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodeClick={onNodeClick}
+        onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
+        onNodeMouseLeave={() => setHoveredNodeId(null)}
+        fitView
+        fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
+        minZoom={0.3}
+        maxZoom={1.75}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        proOptions={{ hideAttribution: false }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#27272a" />
+        <Controls showInteractive={false} className="bg-zinc-900 border-zinc-800 [&>button]:bg-zinc-900 [&>button]:border-zinc-800 [&>button]:fill-zinc-400 [&>button:hover]:bg-zinc-800" />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor="#3f3f46"
+          nodeStrokeWidth={0}
+          maskColor="rgba(9, 9, 11, 0.75)"
+          className="bg-zinc-950 border border-zinc-800 rounded"
+        />
+      </ReactFlow>
+    </div>
   );
 }
