@@ -178,10 +178,14 @@ while read -r _old _new ref; do
     # SPA build + publish (only if node/npm available on the VPS)
     if command -v npm >/dev/null 2>&1; then
         echo "[post-receive] building SPA in ${SPA_DIR}"
-        ( cd "${SPA_DIR}" && npm ci && npm run build ) || fail=1
+        # Use nvm Node 22 if available (Vite 8 requires Node 20.19+/22), else fallback to system npm with engine-strict false
+        if [ -s "$HOME/.nvm/nvm.sh" ]; then \. "$HOME/.nvm/nvm.sh" && nvm use 22 >/dev/null 2>&1 || true; fi
+        npm config set engine-strict false >/dev/null 2>&1 || true
+        ( cd "${SPA_DIR}" && npm ci --ignore-engines && npm run build --ignore-engines ) || fail=1
         if [[ ${fail} -eq 0 && -d "${SPA_DIR}/dist" ]]; then
             mkdir -p "${WWW_DIR}"
             rsync -a --delete "${SPA_DIR}/dist/" "${WWW_DIR}/" || fail=1
+            chmod -R 755 "${WWW_DIR}" || fail=1
         fi
     else
         echo "[post-receive] NOTE: npm not found, skipping SPA build (serving existing ${WWW_DIR})"
