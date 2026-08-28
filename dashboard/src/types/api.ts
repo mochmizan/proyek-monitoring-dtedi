@@ -184,3 +184,44 @@ export interface HubActionResponse {
   hub_id: string;
 }
 
+export interface ScheduleResponse {
+  id: string;
+  dev_id: string;
+  hub_id?: string | null;
+  cron_expr: string;
+  payload: Record<string, unknown>;
+  tz: string;
+  enabled: boolean;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  next_run_at?: string | null;
+  human?: string | null;
+}
+
+export interface ScheduleCreate {
+  dev_id: string;
+  hub_id?: string | null;
+  cron_expr: string;
+  payload: Record<string, unknown>;
+  tz?: string;
+  enabled?: boolean;
+}
+
+export interface ScheduleUpdate {
+  dev_id?: string | null;
+  hub_id?: string | null;
+  cron_expr?: string | null;
+  payload?: Record<string, unknown> | null;
+  tz?: string | null;
+  enabled?: boolean | null;
+}
+
+export interface SchedulePreviewResponse {
+  cron_expr: string;
+  valid: boolean;
+  human?: string | null;
+  next_runs?: string[] | null;
+  error?: string | null;
+}
+

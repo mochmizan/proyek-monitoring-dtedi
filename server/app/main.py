@@ -19,6 +19,8 @@ from app.routers import devices as devices_router
 from app.routers import alerts as alerts_router
 from app.routers import iot as iot_router
 from app.routers import commands as commands_router
+from app.routers import schedules as schedules_router
+from app.services.scheduler import scheduler_lifespan
 
 # Ensure logging configured
 configure_logging()
@@ -30,7 +32,7 @@ os.makedirs(FLOORPLAN_UPLOAD_DIR, exist_ok=True)
 # Import fail-fast checks from config (already executed on import)
 import app.core.config  # noqa: F401
 
-api = FastAPI(title="HubGate V5 - Secure API Gateway")
+api = FastAPI(title="HubGate V5 - Secure API Gateway", lifespan=scheduler_lifespan)
 api.state.limiter = limiter
 api.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 api.add_exception_handler(SessionExpired, session_expired_handler)
@@ -80,3 +82,4 @@ api.include_router(devices_router.router)
 api.include_router(alerts_router.router)
 api.include_router(iot_router.router)
 api.include_router(commands_router.router)
+api.include_router(schedules_router.router)

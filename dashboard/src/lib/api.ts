@@ -16,6 +16,10 @@ import type {
   DeviceHistoryResponse,
   HubResponse,
   HubActionResponse,
+  ScheduleResponse,
+  ScheduleCreate,
+  ScheduleUpdate,
+  SchedulePreviewResponse,
 } from '../types/api';
 
 const BASE = import.meta.env.VITE_API_BASE || '';
@@ -276,4 +280,66 @@ export async function revokeHub(hubId: string): Promise<HubActionResponse> {
     credentials: 'same-origin',
   });
   return handleResponse<HubActionResponse>(res);
+}
+
+// ----------------------------------------------------
+// Schedules API — ATS flexible cron (server-scheduler)
+// ----------------------------------------------------
+
+export async function fetchSchedules(params?: { hub_id?: string; dev_id?: string; enabled?: boolean }): Promise<ScheduleResponse[]> {
+  const url = new URL(`${BASE}/api/schedules`, window.location.origin);
+  if (params?.hub_id) url.searchParams.set('hub_id', params.hub_id);
+  if (params?.dev_id) url.searchParams.set('dev_id', params.dev_id);
+  if (typeof params?.enabled === 'boolean') url.searchParams.set('enabled', String(params.enabled));
+  const res = await fetch(url.toString(), { credentials: 'same-origin' });
+  return handleResponse<ScheduleResponse[]>(res);
+}
+
+export async function fetchSchedule(id: string): Promise<ScheduleResponse> {
+  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+  return handleResponse<ScheduleResponse>(res);
+}
+
+export async function createSchedule(payload: ScheduleCreate): Promise<ScheduleResponse> {
+  const res = await fetch(`${BASE}/api/schedules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    credentials: 'same-origin',
+  });
+  return handleResponse<ScheduleResponse>(res);
+}
+
+export async function updateSchedule(id: string, payload: ScheduleUpdate): Promise<ScheduleResponse> {
+  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    credentials: 'same-origin',
+  });
+  return handleResponse<ScheduleResponse>(res);
+}
+
+export async function deleteSchedule(id: string): Promise<{ status: string; id: string }> {
+  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+  });
+  return handleResponse<{ status: string; id: string }>(res);
+}
+
+export async function runNowSchedule(id: string): Promise<{ status: string; command_id: string }> {
+  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}/run-now`, {
+    method: 'POST',
+    credentials: 'same-origin',
+  });
+  return handleResponse<{ status: string; command_id: string }>(res);
+}
+
+export async function previewScheduleCron(cronExpr: string, tz?: string): Promise<SchedulePreviewResponse> {
+  const url = new URL(`${BASE}/api/schedules/preview`, window.location.origin);
+  url.searchParams.set('cron_expr', cronExpr);
+  if (tz) url.searchParams.set('tz', tz);
+  const res = await fetch(url.toString(), { credentials: 'same-origin' });
+  return handleResponse<SchedulePreviewResponse>(res);
 }

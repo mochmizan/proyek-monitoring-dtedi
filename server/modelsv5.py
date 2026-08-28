@@ -189,8 +189,30 @@ class LoginAttempt(Base):
     locked_until = Column(DateTime(timezone=True), nullable=True)
 
 
+class schedules(Base):
+    __tablename__ = "schedules"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    dev_id = Column(String, ForeignKey("dev_table.dev_id", ondelete="CASCADE"), nullable=False)
+    hub_id = Column(String, ForeignKey("hub_table.hub_id", ondelete="CASCADE"), nullable=True)
+    cron_expr = Column(String(64), nullable=False)
+    payload = Column(JSON_TYPE, nullable=False)
+    tz = Column(String(32), nullable=False, default="Asia/Jakarta")
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_by = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_schedules_enabled_hub", "enabled", "hub_id"),
+        Index("ix_schedules_dev", "dev_id"),
+    )
+
+
 # Aliases for consistent naming
 Room = rooms
 DeviceThresholdConfig = device_threshold_config
 EventLog = event_log
+Schedule = schedules
 

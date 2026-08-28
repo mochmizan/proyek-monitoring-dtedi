@@ -25,4 +25,10 @@ export const queryKeys = {
     all: ['hubs'] as const,
     list: () => [...queryKeys.hubs.all, 'list'] as const,
   },
+  schedules: {
+    all: ['schedules'] as const,
+    list: (filters?: Record<string, unknown>) => [...queryKeys.schedules.all, 'list', filters] as const,
+    detail: (id: string) => [...queryKeys.schedules.all, 'detail', id] as const,
+    preview: (cron: string, tz?: string) => [...queryKeys.schedules.all, 'preview', cron, tz] as const,
+  },
 };

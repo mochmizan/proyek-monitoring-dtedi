@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SchedulesRouteImport } from './routes/schedules'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HubsRouteImport } from './routes/hubs'
@@ -21,6 +22,11 @@ import { Route as DeviceDeviceIdRouteImport } from './routes/device.$deviceId'
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SchedulesRoute = SchedulesRouteImport.update({
+  id: '/schedules',
+  path: '/schedules',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapRoute = MapRouteImport.update({
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
+  '/schedules': typeof SchedulesRoute
   '/settings': typeof SettingsRoute
   '/device/$deviceId': typeof DeviceDeviceIdRoute
   '/room/$roomId': typeof RoomRoomIdRoute
@@ -75,6 +82,7 @@ export interface FileRoutesByTo {
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
+  '/schedules': typeof SchedulesRoute
   '/settings': typeof SettingsRoute
   '/device/$deviceId': typeof DeviceDeviceIdRoute
   '/room/$roomId': typeof RoomRoomIdRoute
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
+  '/schedules': typeof SchedulesRoute
   '/settings': typeof SettingsRoute
   '/device/$deviceId': typeof DeviceDeviceIdRoute
   '/room/$roomId': typeof RoomRoomIdRoute
@@ -98,6 +107,7 @@ export interface FileRouteTypes {
     | '/hubs'
     | '/login'
     | '/map'
+    | '/schedules'
     | '/settings'
     | '/device/$deviceId'
     | '/room/$roomId'
@@ -108,6 +118,7 @@ export interface FileRouteTypes {
     | '/hubs'
     | '/login'
     | '/map'
+    | '/schedules'
     | '/settings'
     | '/device/$deviceId'
     | '/room/$roomId'
@@ -118,6 +129,7 @@ export interface FileRouteTypes {
     | '/hubs'
     | '/login'
     | '/map'
+    | '/schedules'
     | '/settings'
     | '/device/$deviceId'
     | '/room/$roomId'
@@ -129,6 +141,7 @@ export interface RootRouteChildren {
   HubsRoute: typeof HubsRoute
   LoginRoute: typeof LoginRoute
   MapRoute: typeof MapRoute
+  SchedulesRoute: typeof SchedulesRoute
   SettingsRoute: typeof SettingsRoute
   DeviceDeviceIdRoute: typeof DeviceDeviceIdRoute
   RoomRoomIdRoute: typeof RoomRoomIdRoute
@@ -141,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/schedules': {
+      id: '/schedules'
+      path: '/schedules'
+      fullPath: '/schedules'
+      preLoaderRoute: typeof SchedulesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/map': {
@@ -201,6 +221,7 @@ const rootRouteChildren: RootRouteChildren = {
   HubsRoute: HubsRoute,
   LoginRoute: LoginRoute,
   MapRoute: MapRoute,
+  SchedulesRoute: SchedulesRoute,
   SettingsRoute: SettingsRoute,
   DeviceDeviceIdRoute: DeviceDeviceIdRoute,
   RoomRoomIdRoute: RoomRoomIdRoute,
