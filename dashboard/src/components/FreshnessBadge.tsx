@@ -24,14 +24,14 @@ export function FreshnessBadge({ dataUpdatedAt, className }: FreshnessBadgeProps
     <span
       className={cn(
         'inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap',
-        stale ? 'bg-amber-500/10 text-amber-400 rounded-full px-1.5 py-0.5' : 'text-zinc-400',
+        stale ? 'bg-amber-500/10 text-amber-400 rounded-full px-1.5 py-0.5' : 'text-muted-foreground',
         className
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          'h-1.5 w-1.5 rounded-full',
+          'size-1.5 rounded-full',
           stale ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
         )}
       />

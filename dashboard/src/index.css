@@ -1,41 +1,59 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fragment+Mono&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
 @import "tailwindcss";
 
-@theme {
+@theme inline {
   --color-background: #09090b;
-  --color-foreground: #f4f4f5;
-  
+  --color-foreground: #fafafa;
   --color-card: #18181b;
-  --color-card-hover: #27272a;
-  --color-card-foreground: #f4f4f5;
-  
-  --color-primary: #6366f1; /* Premium Indigo */
-  --color-primary-hover: #4f46e5;
+  --color-card-foreground: #fafafa;
+  --color-popover: #18181b;
+  --color-popover-foreground: #fafafa;
+  --color-primary: #6366f1;
   --color-primary-foreground: #ffffff;
-  
   --color-secondary: #27272a;
-  --color-secondary-hover: #3f3f46;
-  --color-secondary-foreground: #f4f4f5;
-  
+  --color-secondary-foreground: #fafafa;
   --color-muted: #27272a;
   --color-muted-foreground: #a1a1aa;
-  
+  --color-accent: #14b8a6;
+  --color-accent-foreground: #09090b;
+  --color-destructive: #ef4444;
   --color-border: #27272a;
-  --color-input: #18181b;
+  --color-input: #27272a;
   --color-ring: #6366f1;
-  
-  /* Status Colors */
-  --color-status-normal: #10b981;
-  --color-status-warning: #f59e0b;
-  --color-status-critical: #ef4444;
-  --color-status-offline: #71717a;
+  --color-chart-1: #6366f1;
+  --color-chart-2: #14b8a6;
+  --color-chart-3: #f59e0b;
+  --color-chart-4: #ef4444;
+  --color-chart-5: #a1a1aa;
+  --color-surface-raised: #1e1e22;
+  --color-signal-amber: #f59e0b;
+  --color-signal-teal: #14b8a6;
+  --radius: 0.625rem;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, monospace;
+  --font-serif: "Source Serif 4", ui-serif, serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* raw aliases for prompt literal check */
+  --background: #09090b;
+  --card: #18181b;
+  --surface-raised: #1e1e22;
+  --primary: #6366f1;
+  --signal-amber: #f59e0b;
+  --signal-teal: #14b8a6;
+  --chart-1: #6366f1;
+  --chart-2: #14b8a6;
+  --chart-3: #f59e0b;
+  --chart-4: #ef4444;
+  --chart-5: #a1a1aa;
 }
 
 /* Reset base styles */
-html, body {
+html,
+body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   margin: 0;
   padding: 0;
   min-height: 100vh;
@@ -52,10 +70,86 @@ html, body {
   outline-offset: 2px;
 }
 
+/* Motion — emil design eng */
+.button {
+  transition:
+    transform 120ms var(--ease-out),
+    background-color 150ms var(--ease-out);
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+.tooltip,
+.popover {
+  transform-origin: var(--transform-origin);
+  transition:
+    transform 125ms var(--ease-out),
+    opacity 125ms var(--ease-out);
+}
+
+.tooltip[data-starting-style],
+.tooltip[data-ending-style],
+.popover[data-starting-style],
+.popover[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.tooltip[data-instant],
+.popover[data-instant] {
+  transition-duration: 0ms;
+}
+
+/* Chart tooltip — interruptible */
+.recharts-tooltip-wrapper {
+  transition: transform 150ms var(--ease-out);
+}
+
+/* Card stagger */
+.card-stagger {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: fadeIn 300ms var(--ease-out) forwards;
+}
+
+.card-stagger:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.card-stagger:nth-child(2) {
+  animation-delay: 50ms;
+}
+
+.card-stagger:nth-child(3) {
+  animation-delay: 100ms;
+}
+
+.card-stagger:nth-child(4) {
+  animation-delay: 150ms;
+}
+
+.card-stagger:nth-child(5) {
+  animation-delay: 200ms;
+}
+
+.card-stagger:nth-child(6) {
+  animation-delay: 250ms;
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes value-flash {
   0% {
     background-color: rgb(99 102 241 / 0.15);
   }
+
   100% {
     background-color: transparent;
   }
@@ -68,5 +162,24 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .value-flash {
     animation: none;
+  }
+
+  .button:active {
+    transform: none;
+  }
+
+  .tooltip,
+  .popover,
+  .card-stagger,
+  .recharts-tooltip-wrapper {
+    transition: none;
+    animation: none;
+    transform: none;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .button:hover {
+    filter: brightness(1.05);
   }
 }

@@ -63,36 +63,36 @@ function MultiSelect({ label, placeholder, options, selected, onChange }: MultiS
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">{label}</label>
+      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{label}</label>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded px-3 py-2 text-zinc-300 text-sm focus:outline-none focus:border-indigo-500 text-left transition-colors cursor-pointer"
+        className="w-full flex items-center justify-between bg-muted border hover:border-border rounded px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary text-left transition-colors cursor-pointer"
       >
         <span className="truncate">
           {selected.length === 0 ? placeholder : `${selected.length} selected`}
         </span>
-        <ChevronDown className={cn("h-4 w-4 text-zinc-500 transition-transform duration-200", isOpen && "rotate-180")} />
+        <ChevronDown className={cn("size-4 text-muted-foreground transition-transform duration-200", isOpen && "rotate-180")} />
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 z-50 mt-1 w-full bg-zinc-950 border border-zinc-800 rounded shadow-xl max-h-60 overflow-y-auto p-1 divide-y divide-zinc-900">
+        <div className="absolute left-0 z-50 mt-1 w-full bg-popover border rounded shadow-xl max-h-60 overflow-y-auto p-1 divide-y divide-border">
           <div className="py-1">
             <button
               type="button"
               onClick={selectAll}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-indigo-400 hover:bg-zinc-900 rounded text-left font-semibold cursor-pointer"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-primary hover:bg-muted rounded text-left font-semibold cursor-pointer"
             >
               <div className={cn(
-                "w-3.5 h-3.5 rounded border border-zinc-700 flex items-center justify-center bg-zinc-950",
-                selected.length === 0 && "bg-indigo-600 border-indigo-600"
+                "size-3.5 rounded border flex items-center justify-center bg-muted",
+                selected.length === 0 && "bg-primary border-primary"
               )}>
-                {selected.length === 0 && <Check className="h-2.5 w-2.5 text-white" />}
+                {selected.length === 0 && <Check className="size-2.5 text-primary-foreground" />}
               </div>
               All (Clear Filters)
             </button>
           </div>
-          <div className="py-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-100">
+          <div className="py-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100">
             {options.map((opt) => {
               const isChecked = selected.includes(opt.id);
               return (
@@ -100,13 +100,13 @@ function MultiSelect({ label, placeholder, options, selected, onChange }: MultiS
                   key={opt.id}
                   type="button"
                   onClick={() => toggleOption(opt.id)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100 rounded text-left cursor-pointer"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-muted hover:text-foreground rounded text-left cursor-pointer"
                 >
                   <div className={cn(
-                    "w-3.5 h-3.5 rounded border border-zinc-700 flex items-center justify-center bg-zinc-950",
-                    isChecked && "bg-indigo-600 border-indigo-600"
+                    "size-3.5 rounded border flex items-center justify-center bg-muted",
+                    isChecked && "bg-primary border-primary"
                   )}>
-                    {isChecked && <Check className="h-2.5 w-2.5 text-white" />}
+                    {isChecked && <Check className="size-2.5 text-primary-foreground" />}
                   </div>
                   <span className="truncate">{opt.name}</span>
                 </button>
@@ -190,23 +190,23 @@ function AlertsPage() {
   const alerts = alertsData?.alerts || [];
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Title */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Alert History</h1>
-          <p className="text-zinc-500 text-xs mt-1">Audit log of environmental threshold breaches and event logs</p>
+          <h1 className="text-2xl font-bold text-foreground">Alert History</h1>
+          <p className="text-muted-foreground text-xs mt-1">Audit log of environmental threshold breaches and event logs</p>
         </div>
         {isFetching && (
-          <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800">
-            <RefreshCw className="h-3 w-3 animate-spin text-indigo-400" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-card px-3 py-1.5 rounded-full border">
+            <RefreshCw className="size-3 animate-spin text-primary" />
             <span>Updating</span>
           </div>
         )}
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5">
+      <div className="bg-card border rounded-lg p-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <MultiSelect
             label="Rooms"
@@ -225,11 +225,11 @@ function AlertsPage() {
           />
 
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Severity</label>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Severity</label>
             <select
               value={selectedSeverity}
               onChange={(e) => updateSearch({ severity: e.target.value as 'All' | 'Warning' | 'Critical' })}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-300 text-sm focus:outline-none focus:border-indigo-500"
+              className="w-full bg-muted border rounded px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
             >
               <option value="All">All Severities</option>
               <option value="Warning">Warning</option>
@@ -238,11 +238,11 @@ function AlertsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Status</label>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Status</label>
             <select
               value={selectedStatus}
               onChange={(e) => updateSearch({ status: e.target.value as 'All' | 'Open' | 'Resolved' })}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-300 text-sm focus:outline-none focus:border-indigo-500"
+              className="w-full bg-muted border rounded px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
             >
               <option value="All">All Statuses</option>
               <option value="Open">Open Only</option>
@@ -251,11 +251,11 @@ function AlertsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Time Range</label>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Time Range</label>
             <select
               value={selectedTimeRange}
               onChange={(e) => updateSearch({ timeRange: e.target.value as '6h' | '24h' | '7d' | '30d' })}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-300 text-sm focus:outline-none focus:border-indigo-500"
+              className="w-full bg-muted border rounded px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
             >
               <option value="6h">Past 6 Hours</option>
               <option value="24h">Past 24 Hours</option>
@@ -267,15 +267,15 @@ function AlertsPage() {
       </div>
 
       {/* Alerts Table */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+      <div className="bg-card border rounded-lg overflow-hidden">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Recorded Events ({alerts.length})
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-zinc-300">
-            <thead className="bg-zinc-950 text-[10px] font-semibold uppercase text-zinc-500 border-b border-zinc-800">
+          <table className="w-full text-left text-xs text-foreground">
+            <thead className="bg-muted text-[10px] font-semibold uppercase text-muted-foreground border-b">
               <tr>
                 <th className="px-6 py-3">Timestamp</th>
                 <th className="px-6 py-3">Severity</th>
@@ -287,35 +287,35 @@ function AlertsPage() {
                 <th className="px-6 py-3">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60">
+            <tbody className="divide-y divide-border/60">
               {alerts.map((alert) => (
-                <tr key={alert.event_id} className="hover:bg-zinc-850/50 transition-colors">
-                  <td className="px-6 py-4 text-zinc-400 font-mono">
+                <tr key={alert.event_id} className="hover:bg-muted/50 transition-colors">
+                  <td className="px-6 py-4 text-muted-foreground font-mono">
                     {new Date(alert.timestamp).toLocaleString()}
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(
                       "px-2.5 py-0.5 rounded text-[10px] font-bold uppercase",
                       alert.severity === 'critical'
-                        ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                        ? "bg-destructive/20 text-destructive border border-destructive/30"
                         : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                     )}>
                       {alert.severity}
                     </span>
                   </td>
-                  <td className="px-6 py-4 font-semibold text-zinc-200">
+                  <td className="px-6 py-4 font-semibold text-foreground">
                     {alert.dev_name || alert.dev_id || 'Unknown Device'}
                   </td>
-                  <td className="px-6 py-4 text-zinc-400 font-medium">
+                  <td className="px-6 py-4 text-muted-foreground font-medium">
                     {alert.room_name || 'Unassigned'}
                   </td>
-                  <td className="px-6 py-4 text-zinc-300">
+                  <td className="px-6 py-4 text-foreground">
                     {alert.metric || alert.message || 'Temperature Threshold'}
                   </td>
-                  <td className="px-6 py-4 font-mono font-bold text-zinc-100">
+                  <td className="px-6 py-4 font-mono font-bold text-foreground">
                     {alert.value !== null && alert.value !== undefined ? `${alert.value}°C` : '—'}
                   </td>
-                  <td className="px-6 py-4 font-mono text-zinc-500">
+                  <td className="px-6 py-4 font-mono text-muted-foreground">
                     {alert.threshold !== null && alert.threshold !== undefined ? `${alert.threshold}°C` : '—'}
                   </td>
                   <td className="px-6 py-4">
@@ -323,11 +323,11 @@ function AlertsPage() {
                       "px-2 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1",
                       alert.resolved_at
                         ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                        : "bg-red-500/10 text-red-400 border border-red-500/20"
+                        : "bg-destructive/10 text-destructive border border-destructive/20"
                     )}>
                       <span className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        alert.resolved_at ? "bg-emerald-400" : "bg-red-400 animate-pulse"
+                        "size-1.5 rounded-full",
+                        alert.resolved_at ? "bg-emerald-400" : "bg-destructive animate-pulse"
                       )} />
                       {alert.resolved_at ? 'Resolved' : 'Active'}
                     </span>
@@ -336,8 +336,8 @@ function AlertsPage() {
               ))}
               {alerts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-10 text-center text-zinc-500">
-                    <ShieldAlert className="h-8 w-8 mx-auto mb-2 text-zinc-700" />
+                  <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground">
+                    <ShieldAlert className="size-8 mx-auto mb-2 text-muted-foreground" />
                     <p>No alert records match the selected filter criteria.</p>
                   </td>
                 </tr>

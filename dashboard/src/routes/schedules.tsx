@@ -241,35 +241,35 @@ function SchedulesPage() {
   if (!canRead) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <AlertTriangle className="h-8 w-8 text-amber-500" />
-        <p className="text-sm text-zinc-400">Operator or Admin role required to view schedules.</p>
+        <AlertTriangle className="size-8 text-amber-500" />
+        <p className="text-sm text-muted-foreground">Operator or Admin role required to view schedules.</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100 flex items-center gap-2">
-            <CalendarClock className="h-6 w-6 text-indigo-400" />
+          <h1 className="text-2xl font-bold text-card-foreground flex items-center gap-2 font-serif tracking-tight">
+            <CalendarClock className="size-6 text-primary" data-icon="inline-start" />
             ATS Schedules
           </h1>
-          <p className="text-xs text-zinc-500 mt-1">VPS-authoritative flexible cron — APScheduler fans out via pending_commands (Asia/Jakarta).</p>
+          <p className="text-xs text-muted-foreground mt-1">VPS-authoritative flexible cron — APScheduler fans out via pending_commands (Asia/Jakarta).</p>
         </div>
         {canWrite && (
-          <Button onClick={openCreate} className="bg-indigo-600 hover:bg-indigo-500">
-            <Plus className="h-4 w-4" />
+          <Button onClick={openCreate}>
+            <Plus data-icon="inline-start" />
             New Schedule
           </Button>
         )}
       </div>
 
       {/* Filters */}
-      <Card className="bg-zinc-900 border-zinc-800">
+      <Card>
         <CardContent className="pt-6 flex flex-wrap gap-4">
           <div className="min-w-[200px]">
-            <Label className="mb-1.5 block text-xs uppercase tracking-wider text-zinc-400">Device filter</Label>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Device filter</Label>
             <Select value={filterDevId ?? "__all"} onValueChange={(v) => navigate({ search: (p) => ({ ...p, dev_id: v === "__all" ? undefined : v }) })}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="All devices" />
@@ -287,7 +287,7 @@ function SchedulesPage() {
             </Select>
           </div>
           <div className="min-w-[160px]">
-            <Label className="mb-1.5 block text-xs uppercase tracking-wider text-zinc-400">Enabled</Label>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Enabled</Label>
             <Select value={filterEnabled ?? "all"} onValueChange={(v) => navigate({ search: (p) => ({ ...p, enabled: v as never }) })}>
               <SelectTrigger className="w-36">
                 <SelectValue />
@@ -301,38 +301,38 @@ function SchedulesPage() {
               </SelectContent>
             </Select>
           </div>
-          {isFetching && <span className="self-end text-xs text-zinc-500 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Refreshing</span>}
+          {isFetching && <span className="self-end text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="size-3 animate-spin" data-icon="inline-start" />Refreshing</span>}
         </CardContent>
       </Card>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" />
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded flex items-center gap-2">
+          <AlertTriangle className="size-4" data-icon="inline-start" />
           <span>{(error as Error).message}</span>
         </div>
       )}
 
       {/* Table */}
-      <Card className="bg-zinc-900 border-zinc-800 overflow-hidden">
-        <CardHeader className="border-b border-zinc-800">
-          <CardTitle className="text-sm uppercase tracking-wider text-zinc-400">Schedules ({schedules.length})</CardTitle>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b">
+          <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground">Schedules ({schedules.length})</CardTitle>
           <CardDescription className="text-xs">Cron preview via local parser; next runs in Asia/Jakarta + UTC. Server next_run_at shown when available.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {isPending ? (
-            <div className="p-8 text-center text-zinc-500 text-sm flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Loading schedules…</div>
+            <div className="p-8 text-center text-muted-foreground text-sm flex items-center justify-center gap-2"><Loader2 className="size-4 animate-spin" data-icon="inline-start" />Loading schedules…</div>
           ) : schedules.length === 0 ? (
             <div className="p-10 text-center flex flex-col items-center gap-2">
-              <Clock className="h-8 w-8 text-zinc-600" />
-              <p className="text-sm text-zinc-400">No schedules yet</p>
-              <p className="text-xs text-zinc-600 max-w-sm">Create a schedule such as weekly warmup <code className="bg-zinc-950 px-1 rounded">0 18 * * 0</code> with bundled payload manual+on to bypass the PROMINI guard.</p>
+              <Clock className="size-8 text-muted-foreground" data-icon="inline-start" />
+              <p className="text-sm text-muted-foreground">No schedules yet</p>
+              <p className="text-xs text-muted-foreground max-w-sm">Create a schedule such as weekly warmup <code className="bg-muted px-1 rounded">0 18 * * 0</code> with bundled payload manual+on to bypass the PROMINI guard.</p>
               {canWrite && <Button size="sm" onClick={openCreate} className="mt-2">Create first schedule</Button>}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-zinc-800 hover:bg-transparent">
+                  <TableRow className="hover:bg-transparent">
                     <TableHead>Device</TableHead>
                     <TableHead>Hub</TableHead>
                     <TableHead>Cron</TableHead>
@@ -348,13 +348,13 @@ function SchedulesPage() {
                     const human = s.human ?? describeCron(s.cron_expr)
                     const nextLocal = s.next_run_at ? formatNextRun(new Date(s.next_run_at)).jakarta : null
                     return (
-                      <TableRow key={s.id} className="border-zinc-800">
-                        <TableCell className="font-mono text-xs text-zinc-200">{s.dev_id}</TableCell>
-                        <TableCell className="font-mono text-xs text-zinc-500">{s.hub_id ?? "—"}</TableCell>
-                        <TableCell className="font-mono text-xs bg-zinc-950 rounded px-2 py-1 border border-zinc-800 inline-block mt-2">{s.cron_expr}</TableCell>
-                        <TableCell className="text-xs text-zinc-400 max-w-[220px] truncate" title={human}>{human}</TableCell>
+                      <TableRow key={s.id}>
+                        <TableCell className="font-mono text-xs">{s.dev_id}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{s.hub_id ?? "—"}</TableCell>
+                        <TableCell className="font-mono text-xs bg-muted rounded px-2 py-1 border inline-block mt-2">{s.cron_expr}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate" title={human}>{human}</TableCell>
                         <TableCell><Badge variant="secondary" className="font-mono text-[10px]">{formatPayloadBadge(s.payload)}</Badge></TableCell>
-                        <TableCell className="text-xs text-zinc-500">
+                        <TableCell className="text-xs text-muted-foreground">
                           {nextLocal ?? (getNextRuns(s.cron_expr, 1)[0] ? formatNextRun(getNextRuns(s.cron_expr, 1)[0] as Date).jakarta : "—")}
                         </TableCell>
                         <TableCell>
@@ -363,13 +363,13 @@ function SchedulesPage() {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Button size="icon" variant="ghost" onClick={() => runNowMut.mutate(s.id)} disabled={!canWrite} title="Run now (queue pending_commands)">
-                              <Play className="h-3.5 w-3.5" />
+                              <Play data-icon="inline-start" />
                             </Button>
                             <Button size="icon" variant="ghost" onClick={() => openEdit(s)} disabled={!canWrite} title="Edit">
-                              <Pencil className="h-3.5 w-3.5" />
+                              <Pencil data-icon="inline-start" />
                             </Button>
-                            <Button size="icon" variant="ghost" onClick={() => { if (window.confirm(`Delete schedule #${s.id} ${s.cron_expr}?`)) deleteMut.mutate(s.id) }} disabled={!canWrite} title="Delete" className="text-red-400 hover:text-red-300">
-                              <Trash2 className="h-3.5 w-3.5" />
+                            <Button size="icon" variant="ghost" onClick={() => { if (window.confirm(`Delete schedule #${s.id} ${s.cron_expr}?`)) deleteMut.mutate(s.id) }} disabled={!canWrite} title="Delete" className="text-destructive hover:text-destructive">
+                              <Trash2 data-icon="inline-start" />
                             </Button>
                           </div>
                         </TableCell>
@@ -391,9 +391,9 @@ function SchedulesPage() {
             <DialogDescription>Flexible cron (5 fields). Timezone canonical Asia/Jakarta. Bundled warmup payload bypasses PROMINI check_genset_mode.</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {formError && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded flex gap-2"><AlertTriangle className="h-4 w-4 shrink-0" /><span>{formError}</span></div>}
-            {formSuccess && <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded flex gap-2"><CheckCircle className="h-4 w-4 shrink-0" /><span>{formSuccess}</span></div>}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {formError && <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded flex gap-2"><AlertTriangle className="size-4 shrink-0" data-icon="inline-start" /><span>{formError}</span></div>}
+            {formSuccess && <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded flex gap-2"><CheckCircle className="size-4 shrink-0" data-icon="inline-start" /><span>{formSuccess}</span></div>}
 
             <div>
               <Label className="mb-1.5 block">ATS Device *</Label>
@@ -434,19 +434,19 @@ function SchedulesPage() {
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-zinc-500 mt-1">Warmup sends <code className="bg-zinc-950 px-1 rounded">{"{\"mode\":\"manual\",\"start_genset\":\"on\"}"}</code> via hub 2s poll → MQTT → bounded serial.</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Warmup sends <code className="bg-muted px-1 rounded">{"{\"mode\":\"manual\",\"start_genset\":\"on\"}"}</code> via hub 2s poll → MQTT → bounded serial.</p>
             </div>
 
             {preset === "custom" && (
               <div>
                 <Label className="mb-1.5 block">Custom JSON payload</Label>
-                <textarea value={customJson} onChange={(e) => setCustomJson(e.target.value)} rows={3} placeholder='{"mode":"manual","start_genset":"on"}' className="w-full bg-zinc-950 border border-border rounded-md px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:ring-2 focus:ring-ring" />
+                <textarea value={customJson} onChange={(e) => setCustomJson(e.target.value)} rows={3} placeholder='{"mode":"manual","start_genset":"on"}' className="w-full bg-muted border rounded-md px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
               </div>
             )}
 
             {preset !== "custom" && (
-              <div className="bg-zinc-950 border border-zinc-800 rounded p-2.5 text-xs font-mono text-zinc-400">
-                Payload: <span className="text-indigo-300">{JSON.stringify(PRESETS[preset].payload)}</span>
+              <div className="bg-muted border rounded p-2.5 text-xs font-mono text-muted-foreground">
+                Payload: <span className="text-primary">{JSON.stringify(PRESETS[preset].payload)}</span>
               </div>
             )}
 
@@ -454,9 +454,9 @@ function SchedulesPage() {
               <Label htmlFor="cron" className="mb-1.5 block">Cron expression *</Label>
               <Input id="cron" value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder="0 18 * * 0" className={cn(!cronValidation.valid && "border-red-500 focus-visible:ring-red-500")} />
               {!cronValidation.valid ? (
-                <p className="text-xs text-red-400 mt-1">{cronValidation.error}</p>
+                <p className="text-xs text-destructive mt-1">{cronValidation.error}</p>
               ) : (
-                <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1"><CheckCircle className="h-3 w-3" />{cronHuman}</p>
+                <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1"><CheckCircle className="size-3" data-icon="inline-start" />{cronHuman}</p>
               )}
               <div className="flex flex-wrap gap-1 mt-2">
                 {[
@@ -465,31 +465,31 @@ function SchedulesPage() {
                   ["Mon/Thu 18:00", "0 18 * * 1,4"],
                   ["Every 30m", "*/30 * * * *"],
                 ].map(([label, expr]) => (
-                  <button key={expr} type="button" onClick={() => setCronExpr(expr)} className={cn("px-2 py-1 rounded border text-[11px] font-mono", cronExpr === expr ? "bg-indigo-600 border-indigo-500 text-white" : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200")}>{label}</button>
+                  <button key={expr} type="button" onClick={() => setCronExpr(expr)} className={cn("px-2 py-1 rounded border text-[11px] font-mono", cronExpr === expr ? "bg-primary border-primary text-primary-foreground" : "bg-card border text-muted-foreground hover:text-foreground")}>{label}</button>
                 ))}
               </div>
             </div>
 
             {cronValidation.valid && nextRuns.length > 0 && (
-              <div className="bg-zinc-950 border border-zinc-800 rounded p-3 space-y-1">
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Next runs (WIB / UTC)</p>
+              <div className="bg-muted border rounded p-3 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Next runs (WIB / UTC)</p>
                 {nextRuns.map((d) => {
                   const f = formatNextRun(d)
-                  return <div key={d.toISOString()} className="text-xs font-mono text-zinc-300">{f.jakarta} <span className="text-zinc-500">· {f.utc}</span></div>
+                  return <div key={d.toISOString()} className="text-xs font-mono text-foreground">{f.jakarta} <span className="text-muted-foreground">· {f.utc}</span></div>
                 })}
-                <p className="text-[11px] text-zinc-500">Computed client-side (Jakarta UTC+7). Server next_run_at may differ by seconds.</p>
+                <p className="text-[11px] text-muted-foreground">Computed client-side (Jakarta UTC+7). Server next_run_at may differ by seconds.</p>
               </div>
             )}
 
-            <div className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-950 p-3">
+            <div className="flex items-center justify-between rounded border bg-muted p-3">
               <Label htmlFor="enabled" className="text-sm">Enabled (APScheduler job active)</Label>
               <Switch id="enabled" checked={enabled} onCheckedChange={setEnabled} />
             </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createMut.isPending || updateMut.isPending || !cronValidation.valid} className="bg-indigo-600 hover:bg-indigo-500">
-                {(createMut.isPending || updateMut.isPending) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <Button type="submit" disabled={createMut.isPending || updateMut.isPending || !cronValidation.valid}>
+                {(createMut.isPending || updateMut.isPending) && <Loader2 data-icon="inline-start" className="animate-spin" />}
                 {editing ? "Save changes" : "Create schedule"}
               </Button>
             </DialogFooter>

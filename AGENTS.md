@@ -190,7 +190,7 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 
 | Path | Scope |
 |---|---|
-| `dashboard/AGENTS.md` | SPA — routes, Query hooks, ErrorBoundary, constants, vitest/playwright |
+| `dashboard/AGENTS.md` | SPA — routes, Query hooks, ErrorBoundary, constants, vitest/playwright + full shadcn redesign (tokens/composition/motion per `dashboard-full-shadcn-redesign-2026-08-29`) |
 | `server/AGENTS.md` | HubGate V5 — FastAPI `app/` routers/services, auth/RBAC, DB/alembic, /health |
 | `hub/AGENTS.md` | HubBrain V5 — MQTT bridge, whitelist, WAL `MAX_PENDING_ROWS`, TLS pin |
 | `openspec/AGENTS.md` | Spec proposals & capability specs (changes pruned, archived in git) |

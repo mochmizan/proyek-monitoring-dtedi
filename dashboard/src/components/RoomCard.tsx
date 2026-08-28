@@ -2,14 +2,18 @@ import { useEffect, useRef } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { queryKeys } from '../lib/queryKeys';
-import { fetchRoomMap } from '../lib/api'
-import { POLL_MS, STALE_MS } from '../lib/constants';
-import type { RoomResponse } from '../types/api';
+import { cn } from '@/lib/utils';
+import { queryKeys } from '@/lib/queryKeys';
+import { fetchRoomMap } from '@/lib/api';
+import { POLL_MS, STALE_MS } from '@/lib/constants';
+import type { RoomResponse } from '@/types/api';
 import { Sparkline } from './Sparkline';
 import { FreshnessBadge } from './FreshnessBadge';
 import { StatusDot } from './StatusDot';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
 
 export type RoomCardStatus = 'Normal' | 'Warning' | 'Critical' | 'Offline';
 
@@ -18,6 +22,13 @@ const statusTone: Record<RoomCardStatus, 'emerald' | 'amber' | 'red' | 'zinc'> =
   Warning: 'amber',
   Critical: 'red',
   Offline: 'zinc',
+};
+
+const statusBadgeVariant: Record<RoomCardStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  Normal: 'outline',
+  Warning: 'secondary',
+  Critical: 'destructive',
+  Offline: 'outline',
 };
 
 interface RoomCardProps {
@@ -36,7 +47,7 @@ export function RoomCard({ room, status, className }: RoomCardProps) {
   });
 
   const tsReading = (roomMap?.devices || []).find(
-    (d) => d.dev_type === 'TS' && typeof d.latest_reading?.temp === 'number'
+    (d) => d.dev_type === 'TS' && typeof d.latest_reading?.temp === 'number',
   )?.latest_reading;
 
   const temp = typeof tsReading?.temp === 'number' ? tsReading.temp : null;
@@ -50,85 +61,92 @@ export function RoomCard({ room, status, className }: RoomCardProps) {
   }, [temp]);
 
   return (
-    <div
+    <Card
       className={cn(
-        'relative rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-5 flex flex-col gap-3 transition-colors',
-        'has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-indigo-500 has-[a:focus-visible]:border-indigo-500/60 focus-within:outline-none',
-        className
+        'relative flex flex-col gap-0 py-0 overflow-hidden hover:border-border transition-colors',
+        'has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring has-[a:focus-visible]:border-ring/60 focus-within:outline-none',
+        className,
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold text-zinc-100 truncate">
+      <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2 pt-5">
+        <CardTitle className="font-semibold text-card-foreground truncate text-sm leading-none">
           <Link
             to="/room/$roomId"
             params={{ roomId: room.id }}
             search={{}}
-            className="rounded-sm outline-none after:absolute after:inset-0 after:rounded-xl transition-colors hover:text-indigo-400"
+            className="rounded-sm outline-none after:absolute after:inset-0 after:rounded-xl transition-colors hover:text-primary truncate"
           >
             {room.name}
           </Link>
-        </h3>
-        <StatusDot tone={statusTone[status]} label={`Status: ${status}`} pulse={status !== 'Offline'} />
-      </div>
+        </CardTitle>
+        <Badge variant={statusBadgeVariant[status]} className="gap-1.5 shrink-0 text-xs">
+          <StatusDot tone={statusTone[status]} label={`Status: ${status}`} pulse={status !== 'Offline'} />
+          {status}
+        </Badge>
+      </CardHeader>
 
-      <div key={temp ?? 'no-temp'} className="value-flash -mx-1 px-1 py-0.5 min-h-[2.75rem]">
-        {temp === null ? (
-          <p className="text-sm text-zinc-400 leading-relaxed">Awaiting readings</p>
-        ) : (
-          <p className="text-3xl font-semibold tabular-nums text-zinc-100 leading-none">
-            {temp.toFixed(1)}
-            <span className="ml-1 text-base font-medium text-zinc-400">°C</span>
-          </p>
-        )}
-      </div>
+      <CardContent className="flex flex-col gap-2 pb-3">
+        <div key={temp ?? 'no-temp'} className="value-flash -mx-1 px-1 py-0.5 min-h-[2.75rem] flex items-center">
+          {temp === null ? (
+            <p className="text-sm text-muted-foreground leading-relaxed">Awaiting readings</p>
+          ) : (
+            <p className="text-2xl font-semibold tabular-nums font-mono text-card-foreground leading-none">
+              {temp.toFixed(1)}
+              <span className="ml-1 text-base font-medium text-muted-foreground">°C</span>
+            </p>
+          )}
+        </div>
 
-      <p className="text-sm text-zinc-300">
-        {humid === null ? (
-          <span className="text-zinc-400">Humidity —</span>
-        ) : (
-          <>
-            Humidity <span className="tabular-nums font-medium">{humid.toFixed(0)}%</span>
-          </>
-        )}
-      </p>
+        <p className="text-sm text-muted-foreground truncate">
+          {humid === null ? (
+            <span className="text-muted-foreground">Humidity —</span>
+          ) : (
+            <>
+              Humidity <span className="tabular-nums font-medium font-mono text-foreground">{humid.toFixed(0)}%</span>
+            </>
+          )}
+        </p>
+      </CardContent>
 
-      <div className="mt-auto flex items-end justify-between gap-3 pt-3 border-t border-zinc-800/60">
+      <Separator />
+
+      <CardFooter className="flex items-end justify-between gap-3 py-3 border-t-0">
         <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-xs font-medium text-zinc-400">
+          <span className="text-xs font-medium text-muted-foreground tabular-nums">
             {room.device_count} {room.device_count === 1 ? 'device' : 'devices'}
           </span>
           <FreshnessBadge dataUpdatedAt={dataUpdatedAt} />
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <Sparkline values={trendRef.current} />
-          <ChevronRight className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+          <ChevronRight className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
         </div>
-      </div>
-    </div>
+      </CardFooter>
+    </Card>
   );
 }
 
 export function RoomCardSkeleton() {
   return (
-    <div
-      aria-hidden="true"
-      className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col gap-3 animate-pulse"
-    >
-      <div className="flex items-center justify-between">
-        <div className="h-4 w-24 rounded bg-zinc-800" />
-        <div className="h-2 w-2 rounded-full bg-zinc-800" />
-      </div>
-      <div className="min-h-[2.75rem] flex items-center">
-        <div className="h-8 w-24 rounded bg-zinc-800" />
-      </div>
-      <div className="h-3.5 w-28 rounded bg-zinc-800" />
-      <div className="mt-auto flex items-end justify-between gap-3 pt-3 border-t border-zinc-800/60">
-        <div className="flex flex-col gap-2">
-          <div className="h-3 w-16 rounded bg-zinc-800" />
-          <div className="h-3 w-24 rounded bg-zinc-800" />
+    <Card className="flex flex-col gap-0 py-0 overflow-hidden" aria-hidden="true">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 pt-5">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 pb-3">
+        <div className="min-h-[2.75rem] flex items-center">
+          <Skeleton className="h-8 w-24" />
         </div>
-        <div className="h-7 w-24 rounded bg-zinc-800" />
-      </div>
-    </div>
+        <Skeleton className="h-3.5 w-28" />
+      </CardContent>
+      <Separator />
+      <CardFooter className="flex items-end justify-between gap-3 py-3">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-3 w-24" />
+        </div>
+        <Skeleton className="h-7 w-24 rounded-md" />
+      </CardFooter>
+    </Card>
   );
 }
