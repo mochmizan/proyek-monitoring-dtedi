@@ -2,9 +2,11 @@ import { GAP_FLOOR_MIN } from './constants';
 
 export const GAP_FLOOR_MS = GAP_FLOOR_MIN * 60 * 1000;
 
+const TZ_OFFSET_RE = /[+-]\d{2}:\d{2}$/;
+
 export function parseToDate(isoStr: string): Date {
   let normalized = String(isoStr).trim();
-  if (!normalized.endsWith('Z') && !normalized.endsWith('z') && !/[+-]\d{2}:\d{2}$/.test(normalized)) {
+  if (!normalized.endsWith('Z') && !normalized.endsWith('z') && !TZ_OFFSET_RE.test(normalized)) {
     normalized += 'Z';
   }
   return new Date(normalized);

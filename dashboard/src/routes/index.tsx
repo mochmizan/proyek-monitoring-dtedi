@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -54,26 +55,37 @@ function DashboardPage() {
     refetchIntervalInBackground: false,
   });
 
-  const unresolvedAlerts = (alertsData?.alerts || []).filter((a) => !a.resolved_at);
-  const criticalCount = unresolvedAlerts.filter((a) => a.severity === 'critical').length;
-  const warningCount = unresolvedAlerts.filter((a) => a.severity === 'warning').length;
+  const { unresolvedAlerts, criticalCount, warningCount } = React.useMemo(() => {
+    const alerts = alertsData?.alerts || [];
+    let crit = 0;
+    let warn = 0;
+    const unresolved: typeof alerts = [];
+    for (const a of alerts) {
+      if (!a.resolved_at) {
+        unresolved.push(a);
+        if (a.severity === 'critical') crit++;
+        else if (a.severity === 'warning') warn++;
+      }
+    }
+    return { unresolvedAlerts: unresolved, criticalCount: crit, warningCount: warn };
+  }, [alertsData?.alerts]);
 
-  const getRoomStatus = (roomId: string): RoomCardStatus => {
+  const getRoomStatus = React.useCallback((roomId: string): RoomCardStatus => {
     const roomAlerts = unresolvedAlerts.filter((a) => a.room_id === roomId);
     if (roomAlerts.some((a) => a.severity === 'critical')) return 'Critical';
     if (roomAlerts.some((a) => a.severity === 'warning')) return 'Warning';
     const roomDevs = devices.filter((d) => d.room_id === roomId);
     if (roomDevs.length > 0 && roomDevs.every((d) => !d.is_active)) return 'Offline';
     return 'Normal';
-  };
+  }, [unresolvedAlerts, devices]);
 
-  const renderHeader = (
+  const renderHeader = React.useCallback((
     label: string,
     key: 'name' | 'type' | 'room' | 'devId' | 'status' | 'created'
   ): React.ReactNode => {
     const isActive = sortBy === key;
     return (
-      <th className="px-6 py-4">
+      <th key={key} className="px-6 py-4">
         <Link
           to="."
           search={(prev) => ({
@@ -81,7 +93,7 @@ function DashboardPage() {
             sortBy: key,
             sortOrder: isActive ? (prev.sortOrder === 'asc' ? 'desc' : 'asc') : 'asc',
           })}
-          className="group inline-flex items-center gap-1.5 hover:text-indigo-400 transition-colors cursor-pointer select-none"
+          className="group inline-flex items-center gap-1.5 hover:text-indigo-400 transition-colors duration-200 ease-out cursor-pointer select-none active:scale-[0.97]"
         >
           <span>{label}</span>
           {isActive ? (
@@ -91,48 +103,52 @@ function DashboardPage() {
               <ArrowDown className="h-3.5 w-3.5 text-indigo-400" />
             )
           ) : (
-            <ArrowUpDown className="h-3.5 w-3.5 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowUpDown className="h-3.5 w-3.5 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
           )}
         </Link>
       </th>
     );
-  };
+  }, [sortBy, sortOrder]);
 
-  const sortedDevices = [...devices].sort((a: DeviceResponse, b: DeviceResponse) => {
-    let comparison = 0;
-    switch (sortBy) {
-      case 'name':
-        comparison = (a.dev_name || a.dev_id).toLowerCase().localeCompare((b.dev_name || b.dev_id).toLowerCase());
-        break;
-      case 'type':
-        comparison = (a.dev_type || '').toLowerCase().localeCompare((b.dev_type || '').toLowerCase());
-        break;
-      case 'room': {
-        const nameA = (rooms.find((r) => r.id === a.room_id)?.name || 'Unpaired').toLowerCase();
-        const nameB = (rooms.find((r) => r.id === b.room_id)?.name || 'Unpaired').toLowerCase();
-        comparison = nameA.localeCompare(nameB);
-        break;
+  const sortedDevices = React.useMemo(() => {
+    const copy = [...devices];
+    copy.sort((a: DeviceResponse, b: DeviceResponse) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case 'name':
+          comparison = (a.dev_name || a.dev_id).toLowerCase().localeCompare((b.dev_name || b.dev_id).toLowerCase());
+          break;
+        case 'type':
+          comparison = (a.dev_type || '').toLowerCase().localeCompare((b.dev_type || '').toLowerCase());
+          break;
+        case 'room': {
+          const nameA = (rooms.find((r) => r.id === a.room_id)?.name || 'Unpaired').toLowerCase();
+          const nameB = (rooms.find((r) => r.id === b.room_id)?.name || 'Unpaired').toLowerCase();
+          comparison = nameA.localeCompare(nameB);
+          break;
+        }
+        case 'devId':
+          comparison = a.dev_id.toLowerCase().localeCompare(b.dev_id.toLowerCase());
+          break;
+        case 'status': {
+          const statA = a.is_active ? 'active' : 'pending';
+          const statB = b.is_active ? 'active' : 'pending';
+          comparison = statA.localeCompare(statB);
+          break;
+        }
+        case 'created': {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          comparison = timeA - timeB;
+          break;
+        }
+        default:
+          comparison = 0;
       }
-      case 'devId':
-        comparison = a.dev_id.toLowerCase().localeCompare(b.dev_id.toLowerCase());
-        break;
-      case 'status': {
-        const statA = a.is_active ? 'active' : 'pending';
-        const statB = b.is_active ? 'active' : 'pending';
-        comparison = statA.localeCompare(statB);
-        break;
-      }
-      case 'created': {
-        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        comparison = timeA - timeB;
-        break;
-      }
-      default:
-        comparison = 0;
-    }
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+    return copy;
+  }, [devices, rooms, sortBy, sortOrder]);
 
   const isInitialLoading = roomsStatus === 'pending';
 
@@ -191,9 +207,13 @@ function DashboardPage() {
           {isInitialLoading &&
             Array.from({ length: 6 }, (_, i) => <RoomCardSkeleton key={`room-skeleton-${i}`} />)}
           {!isInitialLoading &&
-            rooms.map((room) => {
+            rooms.map((room, i) => {
               const status = getRoomStatus(room.id);
-              return <RoomCard key={room.id} room={room} status={status} />;
+              return (
+                <div key={room.id} className="stagger-item" style={{ animationDelay: `${i * 60}ms` }}>
+                  <RoomCard room={room} status={status} />
+                </div>
+              );
             })}
           {!isInitialLoading && rooms.length === 0 && (
             <div className="col-span-full bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center text-zinc-400 text-sm">
@@ -233,7 +253,7 @@ function DashboardPage() {
                       key={device.dev_id}
                       onClick={() => navigate({ to: '/device/$deviceId', params: { deviceId: device.dev_id } })}
                       className={cn(
-                        "hover:bg-zinc-850/50 transition-colors cursor-pointer",
+                        "row-cv hover:bg-zinc-850/50 transition-colors duration-200 ease-out cursor-pointer active:scale-[0.99]",
                         !device.is_active && "opacity-60"
                       )}
                     >

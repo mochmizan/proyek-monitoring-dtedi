@@ -29,6 +29,11 @@
   --color-status-warning: #f59e0b;
   --color-status-critical: #ef4444;
   --color-status-offline: #71717a;
+
+  /* Emil — strong easing curves */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Reset base styles */
@@ -69,4 +74,31 @@ html, body {
   .value-flash {
     animation: none;
   }
+  [data-slot="dialog-content"],
+  [data-slot="dialog-overlay"],
+  [data-slot="sheet-content"],
+  [data-slot="sheet-overlay"],
+  [data-slot="popover-content"],
+  [data-slot="tooltip-content"],
+  [data-slot="select-content"] {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /* hover styles are already gated — no extra rules needed, but ensures touch devices don't get sticky hover */
+}
+
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stagger-item {
+  animation: staggerIn 300ms var(--ease-out) both;
+}
+
+.row-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 48px;
 }
