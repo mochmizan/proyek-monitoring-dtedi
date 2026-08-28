@@ -99,12 +99,12 @@ IoT smart-building monitoring: React SPA at `dashboard/`, FastAPI gateway at `se
 
 ### Stack
 
-React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, Query 5.101.2, Zustand 5.0.14, Zod 4.4.3, Tailwind 4.3.2, oxlint 1.71. FastAPI, SQLAlchemy 2.0, PostgreSQL/SQLite fallback, Pydantic v2, SlowAPI, Argon2id.
+React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, Query 5.101.2, Zustand 5.0.14, Zod 4.4.3, Tailwind 4.3.2 (via `@tailwindcss/vite`), oxlint 1.71. FastAPI, SQLAlchemy 2.0, PostgreSQL/SQLite fallback, Pydantic v2, SlowAPI, Argon2id, APScheduler 3.10.4 + tzdata (Asia/Jakarta).
 
 ### Architecture
 
-- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session.
-- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands) + `core/config` + `services/alert_engine,presence`, Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), `GET /health` unauth, history downsamples to ~1000 buckets via AVG.
+- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta`.
+- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands`), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
 - **Edge**: Pi bridges `hs109rs/#` → HTTPS, `MAX_PENDING_ROWS=20000` WAL FIFO `0.35s` pacing, whitelist sync, dynamic `{hub_name}/{dev_type}/command`.
 - **Firmware**: non-blocking I2C, NaN skip, EEPROM AC state (`0xAC`), canonical `<SGM,on>` `<RST,rst>` `<M,auto>` framing. Fleet AP `smsb-iot` `192.168.72.242`, `DEV_NAME=<TYPE>-<last4 MAC>`.
 
@@ -129,14 +129,14 @@ Folder name must match `.ino` (Arduino IDE). See `docs/FIRMWARE_ALIGNMENT_REPORT
 smsb/
 ├── AGENTS.md  README.md  .gitignore  LICENSE  justfile
 ├── docs/  2026-*-design.md  FIRMWARE_*.md  LOCAL_TESTING*.md  PRODUCTION_*.md  HUB_BACKUP*.md  SESSION_HANDOVER.md  researcher_notes.md
-├── dashboard/  index.html  vite.config.ts  package.json  src/  e2e/  public/
+├── dashboard/  index.html  vite.config.ts  package.json  src/  e2e/  public/  components.json
 ├── server/  hubgatev5.py (shim)  app/  alembic/  requirements.txt  pyproject.toml  Dockerfile
 ├── hub/  main.py  requirements.txt  Dockerfile
 ├── firmware/  WEMOS_*/*.ino  fixed_*/  fsm_*/  PROMINI/  common/secrets.h.example
 ├── deploy/  nginx_smsb.conf  smsb-api.service  hubbrain.service  setup_push_deploy.sh
 ├── tools/  deploy_pi_edge.py  verifiers  sniffers  seeders
 ├── tests/  test_e2e_pipeline.py  test_verify_*.py
-├── openspec/  AGENTS.md
+├── openspec/  AGENTS.md  changes/ats-flexible-schedule-2026-08-29/
 ├── mosquitto/  config/mosquitto.conf (passwd gitignored)
 └── graphify-out/ (ignored)
 ```
@@ -149,7 +149,7 @@ smsb/
 - `routeTree.gen.ts` auto-generated (TanStack Router) — never edit
 - Same-origin: Vite proxy `/api`→`8000` locally, Nginx `443` → `127.0.0.1:8000` prod (no CORS)
 - Alerts sync in `receive_iot` with debounce/hysteresis; edge WAL FIFO replay
-- `src/lib/api.ts` `queryKeys.ts` `queryClient.ts` `types/api.ts`
+- `src/lib/api.ts` `queryKeys.ts` `queryClient.ts` `types/api.ts` `scheduleApi.ts` `cron.ts`
 
 ### Secrets & Pre-Public Checklist
 

@@ -13,13 +13,13 @@ React SPA for IoT smart-building monitoring. Live rooms/devices/alerts/map views
 
 ## Local Contracts
 
-- **Stack**: React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, TanStack Query 5.101.2, Zustand 5.0.14, Zod 4.4.3, Tailwind 4.3.2, oxlint 1.71. `erasableSyntaxOnly:true` + `verbatimModuleSyntax:true` → `import type` only, no enums/namespaces. `@/*` → `./src/*`.
-- **Routes** (`src/routes/` → `routeTree.gen.ts` auto-generated, never edit): `/` (`index.tsx`), `/login`, `/alerts`, `/map`, `/hubs`, `/settings`, `/room/$roomId`, `/device/$deviceId`.
-- **Server state**: TanStack Query via `src/lib/api.ts` + `src/lib/queryKeys.ts` factory + `src/lib/queryClient.ts`. Live views poll `POLL_MS=3000` / `STALE_MS=2000` from `src/lib/constants.ts` (`GAP_FLOOR_MIN=5` for chart gaps). Mutations invalidate relevant keys.
+- **Stack**: React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, TanStack Query 5.101.2, Zustand 5.0.14, Zod 4.4.3, Tailwind 4.3.2 (via `@tailwindcss/vite`), oxlint 1.71. `erasableSyntaxOnly:true` + `verbatimModuleSyntax:true` → `import type` only, no enums/namespaces. `@/*` → `./src/*`.
+- **Routes** (`src/routes/` → `routeTree.gen.ts` auto-generated, never edit): `/` (`index.tsx`), `/login`, `/alerts`, `/map`, `/hubs`, `/schedules`, `/settings`, `/room/$roomId`, `/device/$deviceId`.
+- **Server state**: TanStack Query via `src/lib/api.ts` + `src/lib/queryKeys.ts` factory + `src/lib/queryClient.ts` + `src/lib/scheduleApi.ts`. Live views poll `POLL_MS=3000` / `STALE_MS=2000` from `src/lib/constants.ts` (`GAP_FLOOR_MIN=5` for chart gaps). Mutations invalidate relevant keys. `schedules` via `queryKeys.schedules` flexible cron `Asia/Jakarta`.
 - **Client UI state**: Zustand `src/store/appStore.ts` only `sidebarOpen` / `selectedRoomId`.
 - **Auth & errors**: `GET /api/auth/me` session check in `beforeLoad`; 401 redirect to `/login?redirect=…`; `ErrorBoundary` (`src/components/ErrorBoundary.tsx`) at App root + `QueryCache.onError`.
 - **Same-origin**: Vite proxy `/api`→`127.0.0.1:8000` (dev); Nginx `443`→`127.0.0.1:8000` (prod). No CORS.
-- **Build**: `src/main.tsx` → `App.tsx` (Router + QueryClientProvider), `src/index.css` Tailwind 4 `@theme`, `src/types/api.ts` matches HubGate Pydantic models, `src/lib/utils.ts` `cn()` = `clsx + tailwind-merge`.
+- **Build**: `src/main.tsx` → `App.tsx` (Router + QueryClientProvider), `src/index.css` Tailwind 4 `@theme` (`--color-background:#09090b` `--color-primary:#6366f1`), `components.json` `new-york` shadcn, `src/types/api.ts` matches HubGate Pydantic models, `src/lib/utils.ts` `cn()` = `clsx + tailwind-merge`, `src/components/ui/*` + `src/lib/cron.ts` cron helpers.
 
 ## Work Guidance
 

@@ -13,19 +13,19 @@ FastAPI cloud gateway (HubGate V5) — ingestion, auth/RBAC, rooms/devices/alert
 
 ### Stack
 
-Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49, Alembic, PostgreSQL (prod) + SQLite fallback (`DATABASE_URL` unset), SlowAPI 0.1.10, argon2-cffi 25.1.0, psycopg2-binary 2.9.12, python-multipart 0.0.27 — all pinned `==` in `requirements.txt`.
+Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49, Alembic, PostgreSQL (prod) + SQLite fallback (`DATABASE_URL` unset), SlowAPI 0.1.10, argon2-cffi 25.1.0, psycopg2-binary 2.9.12, python-multipart 0.0.27, APScheduler 3.10.4 + tzdata (Asia/Jakarta) — all pinned `==` in `requirements.txt`.
 
 ### Entry & Architecture
 
-- Entry: `hubgatev5.py` shim re-exports `api` from `app/main.py`; run via `uvicorn hubgatev5:api --host 127.0.0.1 --port 8000` (prod behind Nginx 443). Canonical assembly at `app/main.py` (CORS, rate limiter, `GET /health` + `/api/health` unauthenticated DB `SELECT 1` check, static mount).
-- Routers: `app/routers/` — `auth`, `hubs`, `rooms`, `devices`, `alerts`, `iot`, `commands`.
+- Entry: `hubgatev5.py` shim re-exports `api` from `app/main.py`; run via `uvicorn hubgatev5:api --host 127.0.0.1 --port 8000` (prod behind Nginx 443). Canonical assembly at `app/main.py` (CORS, rate limiter, scheduler `lifespan`, `GET /health` + `/api/health` unauthenticated DB `SELECT 1` check, static mount).
+- Routers: `app/routers/` — `auth`, `hubs`, `rooms`, `devices`, `alerts`, `iot`, `commands`, `schedules`.
 - Core: `app/core/config`, `app/core/rate_limit`, `app/core/logging`.
-- Services: `app/services/alert_engine`, `app/services/presence`.
-- DB: `app/modelsv5.py`; Alembic at `alembic/` (`alembic.ini` + `versions/04a48dbce60b_initial_schema_as_observed.py`); `init_sqlv5.py` is idempotent additive migration for fallback.
+- Services: `app/services/alert_engine`, `app/services/presence`, `app/services/scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` cron → `pending_commands`).
+- DB: `app/modelsv5.py`; Alembic at `alembic/` (`alembic.ini` + `versions/04a48dbce60b_initial_schema_as_observed.py` + `b7c9e2f1a4d8_add_schedules.py`); `init_sqlv5.py` is idempotent additive migration for fallback.
 
 ### Tables
 
-`hub_table`, `rooms`, `dev_table` (`last_seen`, `last_status`, `marker_x`, `marker_y`, `hub_id` FK), `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `pending_commands`, `users`, `sessions`, `login_attempts`.
+`hub_table`, `rooms`, `dev_table` (`last_seen`, `last_status`, `marker_x`, `marker_y`, `hub_id` FK), `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `pending_commands`, `schedules` (`cron_expr`, `payload` JSON, `tz` `Asia/Jakarta`, `enabled`, `next_run_at`), `users`, `sessions`, `login_attempts`.
 
 ### Payload Validation
 
