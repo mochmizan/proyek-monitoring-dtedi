@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Select } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import type { ScheduleResponse, ScheduleCreate } from "@/types/api"
@@ -270,21 +270,35 @@ function SchedulesPage() {
         <CardContent className="pt-6 flex flex-wrap gap-4">
           <div className="min-w-[200px]">
             <Label className="mb-1.5 block text-xs uppercase tracking-wider text-zinc-400">Device filter</Label>
-            <Select value={filterDevId ?? ""} onChange={(e) => navigate({ search: (p) => ({ ...p, dev_id: e.target.value || undefined }) })} placeholder="All devices">
-              <option value="">All devices</option>
-              {atsDevices.map((d) => (
-                <option key={d.dev_id} value={d.dev_id}>
-                  {d.dev_name ? `${d.dev_name} (${d.dev_id})` : d.dev_id}
-                </option>
-              ))}
+            <Select value={filterDevId ?? "__all"} onValueChange={(v) => navigate({ search: (p) => ({ ...p, dev_id: v === "__all" ? undefined : v }) })}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="All devices" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="__all">All devices</SelectItem>
+                  {atsDevices.map((d) => (
+                    <SelectItem key={d.dev_id} value={d.dev_id}>
+                      {d.dev_name ? `${d.dev_name} (${d.dev_id})` : d.dev_id}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
             </Select>
           </div>
           <div className="min-w-[160px]">
             <Label className="mb-1.5 block text-xs uppercase tracking-wider text-zinc-400">Enabled</Label>
-            <Select value={filterEnabled ?? "all"} onChange={(e) => navigate({ search: (p) => ({ ...p, enabled: e.target.value as never }) }) }>
-              <option value="all">All</option>
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
+            <Select value={filterEnabled ?? "all"} onValueChange={(v) => navigate({ search: (p) => ({ ...p, enabled: v as never }) })}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="true">Enabled</SelectItem>
+                  <SelectItem value="false">Disabled</SelectItem>
+                </SelectGroup>
+              </SelectContent>
             </Select>
           </div>
           {isFetching && <span className="self-end text-xs text-zinc-500 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Refreshing</span>}
@@ -371,7 +385,7 @@ function SchedulesPage() {
 
       {/* Dialog create/edit */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) resetForm() }}>
-        <DialogContent onClose={() => setDialogOpen(false)} className="max-w-xl">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>{editing ? `Edit schedule #${editing.id}` : "New ATS schedule"}</DialogTitle>
             <DialogDescription>Flexible cron (5 fields). Timezone canonical Asia/Jakarta. Bundled warmup payload bypasses PROMINI check_genset_mode.</DialogDescription>
@@ -383,21 +397,42 @@ function SchedulesPage() {
 
             <div>
               <Label className="mb-1.5 block">ATS Device *</Label>
-              <Select value={devId} onChange={(e) => setDevId(e.target.value)} placeholder="Select ATS device">
-                {atsDevices.length === 0 && <option value="" disabled>No ATS devices found — pair one first</option>}
-                {atsDevices.map((d) => (
-                  <option key={d.dev_id} value={d.dev_id}>{d.dev_name ? `${d.dev_name} (${d.dev_id})` : d.dev_id} — hub {d.hub_id ?? "?"}</option>
-                ))}
+              <Select value={devId} onValueChange={setDevId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select ATS device" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {atsDevices.length === 0 ? (
+                      <SelectItem value="__none" disabled>No ATS devices found — pair one first</SelectItem>
+                    ) : (
+                      atsDevices.map((d) => (
+                        <SelectItem key={d.dev_id} value={d.dev_id}>
+                          {d.dev_name ? `${d.dev_name} (${d.dev_id})` : d.dev_id} — hub {d.hub_id ?? "?"}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectGroup>
+                </SelectContent>
               </Select>
               {atsDevices.length === 0 && <p className="text-[11px] text-amber-400 mt-1">No ATS devices. Pair an ATS device in Settings first.</p>}
             </div>
 
             <div>
               <Label className="mb-1.5 block">Command preset</Label>
-              <Select value={preset} onChange={(e) => setPreset(e.target.value as PresetKey)}>
-                {Object.entries(PRESETS).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
+              <Select value={preset} onValueChange={(v) => setPreset(v as PresetKey)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {Object.entries(PRESETS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>
+                        {v.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
               </Select>
               <p className="text-[11px] text-zinc-500 mt-1">Warmup sends <code className="bg-zinc-950 px-1 rounded">{"{\"mode\":\"manual\",\"start_genset\":\"on\"}"}</code> via hub 2s poll → MQTT → bounded serial.</p>
             </div>
