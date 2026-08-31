@@ -184,7 +184,7 @@ def replay_backlog_batch(db_path: str = None, batch_size: int = REPLAY_BATCH_SIZ
         with get_db_conn(target_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, payload FROM pending_telemetry ORDER BY id ASC LIMIT ?",
+                "SELECT id, payload, created_at FROM pending_telemetry ORDER BY id ASC LIMIT ?",
                 (batch_size,)
             )
             rows = cursor.fetchall()
@@ -198,9 +198,16 @@ def replay_backlog_batch(db_path: str = None, batch_size: int = REPLAY_BATCH_SIZ
     logging.info(f"[REPLAY WORKER] Draining batch of {len(rows)} pending telemetry records...")
     replayed_count = 0
 
-    for record_id, payload_str in rows:
+    for record_id, payload_str, created_at in rows:
         try:
             payload_dict = json.loads(payload_str)
+            # Preserve original capture time for server-side WAL replay (offline gap fix 24/8-30/8).
+            # Inject _hub_created_at (epoch float) if not already present; server uses it as event_time.
+            if "_hub_created_at" not in payload_dict and "HUB_TS" not in payload_dict:
+                try:
+                    payload_dict["_hub_created_at"] = float(created_at)
+                except Exception:
+                    payload_dict["_hub_created_at"] = created_at
         except json.JSONDecodeError:
             # Corrupted payload: prune to prevent replay loop lock
             logging.error(f"[REPLAY CORRUPT] Deleting unparseable record id={record_id}")

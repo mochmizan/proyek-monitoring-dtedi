@@ -111,7 +111,32 @@ def evaluate_device_thresholds(
                     alert.resolved_at = now_ts
 
     # 2. ATS Emergency Evaluation
+    # Campus building safe: PLN 220V + genset <80V means mains healthy; device EMERGENCY latch stuck.
+    # Auto-resolve EMERGENCY when PLN >210 and GENSET <80 even if device still reports 1.
     if "EMERGENCY" in payload and payload["EMERGENCY"] is not None:
+        # Auto-resolve stuck EMERGENCY when mains clearly restored (PLN 220V, genset 55V case).
+        if payload.get("EMERGENCY") and payload.get("PLN") is not None and payload.get("GENSET") is not None:
+            try:
+                pln_v = float(payload.get("PLN"))
+                genset_v = float(payload.get("GENSET"))
+            except Exception:
+                pln_v = None
+                genset_v = None
+            if pln_v is not None and genset_v is not None and pln_v > 210 and genset_v < 80:
+                # PLN stable and genset low -> hub offline latch, auto-resolve and suppress new alert
+                open_em = (
+                    db.query(event_log)
+                    .filter(
+                        event_log.dev_id == dev.dev_id,
+                        event_log.metric == "emergency",
+                        event_log.resolved_at.is_(None),
+                    )
+                    .all()
+                )
+                for alert in open_em:
+                    alert.resolved_at = now_ts
+                # Suppress creating a new emergency alert for this sample
+                return
         is_emergency = bool(payload["EMERGENCY"])
         if is_emergency:
             thresh = db.get(device_threshold_config, dev.dev_id)

@@ -2,16 +2,19 @@
 # Validasi Payload Pydantic HubGate V5
 from datetime import datetime
 from typing import Annotated, Literal, Union, Optional, Any
-from pydantic import BaseModel, Field, model_validator, ValidationInfo
+from pydantic import BaseModel, ConfigDict, Field, model_validator, ValidationInfo
 
 
 # ==========================================
 # MODEL DASAR (BASE SCHEMA)
 # ==========================================
 class IotDataBase(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
     HUB_NAME: str
     DEV_ID: str      # MAC Address Perangkat
     DEV_NAME: str
+    HUB_TS: Optional[float] = None
+    hub_created_at: Optional[float] = Field(default=None, alias="_hub_created_at")
 
 
 # ==========================================

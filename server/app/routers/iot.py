@@ -65,13 +65,39 @@ def receive_iot(
             raise HTTPException(status_code=403, detail="Device not authorized")
 
         now_utc = datetime.now(UTC)
+        # Preserve WAL capture time if hub replayed offline batch (fix 2h gap 01-03 on 30/8).
+        # Hub injects _hub_created_at (or HUB_TS) epoch float during replay; use as event_time.
+        event_time = now_utc
+        hub_ts_raw = None
+        # 1) explicit typed fields (via alias)
+        try:
+            if getattr(device, "HUB_TS", None) is not None:
+                hub_ts_raw = getattr(device, "HUB_TS")
+            elif getattr(device, "hub_created_at", None) is not None:
+                hub_ts_raw = getattr(device, "hub_created_at")
+            else:
+                extra = getattr(device, "__pydantic_extra__", None)
+                if isinstance(extra, dict):
+                    hub_ts_raw = extra.get("_hub_created_at") or extra.get("HUB_TS")
+                if hub_ts_raw is None:
+                    # fallback: model_dump with extra allowance may include it
+                    _dump = device.model_dump(mode="json", by_alias=True)
+                    hub_ts_raw = _dump.get("_hub_created_at") or _dump.get("HUB_TS") or _dump.get("hub_created_at")
+        except Exception:
+            hub_ts_raw = None
+        if hub_ts_raw is not None:
+            try:
+                event_time = datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
+            except Exception:
+                event_time = now_utc
+
         resolve_offline_on_telemetry(db, registered_device, now_utc)
 
         if isinstance(device, TSData):
             new_data = temperature_data(
                 data_id=str(uuid.uuid4()),
                 dev_id=device.DEV_ID,
-                timestamp=now_utc,
+                timestamp=event_time,
                 temp=device.TEMP,
                 humid=device.HUMID,
             )
@@ -80,7 +106,7 @@ def receive_iot(
             new_data = ats_data(
                 data_id=str(uuid.uuid4()),
                 dev_id=device.DEV_ID,
-                timestamp=now_utc,
+                timestamp=event_time,
                 state=device.STATE,
                 pln=device.PLN,
                 genset=device.GENSET,
@@ -97,26 +123,26 @@ def receive_iot(
                 data_id=str(uuid.uuid4()),
                 dev_id=device.DEV_ID,
                 dev_name=device.DEV_NAME,
-                timestamp=now_utc,
+                timestamp=event_time,
                 payload=device.model_dump(mode="json"),
             )
             db.add(new_data)
 
-            payload_dict = device.model_dump(mode="json")
+            payload_dict = device.model_dump(mode="json", by_alias=True)
             if "TEMP" in payload_dict and payload_dict["TEMP"] is not None:
                 temp_val = float(payload_dict["TEMP"])
                 humid_val = float(payload_dict["HUMID"]) if "HUMID" in payload_dict and payload_dict["HUMID"] is not None else None
                 temp_record = temperature_data(
                     data_id=str(uuid.uuid4()),
                     dev_id=device.DEV_ID,
-                    timestamp=now_utc,
+                    timestamp=event_time,
                     temp=temp_val,
                     humid=humid_val,
                 )
                 db.add(temp_record)
 
-        payload_dict = device.model_dump(mode="json")
-        evaluate_device_thresholds(db=db, dev=registered_device, payload=payload_dict, timestamp=now_utc)
+        payload_dict = device.model_dump(mode="json", by_alias=True)
+        evaluate_device_thresholds(db=db, dev=registered_device, payload=payload_dict, timestamp=event_time)
 
         db.commit()
         return {"status": "received"}

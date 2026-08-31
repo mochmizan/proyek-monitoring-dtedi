@@ -245,7 +245,8 @@ export function HistoryChart({ points, devType, timeRange, setTimeRange, warning
               const x1 = Math.max(padding.left, timeToX(o.start));
               const x2 = Math.min(width - padding.right, timeToX(o.end));
               if (x2 - x1 < 2) return null;
-              return (<g key={`outage-${i}`}><rect x={x1} y={padding.top} width={x2 - x1} height={plotHeight} fill="#52525b" opacity="0.25" />{x2 - x1 > 44 && (<text x={(x1 + x2) / 2} y={padding.top + 12} textAnchor="middle" className="text-[9px] fill-zinc-500 font-mono">offline</text>)}</g>);
+              const outageMinutes = Math.round((o.end - o.start) / 60000);
+              return (<g key={`outage-${i}`}><title>hub offline - no samples ({outageMinutes} min gap)</title><rect x={x1} y={padding.top} width={x2 - x1} height={plotHeight} fill="#52525b" opacity="0.18" />{x2 - x1 > 60 && (<text x={(x1 + x2) / 2} y={padding.top + 12} textAnchor="middle" className="text-[9px] fill-zinc-400 font-mono">hub offline - no samples</text>)}{x2 - x1 > 24 && x2 - x1 <= 60 && (<text x={(x1 + x2) / 2} y={padding.top + 12} textAnchor="middle" className="text-[9px] fill-zinc-400 font-mono">offline</text>)}</g>);
             })}
             {isTS || (!isTS && !isATS) ? (
               <>
