@@ -103,23 +103,24 @@ React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, Query 5.1
 
 ### Architecture
 
-- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta`.
-- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands`), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
+- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta` (server-authoritative warmup, no firmware Sunday auto).
+- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands` `{"mode":"manual","start_genset":"on"}` bundled bypass), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
 - **Edge**: Pi bridges `hs109rs/#` → HTTPS, `MAX_PENDING_ROWS=20000` WAL FIFO `0.35s` pacing, whitelist sync, dynamic `{hub_name}/{dev_type}/command`.
-- **Firmware**: non-blocking I2C, NaN skip, EEPROM AC state (`0xAC`), canonical `<SGM,on>` `<RST,rst>` `<M,auto>` framing. Fleet AP `smsb-iot` `192.168.72.242`, `DEV_NAME=<TYPE>-<last4 MAC>`.
+- **Firmware**: non-blocking I2C, NaN skip, EEPROM AC state (`0xAC`), canonical `<SGM,on>` `<RST,rst>` `<M,auto>` `<T,unixtime>` `<RTC_OK>` framing, `WDT 8S` `MCUSR` `VAC 210/190` hysteresis `SIZE 20/60`, `WARMUP disabled` (server `schedules` authoritative, no `Sunday 18:00` auto). Fleet AP `smsb-iot` `192.168.72.242`, `DEV_NAME=<TYPE>-<last4 MAC>`.
 
 ### Firmware Fleet
 
-Every hub Pi broadcasts hidden `smsb-iot` WPA2 `192.168.72.242`; all ESP share WiFi/broker, `DEV_NAME` boot-derived.
+Every hub Pi broadcasts hidden `smsb-iot` WPA2 `192.168.72.242`; all ESP share WiFi/broker, `DEV_NAME` boot-derived. `WARMUP Sunday 18:00` autonomous removed `2026-08-31` — server `schedules` `Asia/Jakarta` authoritative via `pending_commands`.
 
 | Sketch | Node | Status |
 |---|---|---|
 | `firmware/WEMOS_TS/WEMOS_TS.ino` | TS SHT30+OLED | dual I2C `0x3C/0x3D` `0x44/0x45`, 1Hz OLED, NaN skip |
 | `firmware/WEMOS_AC/WEMOS_AC.ino` | AC/IR 2x Gree | dual I2C, EEPROM `0xAC` 8B/unit |
-| `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino` | ATS bridge canonical | `HUB_NAME`/`DEV_TYPE: ATS`, 512B buf, bounded serial, backoff |
+| `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino` | ATS bridge canonical | `HUB_NAME`/`DEV_TYPE: ATS`, 512B buf, bounded serial, backoff, `RTC_OK` |
 | `firmware/WEMOS_ATS/WEMOS_ATS.ino` | ATS bridge alias (deprecated) | 12-line shim → `fixed_wemos` |
-| `firmware/fsm_w_serial/fsm_w_serial.ino` + `PROMINI/PROMINI.ino` | ATS FSM | RTC degraded `rtcAvailable` (no `while(1)`), `WDT`, canonical serial |
-| `firmware/HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino` | bench I2C utility | not deployed |
+| `firmware/PROMINI/PROMINI.ino` | ATS FSM Pro Mini **canonical** | `WDT 8S` `MCUSR` `VAC 210/190` `SIZE 20/60` `RST exact` `MAX 3` `WARMUP disabled` server `schedules` |
+| `firmware/archive/fsm_w_serial-2026-08-31/fsm_w_serial.ino` | bench ATS FSM daily 86400 (archived) | not deployed |
+| `firmware/bench/HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino` | bench I2C utility | not deployed |
 
 Folder name must match `.ino` (Arduino IDE). See `docs/FIRMWARE_ALIGNMENT_REPORT.md`. `firmware/common/secrets.h` gitignored (see `secrets.h.example`).
 
@@ -132,7 +133,7 @@ smsb/
 ├── dashboard/  index.html  vite.config.ts  package.json  src/  e2e/  public/  components.json
 ├── server/  hubgatev5.py (shim)  app/  alembic/  requirements.txt  pyproject.toml  Dockerfile
 ├── hub/  main.py  requirements.txt  Dockerfile
-├── firmware/  WEMOS_*/*.ino  fixed_*/  fsm_*/  PROMINI/  common/secrets.h.example
+├── firmware/  WEMOS_*/*.ino  fixed_*/  PROMINI/  archive/fsm_*-2026-08-31/  bench/HARDWARE_OLED_TEST/  common/secrets.h.example
 ├── deploy/  nginx_smsb.conf  smsb-api.service  hubbrain.service  setup_push_deploy.sh
 ├── tools/  deploy_pi_edge.py  verifiers  sniffers  seeders
 ├── tests/  test_e2e_pipeline.py  test_verify_*.py
