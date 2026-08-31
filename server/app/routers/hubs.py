@@ -199,3 +199,30 @@ def assign_gateway_room(
     hub.room = room.name
     db.commit()
     return {"status": "assigned", "hub_id": hub_id, "room_id": payload.room_id}
+
+
+@router.delete("/api/hubs/{hub_id}")
+@limiter.limit("30/minute")
+def delete_hub(
+    request: Request,
+    hub_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Hard-delete a hub. Refuses (409) while devices are still paired to it;
+    room assignments referencing the hub are cleared (rooms are never deleted)."""
+    hub = db.get(hub_table, hub_id)
+    if not hub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hub tidak ditemukan")
+
+    device_count = db.query(dev_table).filter(dev_table.hub_id == hub_id).count()
+    if device_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Hub still has {device_count} paired device(s); unpair or move them first",
+        )
+
+    db.query(rooms).filter(rooms.hub_id == hub_id).update({"hub_id": None})
+    db.delete(hub)
+    db.commit()
+    return {"status": "deleted", "hub_id": hub_id}
