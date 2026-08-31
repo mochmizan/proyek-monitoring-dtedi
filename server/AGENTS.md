@@ -27,6 +27,10 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 
 `hub_table`, `rooms`, `dev_table` (`last_seen`, `last_status`, `marker_x`, `marker_y`, `hub_id` FK), `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `pending_commands`, `schedules` (`cron_expr`, `payload` JSON, `tz` `Asia/Jakarta`, `enabled`, `next_run_at`), `users`, `sessions`, `login_attempts`.
 
+### Datetime Contract
+
+Outgoing datetimes are tz-aware UTC via `UtcDateTime/OptionalUtcDateTime` (`AfterValidator` attaches UTC to naive SQLite values) in `schemasv5.py` - JSON carries `Z` so browsers never double-shift (alerts `new Date` bug 2026-08-31). Apply the types to any new response-model datetime field. Prod runtime = legacy path `/opt/smsb/SERVERv5/v5` kept fresh by the deploy-hook rsync (see `deploy/AGENTS.md`).
+
 ### Payload Validation
 
 `app/schemasv5.py`: `IotPayload` is discriminated union on `DEV_TYPE` (`ATSData`, `TSData`, `ACCData`, `ACData`, `PUMPData`); `IotDataBase` uses `extra="allow"` + optional `HUB_TS` (alias `_hub_created_at`) so hub WAL-replay epoch passes through without 422; `ATSCommand`/`ACCommand` validated for mode/power/temperature actions.
