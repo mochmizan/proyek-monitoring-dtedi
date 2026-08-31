@@ -1,4 +1,4 @@
-﻿import * as React from 'react';
+import * as React from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
@@ -294,14 +294,14 @@ function DashboardPage() {
                       <td className="px-6 py-4 text-xs font-mono text-zinc-300">
                         {device.threshold_config ? (
                           <span>
-                            W: {device.threshold_config.warning}Â°C / C: {device.threshold_config.critical}Â°C
+                            W: {device.threshold_config.warning}°C / C: {device.threshold_config.critical}°C
                           </span>
                         ) : (
                           <span className="text-zinc-400">Default</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-xs text-zinc-400">
-                        {device.created_at ? new Date(device.created_at).toLocaleString() : 'â€”'}
+                        {device.created_at ? new Date(device.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' WIB' : '—'}
                       </td>
                     </tr>
                   );

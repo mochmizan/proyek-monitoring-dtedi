@@ -1,4 +1,4 @@
-﻿import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Thermometer, Zap, Wind, ShieldAlert, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
@@ -85,7 +85,7 @@ function DeviceDetailPage() {
                 return (<span className={cn("px-2.5 py-0.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5", isPending ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : isOnline ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-zinc-800/80 text-zinc-400 border-zinc-700/50")}><span className={cn("h-1.5 w-1.5 rounded-full", isPending ? "bg-amber-400" : isOnline ? "bg-emerald-400 animate-pulse" : "bg-zinc-500")} />{isPending ? 'Pending Approval' : isOnline ? 'Online' : 'Offline'}</span>);
               })()}
             </div>
-            <p className="text-xs text-zinc-500 mt-1 font-mono">MAC / ID: {device.dev_id} Â· Type: {device.dev_type || 'Generic'} Â· Room: {room?.name || 'Unassigned'}</p>
+            <p className="text-xs text-zinc-500 mt-1 font-mono">MAC / ID: {device.dev_id} · Type: {device.dev_type || 'Generic'} · Room: {room?.name || 'Unassigned'}</p>
           </div>
         </div>
         {isFetchingDevices && <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800"><RefreshCw className="h-3 w-3 animate-spin text-indigo-400" /><span>Polling</span></div>}
@@ -101,10 +101,10 @@ function DeviceDetailPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2 text-sm">
               <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Gateway Hub</span><p className="font-mono font-medium text-zinc-200 mt-0.5">{device.hub_id || 'Direct'}</p></div>
               <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Room Assignment</span><p className="font-medium text-zinc-200 mt-0.5">{room?.name || 'Unpaired'}</p></div>
-              <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Registered Date</span><p className="text-xs text-zinc-300 mt-0.5">{device.created_at ? new Date(device.created_at).toLocaleDateString() : 'â€”'}</p></div>
+              <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Registered Date</span><p className="text-xs text-zinc-300 mt-0.5">{device.created_at ? new Date(device.created_at).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }) : '—'}</p></div>
               <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Map Coordinate</span><p className="font-mono text-xs text-zinc-300 mt-0.5">{device.marker_x !== null && device.marker_y !== null ? `(${device.marker_x}%, ${device.marker_y}%)` : 'Unplaced'}</p></div>
-              <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Warning Level</span><p className="font-mono font-medium text-amber-400 mt-0.5">{device.threshold_config ? `${device.threshold_config.warning}Â°C` : 'Default'}</p></div>
-              <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Critical Level</span><p className="font-mono font-medium text-red-400 mt-0.5">{device.threshold_config ? `${device.threshold_config.critical}Â°C` : 'Default'}</p></div>
+              <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Warning Level</span><p className="font-mono font-medium text-amber-400 mt-0.5">{device.threshold_config ? `${device.threshold_config.warning}°C` : 'Default'}</p></div>
+              <div className="bg-zinc-950 p-3 rounded border border-zinc-800"><span className="text-[10px] text-zinc-500 uppercase font-semibold">Critical Level</span><p className="font-mono font-medium text-red-400 mt-0.5">{device.threshold_config ? `${device.threshold_config.critical}°C` : 'Default'}</p></div>
             </div>
           </div>
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 space-y-4">
@@ -113,7 +113,7 @@ function DeviceDetailPage() {
               <table className="w-full text-left text-xs text-zinc-300">
                 <thead className="bg-zinc-950 text-[10px] font-semibold uppercase text-zinc-500 border-b border-zinc-800"><tr><th className="px-4 py-3">Severity</th><th className="px-4 py-3">Metric / Message</th><th className="px-4 py-3">Value</th><th className="px-4 py-3">Timestamp</th><th className="px-4 py-3">Status</th></tr></thead>
                 <tbody className="divide-y divide-zinc-800/60">
-                  {alerts.map((a) => (<tr key={a.event_id} className="hover:bg-zinc-800/50"><td className="px-4 py-3"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", a.severity === 'critical' ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400")}>{a.severity}</span></td><td className="px-4 py-3 font-medium text-zinc-200">{a.message || a.metric || 'Threshold Breach'}</td><td className="px-4 py-3 font-mono">{a.value !== null && a.value !== undefined ? a.value : 'â€”'}</td><td className="px-4 py-3 text-zinc-500">{new Date(a.timestamp).toLocaleString()}</td><td className="px-4 py-3"><span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold", a.resolved_at ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>{a.resolved_at ? 'Resolved' : 'Active'}</span></td></tr>))}
+                  {alerts.map((a) => (<tr key={a.event_id} className="hover:bg-zinc-800/50"><td className="px-4 py-3"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", a.severity === 'critical' ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400")}>{a.severity}</span></td><td className="px-4 py-3 font-medium text-zinc-200">{a.message || a.metric || 'Threshold Breach'}</td><td className="px-4 py-3 font-mono">{a.value !== null && a.value !== undefined ? a.value : '—'}</td><td className="px-4 py-3 text-zinc-500">{new Date(a.timestamp).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' WIB'}</td><td className="px-4 py-3"><span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold", a.resolved_at ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>{a.resolved_at ? 'Resolved' : 'Active'}</span></td></tr>))}
                   {alerts.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-500 text-xs">No alerts recorded for this device.</td></tr>}
                 </tbody>
               </table>
