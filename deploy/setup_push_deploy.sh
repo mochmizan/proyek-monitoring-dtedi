@@ -178,6 +178,7 @@ while read -r _old _new ref; do
             --exclude "cert.crt" \
             --exclude "__pycache__" \
             --exclude ".pytest_cache" \
+            --exclude "static/" \
             "${DEPLOY_WORK_TREE}/server/" /opt/smsb/SERVERv5/v5/ || fail=1
         chmod -R a+rX /opt/smsb/SERVERv5/v5 2>/dev/null || true
     fi
