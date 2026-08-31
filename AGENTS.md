@@ -116,8 +116,7 @@ Every hub Pi broadcasts hidden `smsb-iot` WPA2 `192.168.72.242`; all ESP share W
 |---|---|---|
 | `firmware/WEMOS_TS/WEMOS_TS.ino` | TS SHT30+OLED | dual I2C `0x3C/0x3D` `0x44/0x45`, 1Hz OLED, NaN skip |
 | `firmware/WEMOS_AC/WEMOS_AC.ino` | AC/IR 2x Gree | dual I2C, EEPROM `0xAC` 8B/unit |
-| `firmware/fixed_wemos_mqtt_raspi/fixed_wemos_mqtt_raspi.ino` | ATS bridge canonical | `HUB_NAME`/`DEV_TYPE: ATS`, 512B buf, bounded serial, backoff, `RTC_OK` |
-| `firmware/WEMOS_ATS/WEMOS_ATS.ino` | ATS bridge alias (deprecated) | 12-line shim → `fixed_wemos` |
+| `firmware/WEMOS_ATS/WEMOS_ATS.ino` | ATS bridge **canonical** | `HUB_NAME`/`DEV_TYPE: ATS`, 512B buf, bounded serial, backoff, `RTC_OK` `proofed dcfeb84` |
 | `firmware/PROMINI/PROMINI.ino` | ATS FSM Pro Mini **canonical** | `WDT 8S` `MCUSR` `VAC 210/190` `SIZE 20/60` `RST exact` `MAX 3` `WARMUP disabled` server `schedules` |
 | `firmware/archive/fsm_w_serial-2026-08-31/fsm_w_serial.ino` | bench ATS FSM daily 86400 (archived) | not deployed |
 | `firmware/bench/HARDWARE_OLED_TEST/HARDWARE_OLED_TEST.ino` | bench I2C utility | not deployed |

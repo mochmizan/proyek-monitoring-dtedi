@@ -31,11 +31,11 @@ build:
     npm --prefix dashboard run build
 
 # â”€â”€ firmware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Note: WEMOS_ATS is a deprecated alias shim (see firmware/WEMOS_ATS/README.md); only 3 canonical ESP dirs compile.
+# WEMOS_ATS is canonical ATS bridge (proofed 2026-08-31 dcfeb84)
 firmware-check:
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_TS
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_AC
-    arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/fixed_wemos_mqtt_raspi
+    arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_ATS
 
 # â”€â”€ deploy (no auto-push; use --dry-run first) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 deploy-dry-run:
