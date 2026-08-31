@@ -292,7 +292,7 @@ function AlertsPage() {
               {alerts.map((alert) => (
                 <tr key={alert.event_id} className="hover:bg-zinc-850/50 transition-colors">
                   <td className="px-6 py-4 text-zinc-400 font-mono">
-                    {new Date(alert.timestamp).toLocaleString()}
+                    {new Date(alert.timestamp).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' WIB'}
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(

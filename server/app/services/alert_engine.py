@@ -115,10 +115,13 @@ def evaluate_device_thresholds(
     # Auto-resolve EMERGENCY when PLN >210 and GENSET <80 even if device still reports 1.
     if "EMERGENCY" in payload and payload["EMERGENCY"] is not None:
         # Auto-resolve stuck EMERGENCY when mains clearly restored (PLN 220V, genset 55V case).
-        if payload.get("EMERGENCY") and payload.get("PLN") is not None and payload.get("GENSET") is not None:
+        _em = payload.get("EMERGENCY") if payload.get("EMERGENCY") is not None else payload.get("emergency")
+        _pln = payload.get("PLN") if payload.get("PLN") is not None else payload.get("pln")
+        _genset = payload.get("GENSET") if payload.get("GENSET") is not None else payload.get("genset")
+        if _em and _pln is not None and _genset is not None:
             try:
-                pln_v = float(payload.get("PLN"))
-                genset_v = float(payload.get("GENSET"))
+                pln_v = float(_pln)
+                genset_v = float(_genset)
             except Exception:
                 pln_v = None
                 genset_v = None
