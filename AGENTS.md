@@ -2,13 +2,16 @@
 
 ## DOX Framework
 
-- DOX is highly performant AGENTS.md hierarchy installed here
+- DOX is a highly performant AGENTS.md hierarchy, extended with two supporting layers: `wiki/` for compiled project knowledge and `notes/` for quick, unsynthesized capture
 - Agent must follow DOX instructions across any edits
 
 ### Core Contract
 
-- AGENTS.md files are binding work contracts for their subtrees
-- Work products, source materials, instructions, records, assets, and durable docs must stay understandable from the nearest applicable AGENTS.md plus every parent AGENTS.md above it
+- AGENTS.md files are binding work contracts for their subtrees: they say how to work
+- `wiki/` files are compiled knowledge for their subtrees: they say what is true
+- `notes/` files are staging snippets for their subtrees: unsynthesized observations not yet worth a full wiki page
+- Never blend layers. A rule about what the agent must *do* belongs in AGENTS.md. A description of what something *is*, why it exists, or how it relates to other things belongs in `wiki/`. A quick fact not yet durable enough to write up properly belongs in `notes/`. A doc that drifts into the wrong layer must be split, not left mixed
+- Work products, source materials, instructions, records, assets, and durable docs must stay understandable from the nearest applicable AGENTS.md plus every parent AGENTS.md above it, and from the nearest applicable wiki index plus every parent wiki index above it
 
 ### Read Before Editing
 
@@ -18,13 +21,13 @@
 4. Read every AGENTS.md found along each route
 5. If a parent AGENTS.md lists a child AGENTS.md whose scope contains the path, read that child and continue from there
 6. Use the nearest AGENTS.md as the local contract and parent docs for repo-wide rules
-7. If docs conflict, the closer doc controls local work details, but no child doc may weaken DOX
+7. At each scope visited, check for a `wiki/index.md` and a `notes/` folder. Skim both for anything relevant before writing code — this is where context-gap answers live (ownership, prior decisions, cross-service relationships) so you don't re-derive them from source every time
 
-Do not rely on memory. Re-read the applicable DOX chain in the current session before editing.
+Do not rely on memory. Re-read the applicable AGENTS.md chain, wiki pages, and notes in the current session before editing.
 
 ### Update After Editing
 
-Every meaningful change requires a DOX pass before the task is done.
+Every meaningful change requires a DOX pass before the task is done, covering all three layers.
 
 Update the closest owning AGENTS.md when a change affects:
 
@@ -34,22 +37,91 @@ Update the closest owning AGENTS.md when a change affects:
 - user preferences about behavior, communication, process, organization, or quality
 - AGENTS.md creation, deletion, move, rename, or index contents
 
-Update parent docs when parent-level structure, ownership, workflow, or child index changes. Update child docs when parent changes alter local rules. Remove stale or contradictory text immediately. Small edits that do not change behavior or contracts may leave docs unchanged, but the DOX pass still must happen.
+Update the closest owning `wiki/` pages in the same pass when a change affects:
+
+- a concept, entity's, or workstream's actual behavior, definition, status, or relationships
+- something a future session would otherwise have to re-derive from source to know
+- a page that now contradicts the code, or a gap where no page exists for something the change introduced
+
+Drop a quick line in `notes/` instead, when a change surfaces something true and possibly useful, but too small or too unclear yet to justify writing a full wiki page.
+
+Update parent docs when parent-level structure, ownership, workflow, or child index changes. Update child docs when parent changes alter local rules. Remove stale or contradictory text immediately. Small edits that do not change behavior, contracts, or durable facts may leave docs unchanged, but the DOX pass still must happen — decide, don't skip.
+
+### Wiki
+
+`wiki/` mirrors the AGENTS.md hierarchy: any scope with its own AGENTS.md may have its own `wiki/` folder and its own `wiki/index.md`. A scope with nothing durable to record has no wiki folder — don't create empty scaffolding.
+
+**Population.** A new scope's wiki is not backfilled automatically. It's built when the user prompts for it (e.g. "build the wiki for the auth service"), scanning the scope's code, docs, and accumulated `notes/` into pages. Once a wiki exists for a scope, it's kept current automatically as part of the ordinary Update After Editing pass — no separate prompt needed for incremental updates, only for initial construction or a full resync.
+
+**Page types.** One concept, entity, workstream, or source summary per file. Filename is the page's identity — don't represent the same thing under two paths.
+
+- `concept` — a static idea, pattern, or convention used in the project
+- `entity` — a concrete thing: a service, module, table, external system
+- `workstream` — an ongoing or completed effort: status, history, and the decisions made along the way. Decisions live inside their workstream's history rather than as separate pages
+- `source` — a summary of an external doc (RFC, design doc, spec) worth referencing repeatedly
+
+Each page opens with frontmatter:
+
+```yaml
+---
+type: concept | entity | workstream | source
+governed_by: path/to/AGENTS.md
+links: [wiki/relative/page.md, ...]
+sources: [path/to/file.ts, commit:<sha>, notes/relative/note.md, ...]
+updated: <date or commit>
+---
+```
+
+Body is plain declarative prose: what this is, why it exists, how it relates to what's around it, and — for `workstream` pages — what's been tried and decided so far. No imperatives, no instructions — those belong in AGENTS.md.
+
+**Two edge types.** `links:` are context edges — other pages worth knowing about, answering "what else do I need to know." `sources:` are evidence edges — the file, commit, or note a claim actually traces back to, answering "how do I know this is true." Don't conflate them: a page can link to a related concept it doesn't derive from, and cite a source it doesn't otherwise reference.
+
+**Cross-linking.** Every AGENTS.md that owns a wiki scope carries a `Wiki` line pointing to its `wiki/index.md`. Every `wiki/index.md` links back up to its governing AGENTS.md via `governed_by`. This must be a real, walkable link on both sides, not a one-line mention.
+
+**Index.** `wiki/index.md` lists every page in its scope with a one-line description, updated on every wiki write. One index per scope, not a single repo-wide index — this is what keeps the wiki usable as it grows.
+
+**Retrieval.** No embeddings, no vector index. An agent finds context by starting at the nearest `wiki/index.md` (and the root one), following explicit links, and falling back to plain full-text search within `wiki/` if nothing links where it needs to go. This keeps the wiki fully auditable — you can see exactly which link chain produced any answer.
+
+**Lint.** On request ("lint the wiki" / "audit the wiki"), check for: orphan pages with no inbound links, pages missing required frontmatter, links or sources pointing to things that no longer exist, and pages that contradict current source or their `governed_by` AGENTS.md. Fix or flag what's found; don't silently leave contradictions in place.
+
+### Notes
+
+`notes/` mirrors the same hierarchy as `wiki/` and AGENTS.md, one folder per scope that needs it, organized into topical files rather than one page per fact.
+
+- No required frontmatter — notes are meant to be cheap to write
+- A note is a distilled snippet, not a raw transcript: short, keyword-findable, plain text
+- Notes accumulate until something in them is durable and clear enough to promote into a proper `wiki/` page with full frontmatter and links; once promoted, trim or remove the note so it doesn't sit around duplicating the wiki
+- Notes are searched by plain keyword/full-text search, same as the wiki — no separate retrieval mechanism
+
+### Corrections
+
+If a human has directly edited a `wiki/` or `notes/` file, that edit outranks the agent's next write to that file. On the next Update After Editing pass touching that page, the agent merges its update around the human's edit rather than overwriting it, and if the two conflict, the agent flags the conflict instead of silently resolving it in its own favor.
 
 ### Hierarchy
 
 - Root AGENTS.md is the DOX rail: project-wide instructions, global preferences, durable workflow rules, and the top-level Child DOX Index
 - Child AGENTS.md files own domain-specific instructions and their own Child DOX Index
+- A scope's `wiki/index.md` and `notes/`, when present, are reachable from its owning AGENTS.md
 - Each parent explains what its direct children cover and what stays owned by the parent
 - The closer a doc is to the work, the more specific and practical it must be
 
 ### Child Doc Shape
 
 - Create a child AGENTS.md when a folder becomes a durable boundary with its own purpose, rules, responsibilities, workflow, materials, or quality standards
+- Create a child `wiki/` or `notes/` alongside it only once there's something worth capturing for that scope, and only via the population step above
 - Work Guidance must reflect the current standards of the project or user instructions; if there are no specific standards or instructions yet, leave it empty
 - Verification must reflect an existing check; if no verification framework exists yet, leave it empty and update it when one exists
 
-Default section order: Purpose → Ownership → Local Contracts → Work Guidance → Verification → Child DOX Index
+Default section order:
+
+- Purpose
+- Ownership
+- Local Contracts
+- Work Guidance
+- Verification
+- Wiki
+- Notes
+- Child DOX Index
 
 ### Style
 
@@ -60,22 +132,25 @@ Default section order: Purpose → Ownership → Local Contracts → Work Guidan
 - Do not duplicate rules across many files unless each scope needs a local version
 - Delete stale notes instead of explaining history
 - Trim obvious statements, repeated rules, misplaced detail, and warnings for risks that no longer exist
+- Wiki pages stay descriptive, not imperative — if a page tells the agent what to do, it's misfiled
+- Notes stay short and unsynthesized — if a note reads like a finished page, promote it instead of polishing it in place
 
 ### Closeout
 
 1. Re-check changed paths against the DOX chain
-2. Update nearest owning docs and any affected parents or children
-3. Refresh every affected Child DOX Index
-4. Remove stale or contradictory text
-5. Run existing verification when relevant
-6. Report any docs intentionally left unchanged and why
+2. Update nearest owning AGENTS.md and any affected parents or children
+3. Update nearest owning wiki pages, respecting any human edits per Corrections
+4. Add or trim `notes/` for anything durable-but-unclear surfaced by the change
+5. Refresh every affected Child DOX Index and wiki index
+6. Remove stale or contradictory text across all three layers
+7. Run existing verification when relevant
+8. Report any docs intentionally left unchanged and why
 
 ### User Preferences
 
-- Record durable behavior changes here or in the relevant child AGENTS.md
-- Current: private campus LAN (no public), push via `git push prod main` to `100.108.98.30`, dashboard at `dashboard/` (Vite), server at `server/`, hub at `hub/`, docs at `docs/`
+When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md.
 
----
+- Current: private campus LAN (no public), push via `git push prod main` to `100.108.98.30`, dashboard at `dashboard/` (Vite), server at `server/` (HubGate V5), hub at `hub/` (HubBrain V5), docs at `docs/`
 
 ## Purpose
 
@@ -185,6 +260,14 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 - `pytest` at root — 107 tests (server 79 + hub 13 + pipeline)
 - `docker compose config` binds `127.0.0.1:5432/1883` (not `0.0.0.0`)
 - `bash -n deploy/setup_push_deploy.sh` + `curl https://127.0.0.1/api/health` `{"status":"ok","db":"up"}`
+
+## Wiki
+
+- Root wiki scope: [wiki/index.md](wiki/index.md) — compiled project knowledge (entities, concepts, workstreams). Skim it before re-deriving context from source; it is the cross-service map of the smsb stack.
+
+## Notes
+
+- Root notes scope: `notes/` — quick unsynthesized capture, currently `notes/field-ops.md` (VPS access, field state, pending reflash).
 
 ## Child DOX Index
 
