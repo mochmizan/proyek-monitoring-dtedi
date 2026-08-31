@@ -1,4 +1,4 @@
-﻿# AGENTS.md — smsb (root)
+# AGENTS.md — smsb (root)
 
 ## DOX Framework
 
@@ -179,7 +179,7 @@ React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, Query 5.1
 ### Architecture
 
 - **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, cache-first defaults (`keepPreviousData` global, `gcTime 5m`, `refetchOnWindowFocus`, `STALE_MS 10s` stale-while-revalidate, no blank refetch), wall-clock renders `id-ID` `Asia/Jakarta WIB` (server stores UTC), `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta` (server-authoritative warmup, no firmware Sunday auto).
-- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands` `{"mode":"manual","start_genset":"on"}` bundled bypass), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), telemetry `event_time` from hub `_hub_created_at` epoch (WAL replay) else `now_utc`, `alert_engine` auto-resolves `ATS_EMERGENCY` when `PLN>210 && GENSET<80` (case-insensitive, stuck-latch suppression), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
+- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands` `{"mode":"manual","start_genset":"on"}` bundled bypass), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), telemetry `event_time` from hub `_hub_created_at` epoch (WAL replay) else `now_utc`, `alert_engine` evaluates temperature and ATS starter battery undervoltage (`BATTERY_WARNING` 11.8V / `BATTERY_CRITICAL` 11.2V, recovery $\ge 12.0\text{V}$, 60s debounce) and auto-resolves `ATS_EMERGENCY` when `PLN>210 && GENSET<80` (case-insensitive, stuck-latch suppression), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
 - **Edge**: Pi bridges `hs109rs/#` → HTTPS, `MAX_PENDING_ROWS=20000` WAL FIFO `0.35s` pacing with `_hub_created_at` epoch injection on replay (preserves capture time across offline bursts), whitelist sync, dynamic `{hub_name}/{dev_type}/command`.
 - **Firmware**: non-blocking I2C, NaN skip, EEPROM AC state (`0xAC`), canonical `<SGM,on>` `<RST,rst>` `<M,auto>` `<T,unixtime>` `<RTC_OK>` framing, `WDT 8S` `MCUSR` `VAC 210/190` hysteresis `SIZE 20/60`, `WARMUP disabled` (server `schedules` authoritative, no `Sunday 18:00` auto). Fleet AP `smsb-iot` `192.168.72.242`, `DEV_NAME=<TYPE>-<last4 MAC>`.
 

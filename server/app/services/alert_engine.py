@@ -110,7 +110,100 @@ def evaluate_device_thresholds(
                 for alert in open_alerts:
                     alert.resolved_at = now_ts
 
-    # 2. ATS Emergency Evaluation
+    # 2. Battery Voltage Evaluation (ATS starter battery or any device reporting AKI / battery voltage)
+    raw_aki = payload.get("AKI") if payload.get("AKI") is not None else payload.get("aki")
+    if raw_aki is None:
+        raw_aki = payload.get("battery_v") if payload.get("battery_v") is not None else payload.get("battery")
+
+    if raw_aki is not None:
+        try:
+            aki = float(raw_aki)
+        except (ValueError, TypeError):
+            aki = None
+
+        if aki is not None:
+            thresh = db.get(device_threshold_config, dev.dev_id)
+            if thresh:
+                warning = float(thresh.warning)
+                critical = float(thresh.critical)
+                hysteresis = float(thresh.hysteresis) if thresh.hysteresis is not None else 0.2
+                debounce_seconds = int(thresh.debounce_seconds) if thresh.debounce_seconds is not None else 60
+            else:
+                warning = 11.8
+                critical = 11.2
+                hysteresis = 0.2
+                debounce_seconds = 60
+
+            severity = None
+            threshold_val = None
+            if aki <= critical:
+                severity = "critical"
+                threshold_val = critical
+            elif aki <= warning:
+                severity = "warning"
+                threshold_val = warning
+
+            if severity is not None:
+                recent_alert = (
+                    db.query(event_log)
+                    .filter(
+                        event_log.dev_id == dev.dev_id,
+                        event_log.metric == "battery",
+                    )
+                    .order_by(event_log.timestamp.desc())
+                    .first()
+                )
+
+                suppress = False
+                if recent_alert and recent_alert.timestamp:
+                    t_recent = recent_alert.timestamp
+                    t_curr = now_ts
+                    if t_curr.tzinfo is not None and t_recent.tzinfo is None:
+                        t_recent = t_recent.replace(tzinfo=UTC)
+                    elif t_curr.tzinfo is None and t_recent.tzinfo is not None:
+                        t_curr = t_curr.replace(tzinfo=UTC)
+
+                    elapsed = abs((t_curr - t_recent).total_seconds())
+                    if elapsed < debounce_seconds:
+                        if recent_alert.severity == severity:
+                            suppress = True
+                        elif recent_alert.severity == "critical" and severity == "warning":
+                            suppress = True
+
+                if not suppress:
+                    alarm_code = f"BATTERY_{severity.upper()}"
+                    dev_label = dev.dev_name or dev.dev_id
+                    message = f"Device {dev_label} starter battery voltage {aki:.2f}V dropped below {severity} threshold ({threshold_val:.2f}V)"
+                    new_alert = event_log(
+                        event_id=uuid.uuid4().hex,
+                        alarm=alarm_code,
+                        timestamp=now_ts,
+                        message=message,
+                        dev_id=dev.dev_id,
+                        room_id=dev.room_id,
+                        metric="battery",
+                        severity=severity,
+                        value=aki,
+                        threshold=threshold_val,
+                        resolved_at=None,
+                    )
+                    db.add(new_alert)
+
+            # Hysteresis Recovery: Auto-resolve open battery alerts when aki >= warning + hysteresis
+            if aki >= (warning + hysteresis):
+                open_alerts = (
+                    db.query(event_log)
+                    .filter(
+                        event_log.dev_id == dev.dev_id,
+                        event_log.metric == "battery",
+                        event_log.resolved_at.is_(None),
+                    )
+                    .all()
+                )
+                for alert in open_alerts:
+                    alert.resolved_at = now_ts
+
+    # 3. ATS Emergency Evaluation
     # Campus building safe: PLN 220V + genset <80V means mains healthy; device EMERGENCY latch stuck.
     # Auto-resolve EMERGENCY when PLN >210 and GENSET <80 even if device still reports 1.
     if "EMERGENCY" in payload and payload["EMERGENCY"] is not None:

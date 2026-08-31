@@ -1,4 +1,4 @@
-﻿# ===== Secrets & credentials (NEVER commit) =====
+# ===== Secrets & credentials (NEVER commit) =====
 .env
 .env.*
 !.env.example
@@ -49,10 +49,12 @@ server/static/
 .pre-commit-config.yaml.bak
 
 # ===== IDE / OS =====
-# .idea/ gitignored â€” JetBrains
+# .idea/ gitignored — JetBrains
 .idea/
 .opencode/
 .vscode/
+.memory/
+skills-lock.json
 *.swp
 .DS_Store
 Thumbs.db

@@ -311,13 +311,31 @@ function AlertsPage() {
                     {alert.room_name || 'Unassigned'}
                   </td>
                   <td className="px-6 py-4 text-zinc-300">
-                    {alert.metric || alert.message || 'Temperature Threshold'}
+                    {alert.message || (
+                      alert.metric === 'battery'
+                        ? 'Starter Battery Undervoltage'
+                        : alert.metric === 'emergency'
+                          ? 'ATS Emergency State'
+                          : 'Temperature Threshold'
+                    )}
                   </td>
                   <td className="px-6 py-4 font-mono font-bold text-zinc-100">
-                    {alert.value !== null && alert.value !== undefined ? `${alert.value}°C` : '—'}
+                    {alert.value !== null && alert.value !== undefined ? (
+                      alert.metric === 'battery'
+                        ? `${Number(alert.value).toFixed(2)} V`
+                        : alert.metric === 'emergency'
+                          ? 'Triggered'
+                          : `${alert.value}°C`
+                    ) : '—'}
                   </td>
                   <td className="px-6 py-4 font-mono text-zinc-500">
-                    {alert.threshold !== null && alert.threshold !== undefined ? `${alert.threshold}°C` : '—'}
+                    {alert.threshold !== null && alert.threshold !== undefined ? (
+                      alert.metric === 'battery'
+                        ? `${Number(alert.threshold).toFixed(2)} V`
+                        : alert.metric === 'emergency'
+                          ? '—'
+                          : `${alert.threshold}°C`
+                    ) : '—'}
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(

@@ -12,6 +12,8 @@ updated: 2026-08-31
 
 Temperature: per-device thresholds from `device_threshold_config` (defaults warning 28.0 / critical 32.0 °C, hysteresis 0.5, debounce 60s). A breach above the previous alert's severity within the debounce window is suppressed; recovery below warning-minus-hysteresis resolves all open alerts.
 
+ATS starter battery (`AKI`): undervoltage evaluation from `device_threshold_config` (defaults warning 11.8 / critical 11.2 V, hysteresis 0.2 V, debounce 60s). A breach triggers `BATTERY_WARNING` ($V \le 11.8\text{ V}$) or `BATTERY_CRITICAL` ($V \le 11.2\text{ V}$) (`metric="battery"`). Escalation from warning to critical bypasses debounce cooldown; recovery occurs when $V \ge \text{warning} + \text{hysteresis}$ ($11.8 + 0.2 = 12.0\text{ V}$), auto-resolving all open battery alerts. The range $11.8\text{ V} < V < 12.0\text{ V}$ forms a deadband where no new alerts trigger and open alerts remain active.
+
 ATS emergency: `EMERGENCY=1` raises `ATS_EMERGENCY` (critical) under the same 60s debounce; `EMERGENCY=0` resolves open ones. Since a4a6769 (deployed 2026-08-31 after the stale-runtime fix) a stuck latch is also auto-resolved server-side: when the payload reports `EMERGENCY=1` but `PLN>210 && GENSET<80` (keys case-insensitive) the engine resolves all open emergency alerts and suppresses new ones — the "genset disconnected while PLN healthy" field condition. That suppression cleared 1233 accumulated spam rows on first contact.
 
 Presence: `resolve_offline_on_telemetry` marks devices online; a 25s `last_seen` cutoff raises `DEVICE_OFFLINE` and derives hub status on `GET /api/hubs`. History charts render detected sample gaps as "hub offline - no samples" bands.

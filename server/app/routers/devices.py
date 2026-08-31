@@ -64,18 +64,32 @@ def pair_device(
     device.is_active = True
 
     if payload.warning_threshold is not None and payload.critical_threshold is not None:
+        if device.dev_type == "ATS":
+            if payload.warning_threshold < payload.critical_threshold:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="For ATS devices (undervoltage), warning threshold must be greater than or equal to critical threshold",
+                )
+        else:
+            if payload.warning_threshold > payload.critical_threshold:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Warning threshold cannot exceed critical threshold",
+                )
+
+        default_hyst = 0.2 if device.dev_type == "ATS" else 0.5
         thresh = db.get(device_threshold_config, dev_id)
         if thresh:
             thresh.warning = payload.warning_threshold
             thresh.critical = payload.critical_threshold
-            thresh.hysteresis = payload.hysteresis if payload.hysteresis is not None else 0.5
+            thresh.hysteresis = payload.hysteresis if payload.hysteresis is not None else default_hyst
             thresh.debounce_seconds = payload.debounce_seconds if payload.debounce_seconds is not None else 60
         else:
             thresh = device_threshold_config(
                 dev_id=dev_id,
                 warning=payload.warning_threshold,
                 critical=payload.critical_threshold,
-                hysteresis=payload.hysteresis if payload.hysteresis is not None else 0.5,
+                hysteresis=payload.hysteresis if payload.hysteresis is not None else default_hyst,
                 debounce_seconds=payload.debounce_seconds if payload.debounce_seconds is not None else 60,
             )
             db.add(thresh)
@@ -146,11 +160,18 @@ def update_device_thresholds(
             detail=f"Device '{dev_id}' not found",
         )
 
-    if payload.warning > payload.critical:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Warning threshold cannot exceed critical threshold",
-        )
+    if device.dev_type == "ATS":
+        if payload.warning < payload.critical:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="For ATS devices (undervoltage), warning threshold must be greater than or equal to critical threshold",
+            )
+    else:
+        if payload.warning > payload.critical:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Warning threshold cannot exceed critical threshold",
+            )
 
     thresh = db.get(device_threshold_config, dev_id)
     if thresh:

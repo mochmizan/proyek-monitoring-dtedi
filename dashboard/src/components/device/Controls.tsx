@@ -18,9 +18,9 @@ export function DeviceControls({ device, role }: ControlsProps) {
   const isAdmin = role === 'admin';
   const canControl = role === 'admin' || role === 'operator';
 
-  const [warningThreshold, setWarningThreshold] = useState('30');
-  const [criticalThreshold, setCriticalThreshold] = useState('35');
-  const [hysteresis, setHysteresis] = useState('0.5');
+  const [warningThreshold, setWarningThreshold] = useState(isATS ? '11.8' : '28');
+  const [criticalThreshold, setCriticalThreshold] = useState(isATS ? '11.2' : '32');
+  const [hysteresis, setHysteresis] = useState(isATS ? '0.2' : '0.5');
   const [debounceSeconds, setDebounceSeconds] = useState('60');
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -38,8 +38,20 @@ export function DeviceControls({ device, role }: ControlsProps) {
       setCriticalThreshold(device.threshold_config.critical.toString());
       setHysteresis(device.threshold_config.hysteresis.toString());
       setDebounceSeconds(device.threshold_config.debounce_seconds.toString());
+    } else {
+      if (isATS) {
+        setWarningThreshold('11.8');
+        setCriticalThreshold('11.2');
+        setHysteresis('0.2');
+        setDebounceSeconds('60');
+      } else {
+        setWarningThreshold('28');
+        setCriticalThreshold('32');
+        setHysteresis('0.5');
+        setDebounceSeconds('60');
+      }
     }
-  }, [device]);
+  }, [device, isATS]);
 
   const thresholdMutation = useMutation({
     mutationFn: (payload: ThresholdUpdateRequest) => updateThresholds(device.dev_id, payload),
@@ -80,8 +92,19 @@ export function DeviceControls({ device, role }: ControlsProps) {
     const hyst = parseFloat(hysteresis);
     const deb = parseInt(debounceSeconds, 10);
     if (isNaN(warn) || isNaN(crit)) { setConfigError('Warning and Critical thresholds must be valid numbers'); return; }
-    if (warn > crit) { setConfigError('Warning threshold cannot exceed critical threshold'); return; }
-    thresholdMutation.mutate({ warning: warn, critical: crit, hysteresis: isNaN(hyst) ? 0.5 : hyst, debounce_seconds: isNaN(deb) ? 60 : deb });
+    if (isATS) {
+      if (warn < crit) {
+        setConfigError('For ATS battery undervoltage, Warning threshold must be greater than or equal to Critical threshold');
+        return;
+      }
+    } else {
+      if (warn > crit) {
+        setConfigError('Warning threshold cannot exceed critical threshold');
+        return;
+      }
+    }
+    const defaultHyst = isATS ? 0.2 : 0.5;
+    thresholdMutation.mutate({ warning: warn, critical: crit, hysteresis: isNaN(hyst) ? defaultHyst : hyst, debounce_seconds: isNaN(deb) ? 60 : deb });
   };
 
   const handleCommandSubmit = (e: React.FormEvent) => {
@@ -157,9 +180,9 @@ export function DeviceControls({ device, role }: ControlsProps) {
           <form onSubmit={handleThresholdSubmit} className="space-y-4">
             {configError && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded flex items-center gap-2"><AlertTriangle className="h-4 w-4 flex-shrink-0" /><span>{configError}</span></div>}
             {configSuccess && <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded flex items-center gap-2"><CheckCircle className="h-4 w-4 flex-shrink-0" /><span>{configSuccess}</span></div>}
-            <div><label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Warning Threshold (°C)</label><input type="number" step="0.1" value={warningThreshold} onChange={(e) => setWarningThreshold(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:border-indigo-500" /></div>
-            <div><label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Critical Threshold (°C)</label><input type="number" step="0.1" value={criticalThreshold} onChange={(e) => setCriticalThreshold(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:border-indigo-500" /></div>
-            <div><label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Hysteresis (°C)</label><input type="number" step="0.1" value={hysteresis} onChange={(e) => setHysteresis(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:border-indigo-500" /><span className="text-[10px] text-zinc-500 mt-1 block">Recovery offset to prevent oscillations.</span></div>
+            <div><label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">{isATS ? 'Battery Warning Threshold (V)' : 'Warning Threshold (°C)'}</label><input type="number" step="0.1" value={warningThreshold} onChange={(e) => setWarningThreshold(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:border-indigo-500" /></div>
+            <div><label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">{isATS ? 'Battery Critical Threshold (V)' : 'Critical Threshold (°C)'}</label><input type="number" step="0.1" value={criticalThreshold} onChange={(e) => setCriticalThreshold(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:border-indigo-500" /></div>
+            <div><label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">{isATS ? 'Hysteresis (V)' : 'Hysteresis (°C)'}</label><input type="number" step="0.1" value={hysteresis} onChange={(e) => setHysteresis(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:border-indigo-500" /><span className="text-[10px] text-zinc-500 mt-1 block">Recovery offset to prevent oscillations.</span></div>
             <div><label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Debounce Window (Seconds)</label><input type="number" value={debounceSeconds} onChange={(e) => setDebounceSeconds(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:border-indigo-500" /><span className="text-[10px] text-zinc-500 mt-1 block">Minimum cooldown period between logged alert events.</span></div>
             <div className="pt-2"><button type="submit" disabled={thresholdMutation.isPending} className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-2">{thresholdMutation.isPending ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /><span>Saving...</span></> : <span>Save Thresholds</span>}</button></div>
           </form>

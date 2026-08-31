@@ -136,7 +136,15 @@ def setup_test_environment():
             hysteresis=0.5,
             debounce_seconds=60
         )
-        db.add(thresh_ts)
+        # Add custom threshold config to dev_ats
+        thresh_ats = device_threshold_config(
+            dev_id="AA:BB:CC:44:55:66",
+            warning=11.8,
+            critical=11.2,
+            hysteresis=0.2,
+            debounce_seconds=60
+        )
+        db.add_all([thresh_ts, thresh_ats])
 
         db.commit()
     finally:
@@ -674,6 +682,343 @@ def test_ac_device_temperature_evaluation():
         assert events[0].severity == "critical"
         assert events[0].alarm == "TEMP_CRITICAL"
         assert events[0].value == 33.5
+    finally:
+        db.close()
+
+
+# ==========================================
+# 4. ATS BATTERY THRESHOLD & ALERT EVALUATION
+# ==========================================
+
+def test_ats_battery_normal_no_alert():
+    db = SessionLocal()
+    try:
+        db.query(event_log).filter(event_log.dev_id == "AA:BB:CC:44:55:66").delete()
+        db.commit()
+    finally:
+        db.close()
+
+    # Normal battery reading (12.8V > warning 11.8V)
+    ats_payload = {
+        "HUB_NAME": TEST_HUB_ID,
+        "DEV_ID": "AA:BB:CC:44:55:66",
+        "DEV_NAME": "ATS Generator Unit",
+        "DEV_TYPE": "ATS",
+        "STATE": "PLN",
+        "PLN": 220.0,
+        "GENSET": 0.0,
+        "AKI": 12.8,
+        "REM_HOUR": 0.0,
+        "REM_MIN": 0.0,
+        "REM_SEC": 0.0,
+        "AUTO_MODE": True,
+        "EMERGENCY": False,
+    }
+    resp = client.post("/api/iot", json=ats_payload, headers=get_hub_headers())
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        events = (
+            db.query(event_log)
+            .filter(
+                event_log.dev_id == "AA:BB:CC:44:55:66",
+                event_log.metric == "battery",
+            )
+            .all()
+        )
+        assert len(events) == 0
+    finally:
+        db.close()
+
+
+def test_ats_battery_warning_alert():
+    # Warning breach: 11.5V <= warning 11.8V and > critical 11.2V
+    ats_payload = {
+        "HUB_NAME": TEST_HUB_ID,
+        "DEV_ID": "AA:BB:CC:44:55:66",
+        "DEV_NAME": "ATS Generator Unit",
+        "DEV_TYPE": "ATS",
+        "STATE": "PLN",
+        "PLN": 220.0,
+        "GENSET": 0.0,
+        "AKI": 11.5,
+        "REM_HOUR": 0.0,
+        "REM_MIN": 0.0,
+        "REM_SEC": 0.0,
+        "AUTO_MODE": True,
+        "EMERGENCY": False,
+    }
+    resp = client.post("/api/iot", json=ats_payload, headers=get_hub_headers())
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        events = (
+            db.query(event_log)
+            .filter(
+                event_log.dev_id == "AA:BB:CC:44:55:66",
+                event_log.metric == "battery",
+            )
+            .all()
+        )
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.severity == "warning"
+        assert ev.metric == "battery"
+        assert ev.alarm == "BATTERY_WARNING"
+        assert ev.value == 11.5
+        assert ev.threshold == 11.8
+        assert ev.room_id == "room_gen_m4"
+        assert ev.resolved_at is None
+    finally:
+        db.close()
+
+
+def test_ats_battery_debounce_suppression():
+    # Another warning reading immediately after (within 60s debounce window)
+    ats_payload = {
+        "HUB_NAME": TEST_HUB_ID,
+        "DEV_ID": "AA:BB:CC:44:55:66",
+        "DEV_NAME": "ATS Generator Unit",
+        "DEV_TYPE": "ATS",
+        "STATE": "PLN",
+        "PLN": 220.0,
+        "GENSET": 0.0,
+        "AKI": 11.4,
+        "REM_HOUR": 0.0,
+        "REM_MIN": 0.0,
+        "REM_SEC": 0.0,
+        "AUTO_MODE": True,
+        "EMERGENCY": False,
+    }
+    resp = client.post("/api/iot", json=ats_payload, headers=get_hub_headers())
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        events = (
+            db.query(event_log)
+            .filter(
+                event_log.dev_id == "AA:BB:CC:44:55:66",
+                event_log.metric == "battery",
+            )
+            .all()
+        )
+        assert len(events) == 1
+    finally:
+        db.close()
+
+
+def test_ats_battery_escalation_to_critical():
+    # Critical breach (11.0V <= critical 11.2V) within debounce window:
+    # Must NOT be suppressed because severity escalated to critical!
+    ats_payload = {
+        "HUB_NAME": TEST_HUB_ID,
+        "DEV_ID": "AA:BB:CC:44:55:66",
+        "DEV_NAME": "ATS Generator Unit",
+        "DEV_TYPE": "ATS",
+        "STATE": "PLN",
+        "PLN": 220.0,
+        "GENSET": 0.0,
+        "AKI": 11.0,
+        "REM_HOUR": 0.0,
+        "REM_MIN": 0.0,
+        "REM_SEC": 0.0,
+        "AUTO_MODE": True,
+        "EMERGENCY": False,
+    }
+    resp = client.post("/api/iot", json=ats_payload, headers=get_hub_headers())
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        events = (
+            db.query(event_log)
+            .filter(
+                event_log.dev_id == "AA:BB:CC:44:55:66",
+                event_log.metric == "battery",
+            )
+            .order_by(event_log.timestamp.asc())
+            .all()
+        )
+        assert len(events) == 2
+        crit_ev = events[1]
+        assert crit_ev.severity == "critical"
+        assert crit_ev.metric == "battery"
+        assert crit_ev.alarm == "BATTERY_CRITICAL"
+        assert crit_ev.value == 11.0
+        assert crit_ev.threshold == 11.2
+        assert crit_ev.resolved_at is None
+    finally:
+        db.close()
+
+
+def test_ats_battery_hysteresis_deadband():
+    # Battery voltage rises to 11.9V:
+    # 11.9V > warning (11.8V), BUT < warning + hysteresis (11.8 + 0.2 = 12.0V)
+    # The deadband prevents resolution.
+    ats_payload = {
+        "HUB_NAME": TEST_HUB_ID,
+        "DEV_ID": "AA:BB:CC:44:55:66",
+        "DEV_NAME": "ATS Generator Unit",
+        "DEV_TYPE": "ATS",
+        "STATE": "PLN",
+        "PLN": 220.0,
+        "GENSET": 0.0,
+        "AKI": 11.9,
+        "REM_HOUR": 0.0,
+        "REM_MIN": 0.0,
+        "REM_SEC": 0.0,
+        "AUTO_MODE": True,
+        "EMERGENCY": False,
+    }
+    resp = client.post("/api/iot", json=ats_payload, headers=get_hub_headers())
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        open_events = (
+            db.query(event_log)
+            .filter(
+                event_log.dev_id == "AA:BB:CC:44:55:66",
+                event_log.metric == "battery",
+                event_log.resolved_at.is_(None),
+            )
+            .all()
+        )
+        assert len(open_events) == 2
+    finally:
+        db.close()
+
+
+def test_ats_battery_hysteresis_recovery_resolution():
+    # Battery voltage rises to 12.4V (>= warning + hysteresis = 12.0V):
+    # All open battery alerts for AA:BB:CC:44:55:66 must be marked resolved!
+    ats_payload = {
+        "HUB_NAME": TEST_HUB_ID,
+        "DEV_ID": "AA:BB:CC:44:55:66",
+        "DEV_NAME": "ATS Generator Unit",
+        "DEV_TYPE": "ATS",
+        "STATE": "PLN",
+        "PLN": 220.0,
+        "GENSET": 0.0,
+        "AKI": 12.4,
+        "REM_HOUR": 0.0,
+        "REM_MIN": 0.0,
+        "REM_SEC": 0.0,
+        "AUTO_MODE": True,
+        "EMERGENCY": False,
+    }
+    resp = client.post("/api/iot", json=ats_payload, headers=get_hub_headers())
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        events = (
+            db.query(event_log)
+            .filter(
+                event_log.dev_id == "AA:BB:CC:44:55:66",
+                event_log.metric == "battery",
+            )
+            .all()
+        )
+        assert len(events) == 2
+        for ev in events:
+            assert ev.resolved_at is not None, f"Event {ev.event_id} should be resolved"
+    finally:
+        db.close()
+
+
+def test_ats_threshold_validation():
+    admin_cookies = get_auth_cookies("admin_m4", "adminpass")
+
+    # 1. Valid ATS thresholds: warning (11.8) >= critical (11.2)
+    valid_ats_payload = {
+        "warning": 11.8,
+        "critical": 11.2,
+        "hysteresis": 0.2,
+        "debounce_seconds": 60,
+    }
+    resp_valid = client.put(
+        "/api/devices/AA:BB:CC:44:55:66/thresholds",
+        json=valid_ats_payload,
+        cookies=admin_cookies,
+    )
+    assert resp_valid.status_code == 200, resp_valid.text
+    data = resp_valid.json()
+    assert data["warning"] == 11.8
+    assert data["critical"] == 11.2
+    assert data["hysteresis"] == 0.2
+
+    # 2. Invalid ATS thresholds: warning (11.0) < critical (12.0)
+    invalid_ats_payload = {
+        "warning": 11.0,
+        "critical": 12.0,
+        "hysteresis": 0.2,
+        "debounce_seconds": 60,
+    }
+    resp_invalid = client.put(
+        "/api/devices/AA:BB:CC:44:55:66/thresholds",
+        json=invalid_ats_payload,
+        cookies=admin_cookies,
+    )
+    assert resp_invalid.status_code == 400
+    assert "ATS" in resp_invalid.text or "undervoltage" in resp_invalid.text or "warning" in resp_invalid.text.lower()
+
+
+def test_ats_default_threshold_fallback():
+    # Create an unconfigured ATS device
+    db = SessionLocal()
+    try:
+        dev_ats_default = dev_table(
+            dev_id="AA:BB:CC:44:55:77",
+            dev_name="ATS Default Test Unit",
+            dev_type="ATS",
+            hub_id=TEST_HUB_ID,
+            room_id="room_gen_m4",
+            is_active=True,
+            created_at=datetime.now(UTC),
+        )
+        db.add(dev_ats_default)
+        db.commit()
+    finally:
+        db.close()
+
+    # Send 11.5V (< default ATS warning 11.8V)
+    ats_payload = {
+        "HUB_NAME": TEST_HUB_ID,
+        "DEV_ID": "AA:BB:CC:44:55:77",
+        "DEV_NAME": "ATS Default Test Unit",
+        "DEV_TYPE": "ATS",
+        "STATE": "PLN",
+        "PLN": 220.0,
+        "GENSET": 0.0,
+        "AKI": 11.5,
+        "REM_HOUR": 0.0,
+        "REM_MIN": 0.0,
+        "REM_SEC": 0.0,
+        "AUTO_MODE": True,
+        "EMERGENCY": False,
+    }
+    resp = client.post("/api/iot", json=ats_payload, headers=get_hub_headers())
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        events = (
+            db.query(event_log)
+            .filter(
+                event_log.dev_id == "AA:BB:CC:44:55:77",
+                event_log.metric == "battery",
+            )
+            .all()
+        )
+        assert len(events) == 1
+        assert events[0].severity == "warning"
+        assert events[0].alarm == "BATTERY_WARNING"
+        assert events[0].threshold == 11.8
+        assert events[0].value == 11.5
     finally:
         db.close()
 

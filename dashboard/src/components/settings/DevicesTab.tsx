@@ -42,15 +42,69 @@ export function DevicesTab() {
   });
 
   const handleStartPair = (dev: DeviceResponse) => {
-    setSelectedDeviceToPair(dev); setPairName(dev.dev_name || dev.dev_id); setPairRoomId(rooms[0]?.id || ''); setPairMarkerX(dev.marker_x?.toString() || '50'); setPairMarkerY(dev.marker_y?.toString() || '50');
-    if (dev.threshold_config) { setPairWarn(dev.threshold_config.warning.toString()); setPairCrit(dev.threshold_config.critical.toString()); setPairHyst(dev.threshold_config.hysteresis.toString()); setPairDebounce(dev.threshold_config.debounce_seconds.toString()); }
+    setSelectedDeviceToPair(dev);
+    setPairName(dev.dev_name || dev.dev_id);
+    setPairRoomId(rooms[0]?.id || '');
+    setPairMarkerX(dev.marker_x?.toString() || '50');
+    setPairMarkerY(dev.marker_y?.toString() || '50');
+    if (dev.threshold_config) {
+      setPairWarn(dev.threshold_config.warning.toString());
+      setPairCrit(dev.threshold_config.critical.toString());
+      setPairHyst(dev.threshold_config.hysteresis.toString());
+      setPairDebounce(dev.threshold_config.debounce_seconds.toString());
+    } else {
+      if (dev.dev_type === 'ATS') {
+        setPairWarn('11.8');
+        setPairCrit('11.2');
+        setPairHyst('0.2');
+        setPairDebounce('60');
+      } else {
+        setPairWarn('28');
+        setPairCrit('32');
+        setPairHyst('0.5');
+        setPairDebounce('60');
+      }
+    }
     setPairError(null);
   };
   const handlePairSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDeviceToPair || !pairRoomId || !pairName.trim()) { setPairError('Device name and room assignment are required'); return; }
-    const warn = parseFloat(pairWarn); const crit = parseFloat(pairCrit); const hyst = parseFloat(pairHyst); const deb = parseInt(pairDebounce, 10); const mx = parseFloat(pairMarkerX); const my = parseFloat(pairMarkerY);
-    pairMutation.mutate({ devId: selectedDeviceToPair.dev_id, payload: { dev_name: pairName.trim(), room_id: pairRoomId, marker_x: isNaN(mx) ? 50 : mx, marker_y: isNaN(my) ? 50 : my, warning_threshold: isNaN(warn) ? undefined : warn, critical_threshold: isNaN(crit) ? undefined : crit, hysteresis: isNaN(hyst) ? 0.5 : hyst, debounce_seconds: isNaN(deb) ? 60 : deb } });
+    const warn = parseFloat(pairWarn);
+    const crit = parseFloat(pairCrit);
+    const hyst = parseFloat(pairHyst);
+    const deb = parseInt(pairDebounce, 10);
+    const mx = parseFloat(pairMarkerX);
+    const my = parseFloat(pairMarkerY);
+
+    if (!isNaN(warn) && !isNaN(crit)) {
+      if (selectedDeviceToPair.dev_type === 'ATS') {
+        if (warn < crit) {
+          setPairError('For ATS battery undervoltage, Warning threshold must be greater than or equal to Critical threshold');
+          return;
+        }
+      } else {
+        if (warn > crit) {
+          setPairError('Warning threshold cannot exceed critical threshold');
+          return;
+        }
+      }
+    }
+
+    const defaultHyst = selectedDeviceToPair.dev_type === 'ATS' ? 0.2 : 0.5;
+    pairMutation.mutate({
+      devId: selectedDeviceToPair.dev_id,
+      payload: {
+        dev_name: pairName.trim(),
+        room_id: pairRoomId,
+        marker_x: isNaN(mx) ? 50 : mx,
+        marker_y: isNaN(my) ? 50 : my,
+        warning_threshold: isNaN(warn) ? undefined : warn,
+        critical_threshold: isNaN(crit) ? undefined : crit,
+        hysteresis: isNaN(hyst) ? defaultHyst : hyst,
+        debounce_seconds: isNaN(deb) ? 60 : deb,
+      },
+    });
   };
 
   return (
@@ -73,7 +127,7 @@ export function DevicesTab() {
           <table className="w-full text-left text-xs text-zinc-300">
             <thead className="bg-zinc-950 text-[10px] font-semibold uppercase text-zinc-500 border-b border-zinc-800"><tr><th className="px-6 py-3">Device Name</th><th className="px-6 py-3">Type</th><th className="px-6 py-3">MAC / ID</th><th className="px-6 py-3">Room</th><th className="px-6 py-3">Map Coordinate</th><th className="px-6 py-3">Thresholds</th><th className="px-6 py-3 text-right">Actions</th></tr></thead>
             <tbody className="divide-y divide-zinc-800/60">
-              {activeDevices.map((d) => { const r = rooms.find((room) => room.id === d.room_id); return (<tr key={d.dev_id} className="hover:bg-zinc-800/50"><td className="px-6 py-4 font-semibold text-zinc-100">{d.dev_name || d.dev_id}</td><td className="px-6 py-4 font-mono text-zinc-400">{d.dev_type || '—'}</td><td className="px-6 py-4 font-mono text-zinc-500">{d.dev_id}</td><td className="px-6 py-4 font-medium text-zinc-300">{r?.name || 'Unassigned'}</td><td className="px-6 py-4 font-mono text-zinc-400">{d.marker_x !== null && d.marker_y !== null ? `(${d.marker_x}%, ${d.marker_y}%)` : '—'}</td><td className="px-6 py-4 font-mono text-xs text-zinc-400">{d.threshold_config ? `W: ${d.threshold_config.warning}°C / C: ${d.threshold_config.critical}°C` : 'Default'}</td><td className="px-6 py-4 text-right space-x-2"><button onClick={() => handleStartPair(d)} className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-medium cursor-pointer">Edit</button><button onClick={() => unpairMutation.mutate(d.dev_id)} disabled={unpairMutation.isPending} className="px-2 py-1 bg-red-950/30 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded text-[10px] font-medium cursor-pointer">Unpair</button></td></tr>); })}
+              {activeDevices.map((d) => { const r = rooms.find((room) => room.id === d.room_id); return (<tr key={d.dev_id} className="hover:bg-zinc-800/50"><td className="px-6 py-4 font-semibold text-zinc-100">{d.dev_name || d.dev_id}</td><td className="px-6 py-4 font-mono text-zinc-400">{d.dev_type || '—'}</td><td className="px-6 py-4 font-mono text-zinc-500">{d.dev_id}</td><td className="px-6 py-4 font-medium text-zinc-300">{r?.name || 'Unassigned'}</td><td className="px-6 py-4 font-mono text-zinc-400">{d.marker_x !== null && d.marker_y !== null ? `(${d.marker_x}%, ${d.marker_y}%)` : '—'}</td><td className="px-6 py-4 font-mono text-xs text-zinc-400">{d.threshold_config ? (d.dev_type === 'ATS' ? `W: ${d.threshold_config.warning}V / C: ${d.threshold_config.critical}V` : `W: ${d.threshold_config.warning}°C / C: ${d.threshold_config.critical}°C`) : 'Default'}</td><td className="px-6 py-4 text-right space-x-2"><button onClick={() => handleStartPair(d)} className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-medium cursor-pointer">Edit</button><button onClick={() => unpairMutation.mutate(d.dev_id)} disabled={unpairMutation.isPending} className="px-2 py-1 bg-red-950/30 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded text-[10px] font-medium cursor-pointer">Unpair</button></td></tr>); })}
               {activeDevices.length === 0 && <tr><td colSpan={7} className="px-6 py-6 text-center text-zinc-500 text-xs">No active paired devices.</td></tr>}
             </tbody>
           </table>
@@ -87,7 +141,7 @@ export function DevicesTab() {
               <div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Device Friendly Name *</label><input type="text" value={pairName} onChange={(e) => setPairName(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div>
               <div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Room Assignment *</label><select value={pairRoomId} onChange={(e) => setPairRoomId(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500"><option value="">Select Room...</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
               <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Map Position X (%)</label><input type="number" min="0" max="100" value={pairMarkerX} onChange={(e) => setPairMarkerX(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Map Position Y (%)</label><input type="number" min="0" max="100" value={pairMarkerY} onChange={(e) => setPairMarkerY(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div></div>
-              <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Warning Level (°C)</label><input type="number" step="0.1" value={pairWarn} onChange={(e) => setPairWarn(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Critical Level (°C)</label><input type="number" step="0.1" value={pairCrit} onChange={(e) => setPairCrit(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div></div>
+              <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">{selectedDeviceToPair.dev_type === 'ATS' ? 'Battery Warning (V)' : 'Warning Level (°C)'}</label><input type="number" step="0.1" value={pairWarn} onChange={(e) => setPairWarn(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">{selectedDeviceToPair.dev_type === 'ATS' ? 'Battery Critical (V)' : 'Critical Level (°C)'}</label><input type="number" step="0.1" value={pairCrit} onChange={(e) => setPairCrit(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div></div>
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800"><button type="button" onClick={() => setSelectedDeviceToPair(null)} className="px-4 py-2 border border-zinc-800 rounded hover:bg-zinc-800 text-zinc-300 text-xs font-medium cursor-pointer">Cancel</button><button type="submit" disabled={pairMutation.isPending} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded text-xs font-semibold cursor-pointer flex items-center gap-2">{pairMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm Pairing'}</button></div>
             </form>
           </div>

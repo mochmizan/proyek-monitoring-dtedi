@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import uuid
 
@@ -67,11 +67,12 @@ def seed():
                 db.flush()
 
                 # Thresholds
+                is_ats = dtype == "ATS"
                 thresh = DeviceThresholdConfig(
                     dev_id=mac,
-                    warning=28.0,
-                    critical=32.0,
-                    hysteresis=0.5,
+                    warning=11.8 if is_ats else 28.0,
+                    critical=11.2 if is_ats else 32.0,
+                    hysteresis=0.2 if is_ats else 0.5,
                     debounce_seconds=60
                 )
                 db.add(thresh)

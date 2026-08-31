@@ -26,12 +26,29 @@ export function HubsTab() {
     onError: (err: Error) => setThreshError(err.message),
   });
 
+  const targetDevice = activeDevices.find((d) => d.dev_id === threshDevId);
+  const isATS = targetDevice?.dev_type === 'ATS';
+
   const handleThresholdSelectDevice = (devId: string) => {
     setThreshDevId(devId);
     const target = activeDevices.find((d) => d.dev_id === devId);
     if (target?.threshold_config) {
-      setThreshWarn(target.threshold_config.warning.toString()); setThreshCrit(target.threshold_config.critical.toString());
-      setThreshHyst(target.threshold_config.hysteresis.toString()); setThreshDebounce(target.threshold_config.debounce_seconds.toString());
+      setThreshWarn(target.threshold_config.warning.toString());
+      setThreshCrit(target.threshold_config.critical.toString());
+      setThreshHyst(target.threshold_config.hysteresis.toString());
+      setThreshDebounce(target.threshold_config.debounce_seconds.toString());
+    } else {
+      if (target?.dev_type === 'ATS') {
+        setThreshWarn('11.8');
+        setThreshCrit('11.2');
+        setThreshHyst('0.2');
+        setThreshDebounce('60');
+      } else {
+        setThreshWarn('28');
+        setThreshCrit('32');
+        setThreshHyst('0.5');
+        setThreshDebounce('60');
+      }
     }
     setThreshError(null);
   };
@@ -40,8 +57,19 @@ export function HubsTab() {
     if (!threshDevId) { setThreshError('Please select a device to configure'); return; }
     const warn = parseFloat(threshWarn); const crit = parseFloat(threshCrit); const hyst = parseFloat(threshHyst); const deb = parseInt(threshDebounce, 10);
     if (isNaN(warn) || isNaN(crit)) { setThreshError('Warning and Critical values must be numbers'); return; }
-    if (warn > crit) { setThreshError('Warning threshold cannot exceed Critical threshold'); return; }
-    thresholdMutation.mutate({ devId: threshDevId, payload: { warning: warn, critical: crit, hysteresis: isNaN(hyst) ? 0.5 : hyst, debounce_seconds: isNaN(deb) ? 60 : deb } });
+    if (isATS) {
+      if (warn < crit) {
+        setThreshError('For ATS battery undervoltage, Warning threshold must be greater than or equal to Critical threshold');
+        return;
+      }
+    } else {
+      if (warn > crit) {
+        setThreshError('Warning threshold cannot exceed Critical threshold');
+        return;
+      }
+    }
+    const defaultHyst = isATS ? 0.2 : 0.5;
+    thresholdMutation.mutate({ devId: threshDevId, payload: { warning: warn, critical: crit, hysteresis: isNaN(hyst) ? defaultHyst : hyst, debounce_seconds: isNaN(deb) ? 60 : deb } });
   };
 
   return (
@@ -52,8 +80,8 @@ export function HubsTab() {
         <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-4 flex items-center gap-2"><Sliders className="h-4 w-4 text-indigo-400" /><span>Configure Device Alert Parameters</span></h3>
         <form onSubmit={handleThresholdFormSubmit} className="space-y-4">
           <div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Target Device *</label><select value={threshDevId} onChange={(e) => handleThresholdSelectDevice(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500"><option value="">Select an active device...</option>{activeDevices.map((d) => <option key={d.dev_id} value={d.dev_id}>{d.dev_name || d.dev_id} ({d.dev_type || 'Device'})</option>)}</select></div>
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Warning Level (°C)</label><input type="number" step="0.1" value={threshWarn} onChange={(e) => setThreshWarn(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Critical Level (°C)</label><input type="number" step="0.1" value={threshCrit} onChange={(e) => setThreshCrit(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div></div>
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Hysteresis Offset (°C)</label><input type="number" step="0.1" value={threshHyst} onChange={(e) => setThreshHyst(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Debounce Window (s)</label><input type="number" value={threshDebounce} onChange={(e) => setThreshDebounce(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div></div>
+          <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">{isATS ? 'Battery Warning (V)' : 'Warning Level (°C)'}</label><input type="number" step="0.1" value={threshWarn} onChange={(e) => setThreshWarn(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">{isATS ? 'Battery Critical (V)' : 'Critical Level (°C)'}</label><input type="number" step="0.1" value={threshCrit} onChange={(e) => setThreshCrit(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div></div>
+          <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">{isATS ? 'Hysteresis Offset (V)' : 'Hysteresis Offset (°C)'}</label><input type="number" step="0.1" value={threshHyst} onChange={(e) => setThreshHyst(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div><div><label className="block text-xs font-semibold text-zinc-400 uppercase mb-1">Debounce Window (s)</label><input type="number" value={threshDebounce} onChange={(e) => setThreshDebounce(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500" /></div></div>
           <div className="pt-2"><button type="submit" disabled={thresholdMutation.isPending || !threshDevId} className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded text-xs font-semibold cursor-pointer flex items-center justify-center gap-2">{thresholdMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Parameters'}</button></div>
         </form>
       </div>

@@ -1,4 +1,4 @@
-﻿# AGENTS.md — server (HubGate V5)
+# AGENTS.md — server (HubGate V5)
 
 ## Purpose
 
@@ -47,7 +47,7 @@ Argon2id hashing with dummy-hash timing-safe check, sessions (2h sliding / 12h a
 
 ### Alert Engine & Presence
 
-Synchronous threshold evaluation in `receive_iot` (warning/critical, debounce window, hysteresis recovery) and ATS emergency. Telemetry timestamps use `event_time` = hub `_hub_created_at`/`HUB_TS` epoch (offline WAL replay preserves capture time) else `now_utc` (UTC). `alert_engine` auto-resolves open `ATS_EMERGENCY` and suppresses new ones when payload reports `EMERGENCY=1` but `PLN>210 && GENSET<80` (case-insensitive keys; stuck-latch suppression for genset-disconnected field units). Presence tracks `last_seen`/`last_status`; `DEVICE_OFFLINE` after 25s timeout, `DEVICE_ONLINE` on recovery; `GET /api/hubs` derives `status` (`online`/`offline`) from 25s cutoff and stamps `hub_table.last_seen`.
+Synchronous threshold evaluation in `receive_iot` (temperature warning/critical overtemperature and ATS starter battery undervoltage: `BATTERY_WARNING` 11.8V / `BATTERY_CRITICAL` 11.2V with recovery at $V \ge \text{warning} + \text{hysteresis}$, debounce window, hysteresis recovery) and ATS emergency. Telemetry timestamps use `event_time` = hub `_hub_created_at`/`HUB_TS` epoch (offline WAL replay preserves capture time) else `now_utc` (UTC). `alert_engine` auto-resolves open `ATS_EMERGENCY` and suppresses new ones when payload reports `EMERGENCY=1` but `PLN>210 && GENSET<80` (case-insensitive keys; stuck-latch suppression for genset-disconnected field units). Presence tracks `last_seen`/`last_status`; `DEVICE_OFFLINE` after 25s timeout, `DEVICE_ONLINE` on recovery; `GET /api/hubs` derives `status` (`online`/`offline`) from 25s cutoff and stamps `hub_table.last_seen`.
 
 ## Work Guidance
 

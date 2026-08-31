@@ -294,7 +294,9 @@ function DashboardPage() {
                       <td className="px-6 py-4 text-xs font-mono text-zinc-300">
                         {device.threshold_config ? (
                           <span>
-                            W: {device.threshold_config.warning}°C / C: {device.threshold_config.critical}°C
+                            {device.dev_type === 'ATS'
+                              ? `W: ${device.threshold_config.warning}V / C: ${device.threshold_config.critical}V`
+                              : `W: ${device.threshold_config.warning}°C / C: ${device.threshold_config.critical}°C`}
                           </span>
                         ) : (
                           <span className="text-zinc-400">Default</span>
