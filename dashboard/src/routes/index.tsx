@@ -283,7 +283,7 @@ function DashboardPage() {
                           <StatusDot
                             tone={isPending ? 'amber' : isOnline ? 'emerald' : 'zinc'}
                             label={`Status: ${statusLabel}`}
-                            pulse={isOnline}
+                            variant={isOnline ? 'live' : 'idle'}
                           />
                           {statusLabel}
                         </span>

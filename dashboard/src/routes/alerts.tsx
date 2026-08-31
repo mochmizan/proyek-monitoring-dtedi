@@ -1,6 +1,7 @@
+import * as React from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import { ChevronDown, Check, RefreshCw, ShieldAlert } from 'lucide-react';
 import { z } from 'zod';
@@ -35,7 +36,7 @@ interface MultiSelectProps {
   onChange: (selected: string[]) => void;
 }
 
-function MultiSelect({ label, placeholder, options, selected, onChange }: MultiSelectProps) {
+const MultiSelect = React.memo(function MultiSelect({ label, placeholder, options, selected, onChange }: MultiSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -49,17 +50,17 @@ function MultiSelect({ label, placeholder, options, selected, onChange }: MultiS
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const toggleOption = (id: string) => {
+  const toggleOption = useCallback((id: string) => {
     if (selected.includes(id)) {
       onChange(selected.filter((item) => item !== id));
     } else {
       onChange([...selected, id]);
     }
-  };
+  }, [selected, onChange]);
 
-  const selectAll = () => {
+  const selectAll = useCallback(() => {
     onChange([]);
-  };
+  }, [onChange]);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -75,19 +76,19 @@ function MultiSelect({ label, placeholder, options, selected, onChange }: MultiS
         <ChevronDown className={cn("h-4 w-4 text-zinc-500 transition-transform duration-200", isOpen && "rotate-180")} />
       </button>
 
-      {isOpen && (
+      {isOpen ? (
         <div className="absolute left-0 z-50 mt-1 w-full bg-zinc-950 border border-zinc-800 rounded shadow-xl max-h-60 overflow-y-auto p-1 divide-y divide-zinc-900">
           <div className="py-1">
             <button
               type="button"
               onClick={selectAll}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-indigo-400 hover:bg-zinc-900 rounded text-left font-semibold cursor-pointer"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-indigo-400 hover:bg-zinc-900 rounded text-left font-semibold cursor-pointer transition-colors duration-200 ease-out"
             >
               <div className={cn(
                 "w-3.5 h-3.5 rounded border border-zinc-700 flex items-center justify-center bg-zinc-950",
                 selected.length === 0 && "bg-indigo-600 border-indigo-600"
               )}>
-                {selected.length === 0 && <Check className="h-2.5 w-2.5 text-white" />}
+                {selected.length === 0 ? <Check className="h-2.5 w-2.5 text-white" /> : null}
               </div>
               All (Clear Filters)
             </button>
@@ -100,13 +101,13 @@ function MultiSelect({ label, placeholder, options, selected, onChange }: MultiS
                   key={opt.id}
                   type="button"
                   onClick={() => toggleOption(opt.id)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100 rounded text-left cursor-pointer"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100 rounded text-left cursor-pointer transition-colors duration-200 ease-out"
                 >
                   <div className={cn(
                     "w-3.5 h-3.5 rounded border border-zinc-700 flex items-center justify-center bg-zinc-950",
                     isChecked && "bg-indigo-600 border-indigo-600"
                   )}>
-                    {isChecked && <Check className="h-2.5 w-2.5 text-white" />}
+                    {isChecked ? <Check className="h-2.5 w-2.5 text-white" /> : null}
                   </div>
                   <span className="truncate">{opt.name}</span>
                 </button>
@@ -114,10 +115,10 @@ function MultiSelect({ label, placeholder, options, selected, onChange }: MultiS
             })}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
-}
+});
 
 function AlertsPage() {
   const { 

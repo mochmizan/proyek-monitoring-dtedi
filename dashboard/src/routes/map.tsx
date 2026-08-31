@@ -1,6 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Thermometer, Zap, Wind, HelpCircle, RefreshCw, Network, LayoutGrid } from 'lucide-react';
+import * as React from 'react';
 import { useState } from 'react';
 import { z } from 'zod';
 import { cn } from '../lib/utils';
@@ -8,7 +9,10 @@ import { queryKeys } from '../lib/queryKeys';
 import { fetchRooms, fetchRoomMap } from '../lib/api'
 import { POLL_MS } from '../lib/constants';
 import type { RoomMapMarker } from '../types/api';
-import { TopologyView } from '../components/TopologyView';
+
+const TopologyView = React.lazy(() =>
+  import('../components/TopologyView').then((m) => ({ default: m.TopologyView }))
+);
 
 const mapSearchSchema = z.object({
   view: z.enum(['floor-plan', 'topology']).catch('floor-plan').optional(),
@@ -216,7 +220,15 @@ function MapPage() {
         )}
       </div>
       ) : (
-        <TopologyView />
+        <React.Suspense
+          fallback={
+            <div className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg min-h-[500px] flex items-center justify-center">
+              <RefreshCw className="h-5 w-5 animate-spin text-zinc-600" />
+            </div>
+          }
+        >
+          <TopologyView />
+        </React.Suspense>
       )}
     </div>
   );

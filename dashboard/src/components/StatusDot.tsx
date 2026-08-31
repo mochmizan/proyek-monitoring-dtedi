@@ -9,14 +9,18 @@ const toneClasses: Record<StatusTone, string> = {
   zinc: 'bg-zinc-400',
 };
 
+type StatusVariant = 'idle' | 'live';
+
 interface StatusDotProps {
   tone: StatusTone;
   label: string;
   pulse?: boolean;
+  variant?: StatusVariant;
   className?: string;
 }
 
-export function StatusDot({ tone, label, pulse = false, className }: StatusDotProps) {
+export function StatusDot({ tone, label, pulse, variant, className }: StatusDotProps) {
+  const isLive = variant ? variant === 'live' : pulse ?? false;
   return (
     <span
       role="img"
@@ -25,7 +29,7 @@ export function StatusDot({ tone, label, pulse = false, className }: StatusDotPr
       className={cn(
         'inline-block h-2 w-2 shrink-0 rounded-full',
         toneClasses[tone],
-        pulse && 'animate-pulse',
+        isLive && 'animate-pulse',
         className
       )}
     />

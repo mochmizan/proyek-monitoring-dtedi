@@ -99,7 +99,7 @@ export function TopologyNodeView({ data }: NodeProps<TopologyNodeType>) {
         <StatusDot
           tone={STATUS_TONES[data.status]}
           label={`${data.name} ${data.status}`}
-          pulse={!REDUCED_MOTION && data.status === 'online'}
+          variant={!REDUCED_MOTION && data.status === 'online' ? 'live' : 'idle'}
         />
       </div>
       <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-500 truncate tabular-nums">
