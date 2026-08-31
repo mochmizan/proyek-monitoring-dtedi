@@ -29,7 +29,7 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 
 ### Payload Validation
 
-`app/schemasv5.py`: `IotPayload` is discriminated union on `DEV_TYPE` (`ATSData`, `TSData`, `ACCData`, `ACData`, `PUMPData`); `ATSCommand`/`ACCommand` validated for mode/power/temperature actions.
+`app/schemasv5.py`: `IotPayload` is discriminated union on `DEV_TYPE` (`ATSData`, `TSData`, `ACCData`, `ACData`, `PUMPData`); `IotDataBase` uses `extra="allow"` + optional `HUB_TS` (alias `_hub_created_at`) so hub WAL-replay epoch passes through without 422; `ATSCommand`/`ACCommand` validated for mode/power/temperature actions.
 
 ### Auth
 
@@ -43,7 +43,7 @@ Argon2id hashing with dummy-hash timing-safe check, sessions (2h sliding / 12h a
 
 ### Alert Engine & Presence
 
-Synchronous threshold evaluation in `receive_iot` (warning/critical, debounce window, hysteresis recovery) and ATS emergency. Presence tracks `last_seen`/`last_status`; `DEVICE_OFFLINE` after 25s timeout, `DEVICE_ONLINE` on recovery; `GET /api/hubs` derives `status` (`online`/`offline`) from 25s cutoff and stamps `hub_table.last_seen`.
+Synchronous threshold evaluation in `receive_iot` (warning/critical, debounce window, hysteresis recovery) and ATS emergency. Telemetry timestamps use `event_time` = hub `_hub_created_at`/`HUB_TS` epoch (offline WAL replay preserves capture time) else `now_utc` (UTC). `alert_engine` auto-resolves open `ATS_EMERGENCY` and suppresses new ones when payload reports `EMERGENCY=1` but `PLN>210 && GENSET<80` (case-insensitive keys; stuck-latch suppression for genset-disconnected field units). Presence tracks `last_seen`/`last_status`; `DEVICE_OFFLINE` after 25s timeout, `DEVICE_ONLINE` on recovery; `GET /api/hubs` derives `status` (`online`/`offline`) from 25s cutoff and stamps `hub_table.last_seen`.
 
 ## Work Guidance
 

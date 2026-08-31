@@ -27,6 +27,7 @@ HubBrain V5 edge gateway on Raspberry Pi 4. Bridges `hs109rs/#` MQTT → HTTPS u
 - Bounded FIFO: `MAX_PENDING_ROWS=20000` — oldest rows pruned on overflow (enforced since `afb9c46`)
 - Forward failure → `INSERT` to WAL; success → `DELETE` after `POST` 200; replay resumes on upstream recovery without blocking live `POST`
 - Paced replay: FIFO order, `0.35s` delay between rows, `REPLAY_BATCH_SIZE` cap per cycle
+- Replay stamps each payload with `_hub_created_at` epoch (original enqueue `created_at`) before `POST` - server derives `event_time` from it so offline bursts keep capture timestamps (see `server/app/routers/iot.py`)
 
 ### Whitelist & Filtering
 
