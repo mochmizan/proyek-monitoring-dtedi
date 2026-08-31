@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   ArrowLeft, 
   Wind, 
@@ -42,21 +42,24 @@ function RoomDetailPage() {
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
+    placeholderData: keepPreviousData,
   });
 
   const { data: roomMap, isFetching: isFetchingMap } = useQuery({
     queryKey: queryKeys.rooms.map(roomId),
     queryFn: () => fetchRoomMap(roomId),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
+    placeholderData: keepPreviousData,
   });
 
   const { data: roomAlertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ room: roomId }),
     queryFn: () => fetchAlerts({ room: roomId }),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
+    placeholderData: keepPreviousData,
   });
 
   // ATS / Device Command State
@@ -143,7 +146,7 @@ function RoomDetailPage() {
           <div>
             <h1 className="text-2xl font-bold text-zinc-100">{roomName}</h1>
             <p className="text-xs text-zinc-500 mt-0.5">
-              {devices.length} assigned devices · {activeAlerts.length} active alerts
+              {devices.length} assigned devices Â· {activeAlerts.length} active alerts
             </p>
           </div>
         </div>
@@ -218,7 +221,7 @@ function RoomDetailPage() {
                       {device.latest_reading && (
                         <div className="text-xs text-indigo-400 font-semibold mt-1">
                           {device.dev_type === 'TS' && typeof device.latest_reading.temp === 'number' && (
-                            <span>{device.latest_reading.temp.toFixed(1)}°C / {String(device.latest_reading.humid ?? '')}%</span>
+                            <span>{device.latest_reading.temp.toFixed(1)}Â°C / {String(device.latest_reading.humid ?? '')}%</span>
                           )}
                           {device.dev_type === 'ATS' && (
                             <span>State: {String(device.latest_reading.state ?? 'N/A')}</span>
@@ -271,13 +274,13 @@ function RoomDetailPage() {
                         <div>
                           <div className="text-[10px] text-zinc-500 uppercase font-semibold">Temperature</div>
                           <div className="text-xl font-bold text-zinc-100">
-                            {typeof reading.temp === 'number' ? `${reading.temp.toFixed(1)}°C` : '—'}
+                            {typeof reading.temp === 'number' ? `${reading.temp.toFixed(1)}Â°C` : 'â€”'}
                           </div>
                         </div>
                         <div>
                           <div className="text-[10px] text-zinc-500 uppercase font-semibold">Humidity</div>
                           <div className="text-xl font-bold text-indigo-400">
-                            {typeof reading.humid === 'number' ? `${reading.humid.toFixed(1)}%` : String(reading.humid ?? '—')}
+                            {typeof reading.humid === 'number' ? `${reading.humid.toFixed(1)}%` : String(reading.humid ?? 'â€”')}
                           </div>
                         </div>
                       </div>
@@ -291,15 +294,15 @@ function RoomDetailPage() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">PLN Voltage:</span>
-                          <span className="font-mono text-zinc-200">{String(reading.pln ?? '—')} V</span>
+                          <span className="font-mono text-zinc-200">{String(reading.pln ?? 'â€”')} V</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Genset Voltage:</span>
-                          <span className="font-mono text-zinc-200">{String(reading.genset ?? '—')} V</span>
+                          <span className="font-mono text-zinc-200">{String(reading.genset ?? 'â€”')} V</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Battery (AKI):</span>
-                          <span className="font-mono text-zinc-200">{String(reading.aki ?? '—')} V</span>
+                          <span className="font-mono text-zinc-200">{String(reading.aki ?? 'â€”')} V</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Mode:</span>
@@ -325,7 +328,7 @@ function RoomDetailPage() {
                     params={{ deviceId: device.dev_id }}
                     className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
                   >
-                    View Device →
+                    View Device â†’
                   </Link>
 
                   {(isATS || isAC) && canControl && (
@@ -364,7 +367,7 @@ function RoomDetailPage() {
                 onClick={() => setSelectedDeviceForCmd(null)}
                 className="text-zinc-500 hover:text-zinc-300 text-sm"
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -473,3 +476,4 @@ function RoomDetailPage() {
     </div>
   );
 }
+

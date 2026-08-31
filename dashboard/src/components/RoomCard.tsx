@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
@@ -31,8 +31,9 @@ export function RoomCard({ room, status, className }: RoomCardProps) {
     queryKey: queryKeys.rooms.map(room.id),
     queryFn: () => fetchRoomMap(room.id),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
     staleTime: STALE_MS,
+    placeholderData: keepPreviousData,
   });
 
   const tsReading = (roomMap?.devices || []).find(
@@ -97,7 +98,7 @@ export function RoomCard({ room, status, className }: RoomCardProps) {
           <span className="text-xs font-medium text-zinc-400">
             {room.device_count} {room.device_count === 1 ? 'device' : 'devices'}
           </span>
-          <FreshnessBadge dataUpdatedAt={dataUpdatedAt} />
+          <FreshnessBadge dataUpdatedAt={roomMap ? dataUpdatedAt : undefined} />
         </div>
         <div className="flex items-center gap-1.5">
           <Sparkline values={trendRef.current} />

@@ -1,6 +1,6 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   Layers,
   AlertTriangle,
@@ -37,7 +37,8 @@ function DashboardPage() {
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
+    placeholderData: keepPreviousData,
     staleTime: STALE_MS,
   });
 
@@ -45,14 +46,16 @@ function DashboardPage() {
     queryKey: queryKeys.devices.list('all'),
     queryFn: () => fetchDevices('all'),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
+    placeholderData: keepPreviousData,
   });
 
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
+    placeholderData: keepPreviousData,
   });
 
   const { unresolvedAlerts, criticalCount, warningCount } = React.useMemo(() => {
@@ -291,14 +294,14 @@ function DashboardPage() {
                       <td className="px-6 py-4 text-xs font-mono text-zinc-300">
                         {device.threshold_config ? (
                           <span>
-                            W: {device.threshold_config.warning}°C / C: {device.threshold_config.critical}°C
+                            W: {device.threshold_config.warning}Â°C / C: {device.threshold_config.critical}Â°C
                           </span>
                         ) : (
                           <span className="text-zinc-400">Default</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-xs text-zinc-400">
-                        {device.created_at ? new Date(device.created_at).toLocaleString() : '—'}
+                        {device.created_at ? new Date(device.created_at).toLocaleString() : 'â€”'}
                       </td>
                     </tr>
                   );
@@ -318,3 +321,4 @@ function DashboardPage() {
     </div>
   );
 }
+

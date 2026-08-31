@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { cn } from '../lib/utils';
 
 interface FreshnessBadgeProps {
@@ -14,10 +14,9 @@ export function FreshnessBadge({ dataUpdatedAt, className }: FreshnessBadgeProps
     return () => window.clearInterval(id);
   }, []);
 
-  const ageSeconds =
-    typeof dataUpdatedAt === 'number'
-      ? Math.max(0, Math.round((now - dataUpdatedAt) / 1000))
-      : null;
+  const ageSeconds = !dataUpdatedAt
+    ? null
+    : Math.max(0, Math.round((now - dataUpdatedAt) / 1000));
   const stale = ageSeconds !== null && ageSeconds > 15;
 
   return (

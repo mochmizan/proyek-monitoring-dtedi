@@ -1,4 +1,4 @@
-import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
+﻿import { QueryClient, QueryCache, MutationCache, keepPreviousData } from '@tanstack/react-query';
 import { STALE_MS } from './constants';
 
 export const queryClient = new QueryClient({
@@ -15,6 +15,9 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: STALE_MS,
+      gcTime: 5 * 60 * 1000,
+      placeholderData: keepPreviousData,
+      refetchOnWindowFocus: true,
       retry: 1,
     },
   },
