@@ -1,9 +1,20 @@
 # schemasv5.py 
 # Validasi Payload Pydantic HubGate V5
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal, Union, Optional, Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator, ValidationInfo
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator, ValidationInfo
 
+
+# Outgoing datetime contract: SQLite returns naive UTC; serialize as tz-aware UTC so
+# browsers never misparse "2026-08-31T05:41:07" as local time (2026-08-31 clock bug).
+def _ensure_utc(v):
+    if isinstance(v, datetime) and v.tzinfo is None:
+        return v.replace(tzinfo=UTC)
+    return v
+
+
+UtcDateTime = Annotated[datetime, AfterValidator(_ensure_utc)]
+OptionalUtcDateTime = Annotated[Optional[datetime], AfterValidator(_ensure_utc)]
 
 # ==========================================
 # MODEL DASAR (BASE SCHEMA)
@@ -189,7 +200,7 @@ class RoomResponse(BaseModel):
     hub_id: Optional[str] = None
     floor_plan_image_path: Optional[str] = None
     device_count: int = 0
-    created_at: Optional[datetime] = None
+    created_at: OptionalUtcDateTime = None
 
     model_config = {"from_attributes": True}
 
@@ -225,11 +236,11 @@ class DeviceResponse(BaseModel):
     hub_id: Optional[str] = None
     is_active: bool
     status: str = "offline"
-    last_seen: Optional[datetime] = None
+    last_seen: OptionalUtcDateTime = None
     room_id: Optional[str] = None
     marker_x: Optional[float] = None
     marker_y: Optional[float] = None
-    created_at: Optional[datetime] = None
+    created_at: OptionalUtcDateTime = None
     threshold_config: Optional[ThresholdConfigSchema] = None
 
     model_config = {"from_attributes": True}
@@ -296,8 +307,8 @@ class AlertResponse(BaseModel):
     severity: Optional[str] = None
     value: Optional[float] = None
     threshold: Optional[float] = None
-    timestamp: datetime
-    resolved_at: Optional[datetime] = None
+    timestamp: UtcDateTime
+    resolved_at: OptionalUtcDateTime = None
     message: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -315,7 +326,7 @@ class AlertListResponse(BaseModel):
 # ==========================================
 
 class TelemetryHistoryPoint(BaseModel):
-    timestamp: datetime
+    timestamp: UtcDateTime
     temp: Optional[float] = None
     humid: Optional[float] = None
     pln: Optional[float] = None
@@ -344,7 +355,7 @@ class HubDeviceSummary(BaseModel):
     dev_id: str
     dev_name: Optional[str] = None
     dev_type: Optional[str] = None
-    last_seen: Optional[datetime] = None
+    last_seen: OptionalUtcDateTime = None
 
     model_config = {"from_attributes": True}
 
@@ -354,7 +365,7 @@ class HubResponse(BaseModel):
     hub_name: str
     room: Optional[str] = None
     status: str = "offline"
-    last_seen: Optional[datetime] = None
+    last_seen: OptionalUtcDateTime = None
     device_count: int = 0
     devices: list[HubDeviceSummary] = Field(default_factory=list)
 

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ==============================================================================
 # setup_push_deploy.sh â€” One-time git push-to-deploy bootstrap for the VPS
 #
@@ -164,6 +164,22 @@ while read -r _old _new ref; do
     if ! ( cd "${DEPLOY_WORK_TREE}" && unset GIT_DIR GIT_WORK_TREE && git fetch origin "${branch}" && git reset --hard "origin/${branch}" ); then
         echo "[post-receive] ERROR: work-tree sync failed"
         exit 1
+    fi
+
+    # Legacy runtime compat: smsb-api unit on this VPS runs from /opt/smsb/SERVERv5/v5
+    # (systemctl cat smsb-api -> WorkingDirectory). Overlay fresh code so backend patches
+    # actually go live; never touch runtime DB/.env/certs. Remove this block once the
+    # unit is repointed at ${DEPLOY_WORK_TREE}/server with daemon-reload.
+    if [[ -d /opt/smsb/SERVERv5/v5 ]]; then
+        echo "[post-receive] syncing server/ -> /opt/smsb/SERVERv5/v5 (legacy runtime path)"
+        rsync -a --delete \
+            --exclude "hubgatev5.db*" \
+            --exclude ".env" \
+            --exclude "cert.crt" \
+            --exclude "__pycache__" \
+            --exclude ".pytest_cache" \
+            "${DEPLOY_WORK_TREE}/server/" /opt/smsb/SERVERv5/v5/ || fail=1
+        chmod -R a+rX /opt/smsb/SERVERv5/v5 2>/dev/null || true
     fi
 
     # Python deps (only if venv was provisioned already)
