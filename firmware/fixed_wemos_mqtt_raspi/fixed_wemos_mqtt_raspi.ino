@@ -24,7 +24,7 @@ const char* mqtt_server = MQTT_HOST;
 const uint16_t mqtt_port = 1883;
 const char* mqtt_topic_data = "hs109rs/ats/data";
 const char* mqtt_topic_command = "hs109rs/ats/command";
-char device_name[16];  // Derived at boot: ATS-last4ofMAC
+char device_name[16];  // Derived at boot: ATS-last4ofMAC bounded snprintf
 static const char* _HUB_NAME_VAL_FIX = HUB_NAME;
 #undef HUB_NAME
 const char* HUB_NAME = _HUB_NAME_VAL_FIX;
@@ -52,16 +52,18 @@ unsigned long lastMsg = 0;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-String buffer = "";
-String nowState = "";
+// E: bounded char[65] like PROMINI, no String heap for serial frames
+char nowState[32] = "";
 bool autoMode = false;
 bool emergency = false;
+bool rtcOk = false;
 bool isOledPresent = false;
-String nowDate = "";
-String nowTime = "";
+char nowDate[16] = "";
+char nowTime[16] = "";
 
 unsigned long lastTime = 0;
-const unsigned long interval = 500;
+const unsigned long intervalConnected = 500;
+const unsigned long intervalDisconnected = 2000;
 
 double teganganPln = 0;
 double teganganGenset = 0;
@@ -76,30 +78,21 @@ long sisaDetik = 0;
 long sisaMenit = 0;
 long sisaJam = 0;
 
-#define WIFI_CONNECT_TIMEOUT_MS 10000
+// E: overflow counter (PROMINI 56-58 style)
+unsigned long serialOverflowCount = 0;
+
+// E: WiFi non-blocking retry state (setup_wifi returns immediately)
+unsigned long lastWifiAttempt = 0;
+unsigned long wifiRetryDelay = 3000;
+const unsigned long WIFI_RETRY_MAX = 30000;
 
 void setup_wifi() {
-  delay(10);
+  // E: non-blocking — start connect and return immediately; retry handled in loop()
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
-
   WiFi.begin(ssid, password);
-
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
-      Serial.println();
-      Serial.println("WiFi connect timeout, akan dicoba lagi di loop berikutnya");
-      return;
-    }
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("\nWiFi connected");
-  Serial.print("IP ESP8266: ");
-  Serial.println(WiFi.localIP());
+  lastWifiAttempt = millis();
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -140,13 +133,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
 
     if (doc.containsKey("start_genset")) {
-      const char* start_genset = doc["start_genset"];
-      if (start_genset != nullptr) {
-        if (strcmp(start_genset, "on") == 0) {
-          Serial.println("<SGM,on>");
-        }
-        else if (strcmp(start_genset, "off") == 0) {
-          Serial.println("<SGM,off>");
+      // E: SGM guard — PROMINI blocks SGM when autoMode==true; bridge tracks <AUTO_MODE,x>
+      // so we log/block here as well. Server pending_commands also validates, this is
+      // defense-in-depth; keep behavior aligned with PROMINI 704 autoMode check.
+      if (autoMode) {
+        Serial.println("<SGM blocked autoMode=1>");
+        // still allow server-authoritative path: do not forward <SGM,...> when in AUTO
+      } else {
+        const char* start_genset = doc["start_genset"];
+        if (start_genset != nullptr) {
+          if (strcmp(start_genset, "on") == 0) {
+            Serial.println("<SGM,on>");
+          }
+          else if (strcmp(start_genset, "off") == 0) {
+            Serial.println("<SGM,off>");
+          }
         }
       }
     }
@@ -171,15 +172,20 @@ void connectMQTT() {
 
   Serial.print("Connecting to MQTT...");
 
-  String clientId = String("ESP-") + WiFi.macAddress();
-  if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
+  // E: bounded snprintf instead of String heap for clientId
+  char clientId[32];
+  String mac = WiFi.macAddress();
+  snprintf(clientId, sizeof(clientId), "ESP-%s", mac.c_str());
+  if (client.connect(clientId, mqtt_user, mqtt_pass)) {
     Serial.println("connected");
     client.subscribe(mqtt_topic_command);
     mqttRetryDelay = 3000;
   } else {
     Serial.print("failed, rc=");
     Serial.println(client.state());
-    mqttRetryDelay = min(mqttRetryDelay * 2, MQTT_RETRY_DELAY_MAX);
+    unsigned long next = mqttRetryDelay * 2;
+    if (next > MQTT_RETRY_DELAY_MAX) next = MQTT_RETRY_DELAY_MAX;
+    mqttRetryDelay = next;
   }
 }
 
@@ -189,6 +195,7 @@ void setup() {
   digitalWrite(13, LOW);
 
   String bootMac = WiFi.macAddress();
+  // bounded snprintf device_name[16] ATS-XXXX (last 4 hex chars of MAC)
   snprintf(device_name, sizeof(device_name), "%s-%c%c%c%c", DEV_TYPE,
            bootMac[12], bootMac[13], bootMac[15], bootMac[16]);
 
@@ -219,15 +226,35 @@ void setup() {
 
 void loop() {
 
+  // E: non-blocking WiFi retry with millis backoff 3000->30000
+  if (WiFi.status() != WL_CONNECTED) {
+    if (millis() - lastWifiAttempt >= wifiRetryDelay) {
+      lastWifiAttempt = millis();
+      Serial.println("WiFi reconnect...");
+      WiFi.begin(ssid, password);
+      unsigned long next = wifiRetryDelay * 2;
+      if (next > WIFI_RETRY_MAX) next = WIFI_RETRY_MAX;
+      wifiRetryDelay = next;
+    }
+  } else {
+    wifiRetryDelay = 3000;
+  }
+
   connectMQTT();
   if (client.connected()) {
     client.loop();
   }
+  yield();
 
-  if (millis() - lastTime >= interval){
+  // E: gate <C,GET> behind client.connected() or throttle 2s when disconnected
+  unsigned long curInterval = client.connected() ? intervalConnected : intervalDisconnected;
+  if (millis() - lastTime >= curInterval){
     lastTime = millis();
+    // throttle serial poll when MQTT disconnected: still poll but at 2s, not 500ms
     Serial.println("<C,GET>");
-    publishData();
+    if (client.connected()) {
+      publishData();
+    }
   }
 
   static char buf[65];
@@ -241,81 +268,111 @@ void loop() {
     } else if (c == '>') {
       if (len < 64) buf[len++] = c;
       buf[len] = '\0';
-      processData(String(buf));
+      processData(buf);
       len = 0;
       buf[0] = '\0';
     } else {
       if (len < 64) {
         buf[len++] = c;
         buf[len] = '\0';
+      } else {
+        // E: overflow — reset and count like PROMINI
+        serialOverflowCount++;
+        len = 0;
+        buf[0] = '\0';
+        Serial.print("<ERR,overflow,");
+        Serial.print(serialOverflowCount);
+        Serial.println(">");
       }
     }
   }
 }
 
 
-void processData(String msg) {
-  
-  int commaIndex = msg.indexOf(',');
-  int endIndex = msg.indexOf('>');  
+void processData(const char* msg) {
+  const char* comma = strchr(msg, ',');
+  const char* end = strchr(msg, '>');
 
-  if (commaIndex != -1 && endIndex != -1) {
+  if (comma != NULL && end != NULL) {
+    int typeLen = comma - msg - 1;
+    int dataLen = end - comma - 1;
+    const char* type = msg + 1;
+    const char* data = comma + 1;
 
-    String type = msg.substring(1, commaIndex);
-    String data = msg.substring(commaIndex + 1, endIndex);
+    // bounded copy for string values (null-terminated temp)
+    char tmp[32];
+    int copyLen = dataLen < (int)sizeof(tmp)-1 ? dataLen : (int)sizeof(tmp)-1;
+    memcpy(tmp, data, copyLen);
+    tmp[copyLen] = '\0';
 
-    if (type == "STATE") {
-      nowState = data;
+    if (typeLen == 5 && strncmp(type, "STATE", 5) == 0) {
+      // bounded
+      int n = copyLen < (int)sizeof(nowState)-1 ? copyLen : (int)sizeof(nowState)-1;
+      memcpy(nowState, data, n);
+      nowState[n] = '\0';
     }
-    else if (type == "PLN") {
-      teganganPln = data.toFloat();
+    else if (typeLen == 3 && strncmp(type, "PLN", 3) == 0) {
+      teganganPln = atof(tmp);
     }
-    else if (type == "GENSET") {
-      teganganGenset = data.toFloat();
+    else if (typeLen == 6 && strncmp(type, "GENSET", 6) == 0) {
+      teganganGenset = atof(tmp);
     }
-    else if (type == "AKI") {
-      teganganAki = data.toFloat();
+    else if (typeLen == 3 && strncmp(type, "AKI", 3) == 0) {
+      teganganAki = atof(tmp);
     }
-    else if (type == "IS_PLN_ON") {
-      isPlnOn = data.toInt();
+    else if (typeLen == 9 && strncmp(type, "IS_PLN_ON", 9) == 0) {
+      isPlnOn = (tmp[0] == '1');
     }
-    else if (type == "IS_GENSET_ON") {
-      isGensetOn = data.toInt();
+    else if (typeLen == 12 && strncmp(type, "IS_GENSET_ON", 12) == 0) {
+      isGensetOn = (tmp[0] == '1');
     }
-    else if (type == "IS_AKI_ON") {
-      isAkiOn = data.toInt();
+    else if (typeLen == 9 && strncmp(type, "IS_AKI_ON", 9) == 0) {
+      isAkiOn = (tmp[0] == '1');
     }
-    else if (type == "IS_WARMUP") {
-      isWarmup = data.toInt();
+    else if (typeLen == 9 && strncmp(type, "IS_WARMUP", 9) == 0) {
+      isWarmup = (tmp[0] == '1');
     }
-    else if (type == "REM_SEC") {
-      sisaDetik = data.toInt();
+    else if (typeLen == 7 && strncmp(type, "REM_SEC", 7) == 0) {
+      sisaDetik = atol(tmp);
     }
-    else if (type == "REM_MIN") {
-      sisaMenit = data.toInt();
+    else if (typeLen == 7 && strncmp(type, "REM_MIN", 7) == 0) {
+      sisaMenit = atol(tmp);
     }
-    else if (type == "REM_HOUR") {
-      sisaJam = data.toInt();
+    else if (typeLen == 8 && strncmp(type, "REM_HOUR", 8) == 0) {
+      sisaJam = atol(tmp);
     }
-    else if (type == "AUTO_MODE") {
-      autoMode = data.toInt();
+    else if (typeLen == 9 && strncmp(type, "AUTO_MODE", 9) == 0) {
+      autoMode = (tmp[0] == '1');
     }
-    else if (type == "EMERGENCY") {
-      emergency = data.toInt();
+    else if (typeLen == 9 && strncmp(type, "EMERGENCY", 9) == 0) {
+      emergency = (tmp[0] == '1');
     }
-    else if (type == "DATE") {
-      nowDate = data;
+    else if (typeLen == 6 && strncmp(type, "RTC_OK", 6) == 0) {
+      rtcOk = (tmp[0] == '1');
     }
-    else if (type == "TIME") {
-      nowTime = data;
+    else if (typeLen == 4 && strncmp(type, "DATE", 4) == 0) {
+      int n = copyLen < (int)sizeof(nowDate)-1 ? copyLen : (int)sizeof(nowDate)-1;
+      memcpy(nowDate, data, n);
+      nowDate[n] = '\0';
+    }
+    else if (typeLen == 4 && strncmp(type, "TIME", 4) == 0) {
+      int n = copyLen < (int)sizeof(nowTime)-1 ? copyLen : (int)sizeof(nowTime)-1;
+      memcpy(nowTime, data, n);
+      nowTime[n] = '\0';
     }
   }
-  else if (commaIndex == -1 && endIndex != -1) {
-    String txt = msg.substring(1, endIndex);
+  else if (comma == NULL && end != NULL) {
+    // no comma: display raw text
+    int txtLen = end - msg - 1;
     if (isOledPresent) {
       display.clearDisplay();
       display.setCursor(0, 10);
-      display.println(txt);
+      // bounded display write
+      int n = txtLen < 32 ? txtLen : 32;
+      char line[33];
+      memcpy(line, msg + 1, n);
+      line[n] = '\0';
+      display.println(line);
       display.display();
     }
   }
@@ -342,6 +399,7 @@ void publishData(){
   doc["REM_HOUR"] = sisaJam;
   doc["AUTO_MODE"] = (bool)autoMode;
   doc["EMERGENCY"] = (bool)emergency;
+  doc["RTC_OK"] = (bool)rtcOk;
   // doc["DATE"] = nowDate;
   // doc["TIME"] = nowTime;
 
@@ -371,4 +429,3 @@ void publishData(){
   //     buffer2 += c;
   //   }
   // }
-

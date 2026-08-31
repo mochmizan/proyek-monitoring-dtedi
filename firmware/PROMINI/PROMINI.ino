@@ -8,8 +8,14 @@
 #define SENSITIVITAS_SENSOR_AC 500.0f
 #define BATAS_VAC 200.0f
 #define BATAS_AKI 12.0f
+#define VAC_ON 210.0f
+#define VAC_OFF 190.0f
+#define AKI_ON 12.5f
+#define AKI_OFF 11.5f
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
+bool lcdAvailable = false;
+unsigned long serialOverflowCount = 0;
 
 enum State {
   WAIT_AKI,
@@ -106,8 +112,8 @@ long sisaDetik = 0;
 long sisaMenit = 0;
 long sisaJam = 0;
 
-const int SIZE = 10;
-const int LONG_SIZE = 20; //default 120
+const int SIZE = 20;
+const int LONG_SIZE = 60; //default 120 proofed 10->20 20->60 for 10s/30s vote
 bool dataTegangan[SIZE];
 bool dataTegangan_long[LONG_SIZE];
 int indexTegangan = 0;
@@ -123,7 +129,7 @@ const unsigned long STARTER_INTERVAL = 2000;
 const unsigned long FIVE_MIN = 300000;
 
 int gensetStartAttempts = 0;
-const int MAX_START_ATTEMPTS = 5;
+const int MAX_START_ATTEMPTS = 3; // unified 3 vs fsm 3 (was 5)
 bool emergencyNotified = false;
 
 void nyalakan_genset(){
@@ -151,22 +157,23 @@ void matikan_lampu_emergency(){
 }
 
 void setup() {
-
-  wdt_enable(WDTO_2S);
+  MCUSR = 0;
+  wdt_disable();
+  wdt_reset();
 
   Serial.begin(9600);
 
   Wire.begin();
+  Wire.beginTransmission(0x27);
+  lcdAvailable = (Wire.endTransmission() == 0);
+  if (lcdAvailable) { lcd.init(); lcd.backlight(); lcd.setCursor(0,0); lcd.print(F("Hello World!")); }
 
-  lcd.init();
-  lcd.backlight();
-
-  lcd.setCursor(0,0);
-  lcd.print(F("Hello World!"));
-
+  // Relay glitch-safe: drive HIGH before OUTPUT
+  digitalWrite(emergencyGensetPin, HIGH);
+  digitalWrite(relay1, HIGH);
+  digitalWrite(relay2, HIGH);
   pinMode(BTN_LEFT, INPUT_PULLUP);
   pinMode(BTN_RIGHT, INPUT_PULLUP);
-
   pinMode(emergencyGensetPin, OUTPUT);
   pinMode(relay1, OUTPUT);
   pinMode(relay2, OUTPUT);
@@ -211,6 +218,7 @@ void setup() {
   wdt_reset();
   delay(1000);
   wdt_reset();
+  wdt_enable(WDTO_8S);
 }
 
 void processCommand(const char* msg) {
@@ -257,9 +265,21 @@ void processCommand(const char* msg) {
         Serial.print(F("<EMERGENCY,"));
         Serial.print(emergencyNotified);
         Serial.println(F(">"));
+
+        Serial.print(F("<RTC_OK,"));
+        Serial.print(rtcAvailable ? 1 : 0);
+        Serial.println(F(">"));
     }
-    else if (typeLen == 3 && strncmp(type, "RST", 3) == 0){
+    else if (typeLen == 3 && strncmp(type, "RST", 3) == 0 && dataLen == 3 && strncmp(data, "rst", 3) == 0){
       emergencyNotified = false;
+      gensetStartAttempts = 0;
+    }
+    else if (typeLen == 1 && type[0] == 'T') {
+      unsigned long t = atol(data);
+      if (t > 1700000000UL && t < 4100000000UL) {
+        rtc.adjust(DateTime(t));
+        rtcAvailable = true;
+      }
     }
     else if (typeLen == 1 && type[0] == 'M') {
       lastMode = autoMode;
@@ -272,7 +292,7 @@ void processCommand(const char* msg) {
     }
 
     else if (typeLen == 3 && strncmp(type, "SGM", 3) == 0){ // SGM = Start Genset Manually
-
+      if (autoMode) { Serial.println(F("<SGM blocked autoMode=1>")); return; }
       if (gensetOnState == AWAL_ON && gensetOffState == AWAL_OFF){
         if (dataLen == 3 && strncmp(data, "off", 3) == 0){
           nowManualState = GENSET_OFF;
@@ -286,19 +306,17 @@ void processCommand(const char* msg) {
 }
 
 void do_lcd(){
+  if (!lcdAvailable) return;
+  wdt_reset();
+  static int lastMenu = -1; static bool lastEmerg = false; static unsigned long lastBlink = 0;
   if (digitalRead(BTN_LEFT) == LOW) {
-    if (millis() - debounce_left >= 100) {
-      menu--;
-      debounce_left = millis();
-    }
+    if (millis() - debounce_left >= 100) { menu--; debounce_left = millis(); }
+  } else if (digitalRead(BTN_RIGHT) == LOW) {
+    if (millis() - debounce_right >= 100) { menu++; debounce_right = millis(); }
   }
-  else if (digitalRead(BTN_RIGHT) == LOW) {
-    if (millis() - debounce_right >= 100) {
-      menu++;
-      debounce_right = millis();
-    }
-  }
-
+  bool blink = (millis() / 1000) % 2;
+  if (lastMenu==menu && lastEmerg==emergencyNotified && !blink) { /* throttle */ }
+  lastMenu=menu; lastEmerg=emergencyNotified;
   lcd.clear();
 
   if (emergencyNotified == false){
@@ -332,11 +350,8 @@ void do_lcd(){
 
       char line2[17];
 
-      sprintf(line2, "%02ld:%02ld:%02ld",
-              sisaJam,
-              sisaMenit,
-              sisaDetik
-              );
+      long jamCap = sisaJam > 99 ? 99 : sisaJam;
+      sprintf(line2, "%02ld:%02ld:%02ld", jamCap, sisaMenit, sisaDetik);
       lcd.setCursor(0, 1);
       lcd.print(line2);
 
@@ -371,10 +386,12 @@ void do_lcd(){
     }
   }
   else if (emergencyNotified == true){
-    lcd.setCursor(2, 0);
-    lcd.print(F("EMERGENCY!"));
-    lcd.setCursor(0, 0);
-    lcd.print(F("GENSET FAILURE!"));
+    if ((millis()/1000)%2==0){
+      lcd.setCursor(2,0); lcd.print(F("EMERGENCY!"));
+      lcd.setCursor(0,1); lcd.print(F("GENSET FAILURE!"));
+    } else {
+      lcd.setCursor(0,0); lcd.print(F("STATE:")); lcd.setCursor(0,1); lcd.print(stateToString(nowState));
+    }
   }
 }
 
@@ -396,9 +413,9 @@ void loop() {
   teganganGenset = readVAC(sensorGenset);
   teganganAki = readVDC(akiPin);
 
-  isPlnOn = checkVolt(teganganPln, BATAS_VAC);
-  isGensetOn = checkVolt(teganganGenset, BATAS_VAC);
-  isAkiOn = checkVolt(teganganAki, BATAS_AKI);
+  isPlnOn = isPlnOn ? (teganganPln >= VAC_OFF) : (teganganPln >= VAC_ON);
+  isGensetOn = isGensetOn ? (teganganGenset >= VAC_OFF) : (teganganGenset >= VAC_ON);
+  isAkiOn = isAkiOn ? (teganganAki >= 11.5f) : (teganganAki >= 12.5f);
 
   while (Serial.available()) {
     char c = Serial.read();
@@ -415,7 +432,7 @@ void loop() {
     }
     else {
       if (cmdBufferLen < CMD_BUF_LEN) cmdBuffer[cmdBufferLen++] = c;
-      else cmdBufferLen = 0;
+      else { serialOverflowCount++; Serial.print(F("<ERR,overflow,")); Serial.print(serialOverflowCount); Serial.println(F(">")); cmdBufferLen = 0; }
     }
   }
 
@@ -439,11 +456,15 @@ void loop() {
         matikan_genset();
 
         if (countdown.remSecTotal <= 0){
-
           nowState = WAIT_GENSET;
           waktuGlobal_last2 = waktuGlobal;
           isWarmup = true;
-
+          if (rtcAvailable) { // persist at start to avoid retrigger on brownout
+            DateTime n = rtc.now();
+            DateTime nxt = getNextWarmup(n);
+            unsigned long cur; EEPROM.get(0, cur);
+            if (cur != nxt.unixtime()) saveNextWarmup(nxt);
+          }
         }
         else if (isAkiOn == false) {
 
@@ -655,7 +676,7 @@ void loop() {
           Serial.println(F("<RESET_OK,Emergency direset, sistem kembali normal>"));
         }
         else if (emergencyNotified == true){
-          Serial.println(F("EMERGENCY,Genset gagal start setelah 5x percobaan. Cek kondisi fisik & kirim RST,confirm untuk reset"));
+          Serial.println(F("EMERGENCY,Genset gagal start setelah 3x percobaan. Cek kondisi fisik & kirim RST,rst untuk reset"));
           nyalakan_lampu_emergency();
         }
       }
@@ -798,25 +819,14 @@ const __FlashStringHelper* stateToString(State s) {
   }
 }
 
-// fungsi untuk mencari modus
+// fungsi untuk mencari modus - tie keep previous hasilWait
 bool cariModus(bool arr[], int size) {
   int countTrue = 0;
   int countFalse = 0;
-
-  for (int i = 0; i < size; i++) {
-    if (arr[i]) {
-      countTrue++;
-    } else {
-      countFalse++;
-    }
-  }
-
-  // tentukan hasil
-  if (countTrue > countFalse) {
-    return true;
-  } else {
-    return false;
-  }
+  for (int i = 0; i < size; i++) { if (arr[i]) countTrue++; else countFalse++; }
+  if (countTrue > countFalse) return true;
+  if (countFalse > countTrue) return false;
+  return hasilWait; // tie keep previous
 }
 
 bool checkVolt (double volt, double batas){
@@ -832,13 +842,25 @@ bool checkVolt (double volt, double batas){
 }
 
 double readVAC(ZMPT101B &VAC) {
-  double vac = VAC.getRmsVoltage();
-  return vac;
+  double a = VAC.getRmsVoltage(); delay(10);
+  double b = VAC.getRmsVoltage(); delay(10);
+  double c = VAC.getRmsVoltage();
+  // median 3
+  if ((a <= b && b <= c) || (c <= b && b <= a)) return b;
+  if ((b <= a && a <= c) || (c <= a && a <= b)) return a;
+  return c;
 }
 
 double readVDC(int pin){
-  int value = analogRead(pin);
-  double vdc = map(value, 0, 1023, 0, 2500);
+  int v1 = analogRead(pin); delay(10);
+  int v2 = analogRead(pin); delay(10);
+  int v3 = analogRead(pin);
+  // median map
+  int m;
+  if ((v1 <= v2 && v2 <= v3) || (v3 <= v2 && v2 <= v1)) m = v2;
+  else if ((v2 <= v1 && v1 <= v3) || (v3 <= v1 && v1 <= v2)) m = v1;
+  else m = v3;
+  double vdc = map(m, 0, 1023, 0, 2500);
   vdc /= 100;
   return vdc;
 }
@@ -885,13 +907,18 @@ void saveNextWarmup(DateTime dt) {
 
 bool loadNextWarmup() {
   unsigned long savedTime;
-
   EEPROM.get(0, savedTime);
-
   if (savedTime > 1700000000UL) {
-    nextWarmup = DateTime(savedTime);
-    return true;
+    if (rtcAvailable) {
+      unsigned long now = rtc.now().unixtime();
+      if (savedTime < now + 8UL*86400UL && savedTime > now - 86400UL) {
+        nextWarmup = DateTime(savedTime);
+        return true;
+      }
+    } else {
+      nextWarmup = DateTime(savedTime);
+      return true;
+    }
   }
-
   return false;
 }
