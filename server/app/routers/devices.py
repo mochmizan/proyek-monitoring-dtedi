@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from sqlalchemy import Integer, cast, func
+from sqlalchemy import Integer, cast, func, or_
 from sqlalchemy.orm import Session
 
 from databasev5 import get_db
@@ -25,13 +25,13 @@ def approve_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.get(dev_table, dev_id)
+    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
         raise HTTPException(status_code=404, detail="Perangkat tidak ditemukan")
 
     device.is_active = True
     db.commit()
-    return {"status": "approved", "dev_id": dev_id}
+    return {"status": "approved", "dev_id": device.dev_id}
 
 
 @router.post("/api/devices/{dev_id}/pair", response_model=DeviceResponse)
@@ -43,7 +43,7 @@ def pair_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.get(dev_table, dev_id)
+    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -78,7 +78,7 @@ def pair_device(
                 )
 
         default_hyst = 0.2 if device.dev_type == "ATS" else 0.5
-        thresh = db.get(device_threshold_config, dev_id)
+        thresh = db.get(device_threshold_config, device.dev_id)
         if thresh:
             thresh.warning = payload.warning_threshold
             thresh.critical = payload.critical_threshold
@@ -86,7 +86,7 @@ def pair_device(
             thresh.debounce_seconds = payload.debounce_seconds if payload.debounce_seconds is not None else 60
         else:
             thresh = device_threshold_config(
-                dev_id=dev_id,
+                dev_id=device.dev_id,
                 warning=payload.warning_threshold,
                 critical=payload.critical_threshold,
                 hysteresis=payload.hysteresis if payload.hysteresis is not None else default_hyst,
@@ -128,7 +128,7 @@ def unpair_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.get(dev_table, dev_id)
+    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -141,7 +141,7 @@ def unpair_device(
     device.is_active = False
 
     db.commit()
-    return {"status": "unpaired", "dev_id": dev_id, "is_active": False}
+    return {"status": "unpaired", "dev_id": device.dev_id, "is_active": False}
 
 
 @router.put("/api/devices/{dev_id}/thresholds", response_model=ThresholdConfigSchema)
@@ -153,7 +153,7 @@ def update_device_thresholds(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.get(dev_table, dev_id)
+    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -173,7 +173,7 @@ def update_device_thresholds(
                 detail="Warning threshold cannot exceed critical threshold",
             )
 
-    thresh = db.get(device_threshold_config, dev_id)
+    thresh = db.get(device_threshold_config, device.dev_id)
     if thresh:
         thresh.warning = payload.warning
         thresh.critical = payload.critical
@@ -181,7 +181,7 @@ def update_device_thresholds(
         thresh.debounce_seconds = payload.debounce_seconds
     else:
         thresh = device_threshold_config(
-            dev_id=dev_id,
+            dev_id=device.dev_id,
             warning=payload.warning,
             critical=payload.critical,
             hysteresis=payload.hysteresis,
@@ -209,7 +209,7 @@ def get_device_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    device = db.get(dev_table, dev_id)
+    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -245,11 +245,11 @@ def get_device_history(
         else:
             if device.dev_type in ("TS", "AC", "ACC"):
                 window_start = db.query(func.min(temperature_data.timestamp)).filter(
-                    temperature_data.dev_id == dev_id
+                    temperature_data.dev_id == device.dev_id
                 ).scalar() or now
             else:
                 window_start = db.query(func.min(ats_data.timestamp)).filter(
-                    ats_data.dev_id == dev_id
+                    ats_data.dev_id == device.dev_id
                 ).scalar() or now
             if window_start.tzinfo is None:
                 window_start = window_start.replace(tzinfo=UTC)
@@ -261,7 +261,7 @@ def get_device_history(
         return cast(func.extract("epoch", col), Integer)
 
     if device.dev_type in ("TS", "AC", "ACC"):
-        q = db.query(temperature_data).filter(temperature_data.dev_id == dev_id)
+        q = db.query(temperature_data).filter(temperature_data.dev_id == device.dev_id)
         if cutoff is not None:
             q = q.filter(temperature_data.timestamp >= cutoff)
         if q.count() <= 1000:
@@ -300,7 +300,7 @@ def get_device_history(
                     )
                 )
     elif device.dev_type == "ATS":
-        q = db.query(ats_data).filter(ats_data.dev_id == dev_id)
+        q = db.query(ats_data).filter(ats_data.dev_id == device.dev_id)
         if cutoff is not None:
             q = q.filter(ats_data.timestamp >= cutoff)
         if q.count() <= 1000:
@@ -362,7 +362,7 @@ def get_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    device = db.get(dev_table, dev_id)
+    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

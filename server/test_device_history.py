@@ -386,3 +386,31 @@ def test_ats_dense_history_downsamples():
     # Latest bucket must be near 'now', not stuck at window start
     last = data["points"][-1]["timestamp"]
     assert last is not None
+
+
+def test_device_lookup_by_dev_name():
+    """Device details and history can be queried using either dev_id or dev_name."""
+    cookies = get_auth_cookies()
+    # Query TS device by dev_name ("Temperature Sensor 01")
+    resp = client.get("/api/devices/Temperature Sensor 01", cookies=cookies)
+    assert resp.status_code == 200
+    assert resp.json()["dev_id"] == "TS_DEV_01"
+    assert resp.json()["dev_name"] == "Temperature Sensor 01"
+
+    # Query history by dev_name
+    resp_hist = client.get("/api/devices/Temperature Sensor 01/history?range=24h", cookies=cookies)
+    assert resp_hist.status_code == 200
+    assert resp_hist.json()["dev_id"] == "TS_DEV_01"
+    assert len(resp_hist.json()["points"]) > 0
+
+    # Query threshold update by dev_name as admin
+    admin_cookies = get_auth_cookies("admin_hist", "adminpass")
+    resp_thresh = client.put(
+        "/api/devices/Temperature Sensor 01/thresholds",
+        json={"warning": 29.5, "critical": 35.0, "hysteresis": 0.5, "debounce_seconds": 60},
+        cookies=admin_cookies,
+    )
+    assert resp_thresh.status_code == 200
+    assert resp_thresh.json()["warning"] == 29.5
+
+

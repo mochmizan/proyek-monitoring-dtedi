@@ -328,7 +328,7 @@ export function TopologyView() {
       if (node.data.kind === 'device') {
         void router.navigate({
           to: '/device/$deviceId',
-          params: { deviceId: node.id.slice(4) },
+          params: { deviceId: node.data.name || node.id.slice(4) },
         });
       } else if (node.data.kind === 'hub') {
         void router.navigate({ to: '/hubs' });

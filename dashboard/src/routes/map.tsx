@@ -182,7 +182,7 @@ function MapPage() {
                   className="absolute -translate-x-1/2 -translate-y-1/2 z-20"
                 >
                   <button
-                    onClick={() => router.navigate({ to: '/device/$deviceId', params: { deviceId: device.dev_id } })}
+                    onClick={() => router.navigate({ to: '/device/$deviceId', params: { deviceId: device.dev_name || device.dev_id } })}
                     onMouseEnter={() => setHoveredDevice(device)}
                     onMouseLeave={() => setHoveredDevice(null)}
                     className={cn(

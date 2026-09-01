@@ -184,7 +184,7 @@ function RoomDetailPage() {
                   >
                     <Link
                       to="/device/$deviceId"
-                      params={{ deviceId: device.dev_id }}
+                      params={{ deviceId: device.dev_name || device.dev_id }}
                       className={cn(
                         "h-8 w-8 rounded-full border-2 flex items-center justify-center cursor-pointer shadow-lg hover:scale-110 active:scale-95 transition-all duration-150",
                         markerBg
@@ -308,7 +308,7 @@ function RoomDetailPage() {
                 <div className="flex items-center justify-between pt-3 border-t border-zinc-800/80">
                   <Link
                     to="/device/$deviceId"
-                    params={{ deviceId: device.dev_id }}
+                    params={{ deviceId: device.dev_name || device.dev_id }}
                     className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
                   >
                     View Device â†’

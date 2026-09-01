@@ -254,7 +254,7 @@ function DashboardPage() {
                   return (
                     <tr
                       key={device.dev_id}
-                      onClick={() => navigate({ to: '/device/$deviceId', params: { deviceId: device.dev_id } })}
+                      onClick={() => navigate({ to: '/device/$deviceId', params: { deviceId: device.dev_name || device.dev_id } })}
                       className={cn(
                         "row-cv hover:bg-zinc-850/50 transition-colors duration-200 ease-out cursor-pointer active:scale-[0.99]",
                         !device.is_active && "opacity-60"

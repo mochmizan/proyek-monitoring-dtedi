@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
@@ -39,7 +40,7 @@ def send_device_command(
                 detail="Action requires admin or operator role",
             )
 
-    device = db.get(dev_table, dev_id)
+    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
@@ -47,14 +48,14 @@ def send_device_command(
         if device.dev_type in ("AC", "ACC") or "target" in body or "action" in body:
             validated_command = ACCommand.model_validate(body)
         else:
-            validated_command = ATSCommand.model_validate(body, context={"db": db, "dev_id": dev_id})
+            validated_command = ATSCommand.model_validate(body, context={"db": db, "dev_id": device.dev_id})
     except ValidationError as err:
         from fastapi.exceptions import RequestValidationError
         raise RequestValidationError(err.errors())
 
     new_cmd = pending_commands(
         command_id=str(uuid.uuid4()),
-        dev_id=dev_id,
+        dev_id=device.dev_id,
         hub_id=device.hub_id,
         payload=validated_command.model_dump(mode="json"),
         status="pending",

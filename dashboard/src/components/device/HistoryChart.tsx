@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { TrendingUp, Activity, RefreshCw } from 'lucide-react';
+import { TrendingUp, Activity } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { TelemetryHistoryPoint } from '../../types/api';
-import { formatWIBTime } from '../../lib/dateUtils';
 import {
   MultiPanelChartContainer,
   computeYScale,
@@ -10,7 +9,7 @@ import {
   type TimeRange,
 } from './chart';
 
-export interface TelemetryChartProps {
+export interface HistoryChartProps {
   points: TelemetryHistoryPoint[];
   devType: string;
   timeRange: TimeRange;
@@ -20,7 +19,10 @@ export interface TelemetryChartProps {
   isFetching?: boolean;
   onRefresh?: () => void;
   dataUpdatedAt?: number | Date | string | null;
+  lastUpdated?: number | Date | string | null;
 }
+
+export type TelemetryChartProps = HistoryChartProps;
 
 export function HistoryChart({
   points,
@@ -29,10 +31,7 @@ export function HistoryChart({
   setTimeRange,
   warningThresholdVal,
   criticalThresholdVal,
-  isFetching = false,
-  onRefresh,
-  dataUpdatedAt,
-}: TelemetryChartProps) {
+}: HistoryChartProps) {
   // Series visibility toggles for ATS
   const [showPln, setShowPln] = useState(true);
   const [showGenset, setShowGenset] = useState(true);
@@ -115,7 +114,7 @@ export function HistoryChart({
         yTicks: plnScale.yTicks,
         testId: 'ats-panel-pln',
         crosshairTestId: 'crosshair-pln',
-        showTimeAxis: false,
+        showTimeAxis: true,
         thresholds: [
           {
             value: 210,
@@ -157,7 +156,7 @@ export function HistoryChart({
         yTicks: gensetScale.yTicks,
         testId: 'ats-panel-genset',
         crosshairTestId: 'crosshair-genset',
-        showTimeAxis: false,
+        showTimeAxis: true,
         thresholds: [
           {
             value: 210,
@@ -266,7 +265,7 @@ export function HistoryChart({
         yTicks: tempScale.yTicks,
         testId: 'ts-panel-temp',
         crosshairTestId: 'crosshair-ts',
-        showTimeAxis: false,
+        showTimeAxis: true,
         thresholds: tempThresholds,
         series: [
           {
@@ -312,11 +311,9 @@ export function HistoryChart({
     ];
   }
 
-  const formattedUpdatedAt = dataUpdatedAt ? formatWIBTime(dataUpdatedAt) : '';
-
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 space-y-5">
-      {/* Header Controls: Title, Subtitle, and Far-Right Column with Last Updated + Refresh & Range Tabs */}
+      {/* Header Controls: Title, Subtitle, and Time Range Selector Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
@@ -326,49 +323,20 @@ export function HistoryChart({
           <p className="text-xs text-zinc-500 mt-0.5">Real-time telemetry stream across selected monitoring timeframe</p>
         </div>
 
-        <div className="flex flex-col items-start sm:items-end gap-2.5 self-start sm:self-auto">
-          {/* Top Row: Last updated indicator & Refresh button */}
-          <div className="flex items-center gap-3">
-            {formattedUpdatedAt && (
-              <span className="text-[11px] text-zinc-400 font-mono" data-testid="history-last-updated">
-                Last updated: {formattedUpdatedAt}
-              </span>
-            )}
-
-            {onRefresh && (
-              <button
-                type="button"
-                onClick={() => onRefresh()}
-                disabled={isFetching}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border transition-all cursor-pointer",
-                  "bg-zinc-950 hover:bg-zinc-800 border-zinc-800 text-zinc-300 disabled:opacity-50"
-                )}
-                aria-label="Refresh telemetry data"
-                data-testid="history-refresh-btn"
-              >
-                <RefreshCw className={cn("h-3 w-3 text-indigo-400", isFetching && "animate-spin")} />
-                <span>Refresh</span>
-              </button>
-            )}
-          </div>
-
-          {/* Bottom Row: Time Range Selector Tabs */}
-          <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
-            {(['6h', '24h', '7d', '30d'] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setTimeRange(r)}
-                className={cn(
-                  "px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
-                  timeRange === r ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-                )}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 self-start sm:self-auto">
+          {(['6h', '24h', '7d', '30d'] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setTimeRange(r)}
+              className={cn(
+                "px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                timeRange === r ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+              )}
+            >
+              {r}
+            </button>
+          ))}
         </div>
       </div>
 

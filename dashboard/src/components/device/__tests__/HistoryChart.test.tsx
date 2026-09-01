@@ -44,7 +44,7 @@ describe('HistoryChart Component', () => {
   describe('ATS Three-Panel Stacked History Chart', () => {
     it('renders three stacked panels for ATS (PLN, Genset, and DC Battery)', () => {
       const setTimeRange = vi.fn();
-      render(
+      const { container } = render(
         <HistoryChart
           points={atsSamplePoints}
           devType="ATS"
@@ -72,6 +72,9 @@ describe('HistoryChart Component', () => {
       // Panel 3: DC Battery Voltage
       expect(screen.getByTestId('ats-panel-battery')).toBeInTheDocument();
       expect(screen.getByText('Tegangan DC Baterai Starter')).toBeInTheDocument();
+
+      // Verify time axis is enabled on all 3 panels
+      expect(container.querySelectorAll('.panel-time-axis')).toHaveLength(3);
 
       // Verify battery threshold pills in header
       expect(screen.getByText('Warn (11.8V)')).toBeInTheDocument();
@@ -204,7 +207,7 @@ describe('HistoryChart Component', () => {
 
   describe('TS / Non-ATS Multi-Panel History Chart', () => {
     it('renders stacked panels for TS with temperature & humidity', () => {
-      render(
+      const { container } = render(
         <HistoryChart
           points={tsSamplePoints}
           devType="TS"
@@ -222,6 +225,9 @@ describe('HistoryChart Component', () => {
       expect(screen.getByTestId('path-humid')).toBeInTheDocument();
       expect(screen.getByText('Warn: 30°C')).toBeInTheDocument();
       expect(screen.getByText('Crit: 35°C')).toBeInTheDocument();
+
+      // Verify time axis is enabled on all TS panels
+      expect(container.querySelectorAll('.panel-time-axis')).toHaveLength(2);
     });
 
     it('renders threshold guide lines on canvas when temperature approaches or crosses thresholds', () => {
@@ -314,7 +320,7 @@ describe('HistoryChart Component', () => {
     });
   });
 
-  describe('Header Controls, Range Tabs, Last Updated & Refresh', () => {
+  describe('Header Controls & Range Tabs', () => {
     it('handles time range tab clicks', () => {
       const setTimeRange = vi.fn();
       render(
@@ -334,60 +340,6 @@ describe('HistoryChart Component', () => {
 
       fireEvent.click(btn7d);
       expect(setTimeRange).toHaveBeenCalledWith('7d');
-    });
-
-    it('displays Last Updated indicator when dataUpdatedAt is provided', () => {
-      const updatedAt = new Date('2026-09-01T12:30:45Z').getTime();
-      render(
-        <HistoryChart
-          points={atsSamplePoints}
-          devType="ATS"
-          timeRange="24h"
-          setTimeRange={vi.fn()}
-          dataUpdatedAt={updatedAt}
-        />
-      );
-
-      const lastUpdated = screen.getByTestId('history-last-updated');
-      expect(lastUpdated).toBeInTheDocument();
-      expect(lastUpdated).toHaveTextContent('Last updated:');
-      expect(lastUpdated).toHaveTextContent('WIB');
-    });
-
-    it('calls onRefresh when Refresh button is clicked', () => {
-      const onRefresh = vi.fn();
-      render(
-        <HistoryChart
-          points={atsSamplePoints}
-          devType="ATS"
-          timeRange="24h"
-          setTimeRange={vi.fn()}
-          onRefresh={onRefresh}
-          isFetching={false}
-        />
-      );
-
-      const refreshBtn = screen.getByTestId('history-refresh-btn');
-      expect(refreshBtn).not.toBeDisabled();
-      fireEvent.click(refreshBtn);
-      expect(onRefresh).toHaveBeenCalledTimes(1);
-    });
-
-    it('disables Refresh button when isFetching is true', () => {
-      const onRefresh = vi.fn();
-      render(
-        <HistoryChart
-          points={atsSamplePoints}
-          devType="ATS"
-          timeRange="24h"
-          setTimeRange={vi.fn()}
-          onRefresh={onRefresh}
-          isFetching={true}
-        />
-      );
-
-      const refreshBtn = screen.getByTestId('history-refresh-btn');
-      expect(refreshBtn).toBeDisabled();
     });
   });
 
