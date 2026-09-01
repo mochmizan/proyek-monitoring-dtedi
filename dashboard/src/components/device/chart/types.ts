@@ -57,6 +57,7 @@ export interface TimeWindowContext {
   paddingRight: number;
   timeRange: TimeRange;
   pointTimes: (number | null)[];
+  gapThresholdMs: number;
   outages: { start: number; end: number }[];
   xTimeTicks: Date[];
   timeToX: (tMs: number) => number;

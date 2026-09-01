@@ -179,6 +179,37 @@ describe('chartMath Unit Tests', () => {
       // Point 0 was isolated by missing point 1, Point 2 was isolated by gap after point 2
       expect(result.isolated.length).toBeGreaterThan(0);
     });
+
+    it('renders continuous line segments and 0 isolated points for downsampled points with adaptive gapThresholdMs', () => {
+      // Downsampled points every 10 minutes (600,000 ms) for 7d/30d windows
+      const intervalMs = 600_000;
+      const baseTime = 1_700_000_000_000;
+      const points: TelemetryHistoryPoint[] = Array.from({ length: 10 }, (_, i) => ({
+        timestamp: new Date(baseTime + i * intervalMs).toISOString(),
+        temp: 24 + (i % 3),
+      }));
+      const pointTimes = points.map((_, i) => baseTime + i * intervalMs);
+      const getXCoord = (i: number) => i * 50;
+      const getYCoord = (v: number) => 100 - v;
+
+      // Adaptive gap threshold (e.g. median interval * 10 = 6,000,000 ms)
+      const adaptiveGapThresholdMs = intervalMs * 10;
+
+      const result = buildPathSegments(
+        points,
+        (p) => p.temp,
+        getXCoord,
+        getYCoord,
+        200,
+        pointTimes,
+        adaptiveGapThresholdMs
+      );
+
+      expect(result.linePath.startsWith('M')).toBe(true);
+      expect(result.isolated).toHaveLength(0);
+      const lCount = (result.linePath.match(/ L /g) || []).length;
+      expect(lCount).toBe(9);
+    });
   });
 
   describe('computeYScale', () => {

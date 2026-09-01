@@ -83,6 +83,7 @@ export const MultiPanelChartContainer: React.FC<MultiPanelChartContainerProps> =
     paddingRight,
     timeRange,
     pointTimes,
+    gapThresholdMs,
     outages,
     xTimeTicks,
     timeToX: timeToXCoord,

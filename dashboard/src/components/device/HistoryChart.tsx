@@ -100,16 +100,9 @@ export function HistoryChart({
     const warnBatteryVal = warningThresholdVal ?? 11.8;
     const critBatteryVal = criticalThresholdVal ?? 11.2;
 
-    const plnScale = computeYScale(plnValues, 180, 240, [210, 190], 0.12, 20);
-    const gensetScale = computeYScale(gensetValues, 0, 240, [210], 0.12, 30, 0);
-    const batteryScale = computeYScale(
-      akiValues,
-      10.0,
-      14.5,
-      [warnBatteryVal, critBatteryVal],
-      0.12,
-      2.0
-    );
+    const plnScale = computeYScale(plnValues, 180, 240, [], 0.12, 20);
+    const gensetScale = computeYScale(gensetValues, 0, 240, [], 0.12, 30, 0);
+    const batteryScale = computeYScale(akiValues, 10.0, 14.5, [], 0.12, 2.0);
 
     panels = [
       {
@@ -235,14 +228,7 @@ export function HistoryChart({
   } else {
     // TS / AC Multi-Panel Configuration
     // Panel 1: Temperature with gradient fill & thresholds
-    const tempScale = computeYScale(
-      tempValues,
-      20,
-      35,
-      [warningThresholdVal, criticalThresholdVal],
-      0.12,
-      6
-    );
+    const tempScale = computeYScale(tempValues, 20, 35, [], 0.12, 6);
 
     const tempThresholds = [];
     if (warningThresholdVal !== null && warningThresholdVal !== undefined) {

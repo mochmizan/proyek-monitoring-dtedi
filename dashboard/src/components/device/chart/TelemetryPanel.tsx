@@ -3,7 +3,6 @@ import { cn } from '../../../lib/utils';
 import type { TelemetryHistoryPoint } from '../../../types/api';
 import type { PanelConfig, TimeWindowContext } from './types';
 import { getY, findClosestIndexByX } from './chartMath';
-import { GAP_FLOOR_MS } from '../../../lib/chartUtils';
 import { PanelGrid } from './PanelGrid';
 import { PanelThresholds } from './PanelThresholds';
 import { PanelOutages } from './PanelOutages';
@@ -197,7 +196,7 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
             getYCoord={getYCoord}
             plotBottomY={plotBottomY}
             pointTimes={timeWindow.pointTimes}
-            gapThresholdMs={GAP_FLOOR_MS}
+            gapThresholdMs={timeWindow.gapThresholdMs}
           />
 
           {/* Bottom X Time Axis */}

@@ -61,32 +61,65 @@ describe('HistoryChart Component', () => {
       // Panel 1: PLN Voltage
       expect(screen.getByTestId('ats-panel-pln')).toBeInTheDocument();
       expect(screen.getByText('Tegangan PLN (Grid)')).toBeInTheDocument();
-      expect(screen.getByTestId('threshold-nominal')).toBeInTheDocument();
-      expect(screen.getByTestId('threshold-nominal')).toHaveTextContent('210V Nominal');
-      expect(screen.getByTestId('threshold-low')).toBeInTheDocument();
-      expect(screen.getByTestId('threshold-low')).toHaveTextContent('190V Batas Bawah');
+      expect(screen.getByText('210V Nominal')).toBeInTheDocument();
+      expect(screen.getByText('190V Batas Bawah')).toBeInTheDocument();
 
       // Panel 2: Genset Voltage
       expect(screen.getByTestId('ats-panel-genset')).toBeInTheDocument();
       expect(screen.getByText('Tegangan Genset (Generator)')).toBeInTheDocument();
-      expect(screen.getByTestId('threshold-genset-ready')).toBeInTheDocument();
-      expect(screen.getByTestId('threshold-genset-ready')).toHaveTextContent('210V Siap Beban');
+      expect(screen.getByText('210V Siap Beban')).toBeInTheDocument();
 
       // Panel 3: DC Battery Voltage
       expect(screen.getByTestId('ats-panel-battery')).toBeInTheDocument();
       expect(screen.getByText('Tegangan DC Baterai Starter')).toBeInTheDocument();
 
-      // Verify battery threshold lines
-      expect(screen.getByTestId('threshold-warning')).toBeInTheDocument();
-      expect(screen.getByTestId('threshold-warning')).toHaveTextContent('11.8V Warning');
-      expect(screen.getByTestId('threshold-critical')).toBeInTheDocument();
-      expect(screen.getByTestId('threshold-critical')).toHaveTextContent('11.2V Critical');
+      // Verify battery threshold pills in header
+      expect(screen.getByText('Warn (11.8V)')).toBeInTheDocument();
+      expect(screen.getByText('Crit (11.2V)')).toBeInTheDocument();
 
       // Verify ATS summary cards
       expect(screen.getByText('PLN Voltage')).toBeInTheDocument();
       expect(screen.getByText('Genset Voltage')).toBeInTheDocument();
       expect(screen.getByText('Battery (AKI)')).toBeInTheDocument();
       expect(screen.getByText('Controller State')).toBeInTheDocument();
+    });
+
+    it('renders threshold guide lines on canvas when voltage values cross or approach thresholds', () => {
+      const atsThresholdPoints: TelemetryHistoryPoint[] = [
+        {
+          timestamp: '2026-09-01T10:00:00Z',
+          pln: 185.0,
+          genset: 205.0,
+          aki: 11.0,
+          state: 'GENSET_ONLINE',
+        },
+        {
+          timestamp: '2026-09-01T10:02:00Z',
+          pln: 195.0,
+          genset: 215.0,
+          aki: 12.0,
+          state: 'GENSET_ONLINE',
+        },
+      ];
+
+      render(
+        <HistoryChart
+          points={atsThresholdPoints}
+          devType="ATS"
+          timeRange="24h"
+          setTimeRange={vi.fn()}
+          warningThresholdVal={11.8}
+          criticalThresholdVal={11.2}
+        />
+      );
+
+      // In range: PLN 185-195V puts 190V threshold in canvas domain
+      expect(screen.getByTestId('threshold-low')).toBeInTheDocument();
+      // Genset 205-215V puts 210V threshold in canvas domain
+      expect(screen.getByTestId('threshold-genset-ready')).toBeInTheDocument();
+      // AKI 11.0-12.0V puts 11.8V and 11.2V thresholds in canvas domain
+      expect(screen.getByTestId('threshold-warning')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-critical')).toBeInTheDocument();
     });
 
     it('toggles ATS series visibility on legend pill click', () => {
@@ -187,8 +220,37 @@ describe('HistoryChart Component', () => {
       expect(screen.getByTestId('ts-panel-humid')).toBeInTheDocument();
       expect(screen.getByTestId('path-temp')).toBeInTheDocument();
       expect(screen.getByTestId('path-humid')).toBeInTheDocument();
-      expect(screen.getByText('Warn (30°C)')).toBeInTheDocument();
-      expect(screen.getByText('Crit (35°C)')).toBeInTheDocument();
+      expect(screen.getByText('Warn: 30°C')).toBeInTheDocument();
+      expect(screen.getByText('Crit: 35°C')).toBeInTheDocument();
+    });
+
+    it('renders threshold guide lines on canvas when temperature approaches or crosses thresholds', () => {
+      const tsHighPoints: TelemetryHistoryPoint[] = [
+        {
+          timestamp: '2026-09-01T10:00:00Z',
+          temp: 29.0,
+          humid: 55.0,
+        },
+        {
+          timestamp: '2026-09-01T10:02:00Z',
+          temp: 36.0,
+          humid: 54.2,
+        },
+      ];
+
+      render(
+        <HistoryChart
+          points={tsHighPoints}
+          devType="TS"
+          timeRange="6h"
+          setTimeRange={vi.fn()}
+          warningThresholdVal={30}
+          criticalThresholdVal={35}
+        />
+      );
+
+      expect(screen.getByTestId('threshold-warning')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-critical')).toBeInTheDocument();
     });
 
     it('toggles TS series visibility on legend pill click', () => {
