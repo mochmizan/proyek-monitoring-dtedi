@@ -41,8 +41,8 @@ describe('HistoryChart Component', () => {
     },
   ];
 
-  describe('ATS Two-Panel Stacked History Chart', () => {
-    it('renders two stacked panels for ATS (AC Voltage and DC Battery)', () => {
+  describe('ATS Three-Panel Stacked History Chart', () => {
+    it('renders three stacked panels for ATS (PLN, Genset, and DC Battery)', () => {
       const setTimeRange = vi.fn();
       render(
         <HistoryChart
@@ -55,22 +55,32 @@ describe('HistoryChart Component', () => {
         />
       );
 
-      // Verify two-panel container
-      expect(screen.getByTestId('ats-two-panel-container')).toBeInTheDocument();
+      // Verify three-panel container
+      expect(screen.getByTestId('ats-three-panel-container')).toBeInTheDocument();
 
-      // Panel 1: AC Voltage
-      expect(screen.getByTestId('ats-panel-ac')).toBeInTheDocument();
-      expect(screen.getByText('AC Grid & Genset Voltage (V)')).toBeInTheDocument();
+      // Panel 1: PLN Voltage
+      expect(screen.getByTestId('ats-panel-pln')).toBeInTheDocument();
+      expect(screen.getByText('Tegangan PLN (Grid)')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-nominal')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-nominal')).toHaveTextContent('210V Nominal');
+      expect(screen.getByTestId('threshold-low')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-low')).toHaveTextContent('190V Batas Bawah');
 
-      // Panel 2: DC Battery Voltage
+      // Panel 2: Genset Voltage
+      expect(screen.getByTestId('ats-panel-genset')).toBeInTheDocument();
+      expect(screen.getByText('Tegangan Genset (Generator)')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-genset-ready')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-genset-ready')).toHaveTextContent('210V Siap Beban');
+
+      // Panel 3: DC Battery Voltage
       expect(screen.getByTestId('ats-panel-battery')).toBeInTheDocument();
-      expect(screen.getByText('Starter Battery Voltage (AKI)')).toBeInTheDocument();
+      expect(screen.getByText('Tegangan DC Baterai Starter')).toBeInTheDocument();
 
       // Verify battery threshold lines
       expect(screen.getByTestId('threshold-warning')).toBeInTheDocument();
-      expect(screen.getByText('11.8V Warning')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-warning')).toHaveTextContent('11.8V Warning');
       expect(screen.getByTestId('threshold-critical')).toBeInTheDocument();
-      expect(screen.getByText('11.2V Critical')).toBeInTheDocument();
+      expect(screen.getByTestId('threshold-critical')).toHaveTextContent('11.2V Critical');
 
       // Verify ATS summary cards
       expect(screen.getByText('PLN Voltage')).toBeInTheDocument();
@@ -121,7 +131,7 @@ describe('HistoryChart Component', () => {
       expect(screen.getByTestId('path-pln')).toBeInTheDocument();
     });
 
-    it('synchronizes hover crosshairs and unified tooltip across both panels', () => {
+    it('synchronizes hover crosshairs and unified tooltip across all 3 panels', () => {
       const { container } = render(
         <HistoryChart
           points={atsSamplePoints}
@@ -131,27 +141,30 @@ describe('HistoryChart Component', () => {
         />
       );
 
-      const acSvg = container.querySelector('[data-testid="ats-panel-ac"] svg');
-      expect(acSvg).toBeInTheDocument();
+      const plnSvg = container.querySelector('[data-testid="ats-panel-pln"] svg');
+      expect(plnSvg).toBeInTheDocument();
 
       // Simulate mousemove on Panel 1 SVG
-      fireEvent.mouseMove(acSvg!, { clientX: 200, clientY: 50 });
+      fireEvent.mouseMove(plnSvg!, { clientX: 200, clientY: 50 });
 
-      // Check crosshair on both AC panel and Battery panel
-      expect(screen.getByTestId('crosshair-ac')).toBeInTheDocument();
-      expect(screen.getByTestId('crosshair-dc')).toBeInTheDocument();
+      // Check crosshair on PLN, Genset, and Battery panels
+      expect(screen.getByTestId('crosshair-pln')).toBeInTheDocument();
+      expect(screen.getByTestId('crosshair-genset')).toBeInTheDocument();
+      expect(screen.getByTestId('crosshair-battery')).toBeInTheDocument();
 
       // Check unified floating tooltip content
       const tooltip = screen.getByTestId('ats-hover-tooltip');
       expect(tooltip).toBeInTheDocument();
       expect(tooltip).toHaveTextContent('PLN:');
+      expect(tooltip).toHaveTextContent('Genset:');
       expect(tooltip).toHaveTextContent('Battery:');
       expect(tooltip).toHaveTextContent('WIB');
 
       // Simulate mouseleave -> crosshairs and tooltip hidden
-      fireEvent.mouseLeave(acSvg!);
-      expect(screen.queryByTestId('crosshair-ac')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('crosshair-dc')).not.toBeInTheDocument();
+      fireEvent.mouseLeave(plnSvg!);
+      expect(screen.queryByTestId('crosshair-pln')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('crosshair-genset')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('crosshair-battery')).not.toBeInTheDocument();
       expect(screen.queryByTestId('ats-hover-tooltip')).not.toBeInTheDocument();
     });
   });

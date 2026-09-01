@@ -230,7 +230,9 @@ export function computeYScale(
   fallbackMax: number,
   thresholds?: (number | null | undefined)[],
   paddingRatio: number = 0.1,
-  minSpan: number = 6
+  minSpan: number = 6,
+  clampMin?: number,
+  clampMax?: number
 ): { minY: number; maxY: number; yTicks: number[] } {
   let rawMin = values.length > 0 ? Math.min(...values) : fallbackMin;
   let rawMax = values.length > 0 ? Math.max(...values) : fallbackMax;
@@ -238,15 +240,23 @@ export function computeYScale(
   if (thresholds) {
     thresholds.forEach((t) => {
       if (typeof t === 'number' && !isNaN(t)) {
-        rawMin = Math.min(rawMin, t - 2);
-        rawMax = Math.max(rawMax, t + 2);
+        rawMin = Math.min(rawMin, t);
+        rawMax = Math.max(rawMax, t);
       }
     });
   }
 
   const span = Math.max(rawMax - rawMin, minSpan);
-  const minY = Math.floor(rawMin - span * paddingRatio);
-  const maxY = Math.ceil(rawMax + span * paddingRatio);
+  let minY = Math.floor(rawMin - span * paddingRatio);
+  let maxY = Math.ceil(rawMax + span * paddingRatio);
+
+  if (clampMin !== undefined) {
+    minY = Math.max(clampMin, minY);
+  }
+  if (clampMax !== undefined) {
+    maxY = Math.min(clampMax, maxY);
+  }
+
   const yTicks = [0, 1, 2, 3, 4].map((i) => minY + (i / 4) * (maxY - minY));
 
   return { minY, maxY, yTicks };

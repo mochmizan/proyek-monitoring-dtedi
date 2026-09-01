@@ -30,10 +30,15 @@ export const PanelThresholds: React.FC<PanelThresholdsProps> = ({
 
         const yPos = getYCoord(th.value);
         const strokeColor = th.color || (th.type === 'critical' ? '#ef4444' : '#f59e0b');
-        const textColor = th.type === 'critical' ? 'fill-red-400' : 'fill-amber-400';
+        const defaultTextClass =
+          th.type === 'critical'
+            ? 'fill-red-400'
+            : th.type === 'warning'
+            ? 'fill-amber-400'
+            : 'fill-emerald-400';
 
         return (
-          <g key={`threshold-${th.type || idx}`} data-testid={th.testId}>
+          <g key={`threshold-${th.testId || th.type || idx}`} data-testid={th.testId}>
             <line
               x1={paddingLeft}
               x2={width - paddingRight}
@@ -48,7 +53,8 @@ export const PanelThresholds: React.FC<PanelThresholdsProps> = ({
               x={width - paddingRight}
               y={yPos - 4}
               textAnchor="end"
-              className={`text-[9px] ${textColor} font-mono font-medium`}
+              fill={th.color}
+              className={`text-[9px] ${!th.color ? defaultTextClass : ''} font-mono font-medium`}
             >
               {th.label}
             </text>

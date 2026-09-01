@@ -81,6 +81,7 @@ export function HistoryChart({
         setShowGenset((v) => !v);
         break;
       case 'aki':
+      case 'battery':
         setShowAki((v) => !v);
         break;
       case 'temp':
@@ -96,35 +97,49 @@ export function HistoryChart({
   let panels: PanelConfig[] = [];
 
   if (isATS) {
-    // ATS Panel 1: AC Voltage (PLN & Genset)
-    const allAcValues = [...plnValues, ...gensetValues];
-    const rawMaxAC = allAcValues.length > 0 ? Math.max(...allAcValues, 250) : 250;
-    const minY_AC = 0;
-    const maxY_AC = Math.max(260, Math.ceil(rawMaxAC * 1.05));
-    const yTicks_AC = [0, 1, 2, 3, 4].map((i) => minY_AC + (i / 4) * (maxY_AC - minY_AC));
-
-    // ATS Panel 2: DC Battery (AKI)
-    const rawMinAki = akiValues.length > 0 ? Math.min(...akiValues) : 11.0;
-    const rawMaxAki = akiValues.length > 0 ? Math.max(...akiValues) : 14.0;
-    const minY_DC = Math.min(9.5, Math.floor((rawMinAki - 0.5) * 10) / 10);
-    const maxY_DC = Math.max(15.0, Math.ceil((rawMaxAki + 0.5) * 10) / 10);
-    const yTicks_DC = [0, 1, 2, 3, 4].map((i) => minY_DC + (i / 4) * (maxY_DC - minY_DC));
-
     const warnBatteryVal = warningThresholdVal ?? 11.8;
     const critBatteryVal = criticalThresholdVal ?? 11.2;
 
+    const plnScale = computeYScale(plnValues, 180, 240, [210, 190], 0.12, 20);
+    const gensetScale = computeYScale(gensetValues, 0, 240, [210], 0.12, 30, 0);
+    const batteryScale = computeYScale(
+      akiValues,
+      10.0,
+      14.5,
+      [warnBatteryVal, critBatteryVal],
+      0.12,
+      2.0
+    );
+
     panels = [
       {
-        id: 'ac',
-        title: 'AC Grid & Genset Voltage (V)',
+        id: 'pln',
+        title: 'Tegangan PLN (Grid)',
         unit: 'V',
-        height: 200,
-        minY: minY_AC,
-        maxY: maxY_AC,
-        yTicks: yTicks_AC,
-        testId: 'ats-panel-ac',
-        crosshairTestId: 'crosshair-ac',
-        showTimeAxis: true,
+        height: 160,
+        minY: plnScale.minY,
+        maxY: plnScale.maxY,
+        yTicks: plnScale.yTicks,
+        testId: 'ats-panel-pln',
+        crosshairTestId: 'crosshair-pln',
+        showTimeAxis: false,
+        thresholds: [
+          {
+            value: 210,
+            label: '210V Nominal',
+            badgeLabel: '210V Nominal',
+            color: '#10b981',
+            testId: 'threshold-nominal',
+          },
+          {
+            value: 190,
+            label: '190V Batas Bawah',
+            badgeLabel: '190V Batas Bawah',
+            color: '#f59e0b',
+            testId: 'threshold-low',
+            type: 'warning',
+          },
+        ],
         series: [
           {
             id: 'pln',
@@ -137,6 +152,29 @@ export function HistoryChart({
             toggleTestId: 'toggle-pln',
             getValue: (p) => p.pln,
           },
+        ],
+      },
+      {
+        id: 'genset',
+        title: 'Tegangan Genset (Generator)',
+        unit: 'V',
+        height: 160,
+        minY: gensetScale.minY,
+        maxY: gensetScale.maxY,
+        yTicks: gensetScale.yTicks,
+        testId: 'ats-panel-genset',
+        crosshairTestId: 'crosshair-genset',
+        showTimeAxis: false,
+        thresholds: [
+          {
+            value: 210,
+            label: '210V Siap Beban',
+            badgeLabel: '210V Siap Beban',
+            color: '#10b981',
+            testId: 'threshold-genset-ready',
+          },
+        ],
+        series: [
           {
             id: 'genset',
             label: 'Genset Voltage',
@@ -152,14 +190,14 @@ export function HistoryChart({
       },
       {
         id: 'battery',
-        title: 'Starter Battery Voltage (AKI)',
+        title: 'Tegangan DC Baterai Starter',
         unit: 'V',
         height: 160,
-        minY: minY_DC,
-        maxY: maxY_DC,
-        yTicks: yTicks_DC,
+        minY: batteryScale.minY,
+        maxY: batteryScale.maxY,
+        yTicks: batteryScale.yTicks,
         testId: 'ats-panel-battery',
-        crosshairTestId: 'crosshair-dc',
+        crosshairTestId: 'crosshair-battery',
         showTimeAxis: true,
         thresholds: [
           {
@@ -202,7 +240,7 @@ export function HistoryChart({
       20,
       35,
       [warningThresholdVal, criticalThresholdVal],
-      0.1,
+      0.12,
       6
     );
 
@@ -229,7 +267,7 @@ export function HistoryChart({
     }
 
     // Panel 2: Humidity with dedicated scale
-    const humidScale = computeYScale(humidValues, 30, 80, [], 0.1, 10);
+    const humidScale = computeYScale(humidValues, 30, 80, [], 0.12, 10, 0, 100);
 
     panels = [
       {
@@ -454,7 +492,7 @@ export function HistoryChart({
           points={points}
           timeRange={timeRange}
           onToggleSeries={handleToggleSeries}
-          containerTestId={isATS ? 'ats-two-panel-container' : 'ts-single-panel-container'}
+          containerTestId={isATS ? 'ats-three-panel-container' : 'ts-single-panel-container'}
           tooltipTestId={isATS ? 'ats-hover-tooltip' : 'ts-hover-tooltip'}
         />
       )}

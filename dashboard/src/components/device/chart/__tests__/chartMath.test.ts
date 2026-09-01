@@ -190,5 +190,14 @@ describe('chartMath Unit Tests', () => {
       expect(result.maxY).toBeGreaterThanOrEqual(37);
       expect(result.yTicks).toHaveLength(5);
     });
+
+    it('clamps min and max bounds when clampMin and clampMax are provided', () => {
+      const values = [95, 98];
+      const result = computeYScale(values, 30, 80, [], 0.12, 10, 0, 100);
+
+      expect(result.minY).toBeGreaterThanOrEqual(0);
+      expect(result.maxY).toBeLessThanOrEqual(100);
+      expect(result.yTicks).toHaveLength(5);
+    });
   });
 });

@@ -115,14 +115,30 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
                     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border",
                     th.type === 'critical'
                       ? "bg-red-500/10 text-red-400 border-red-500/20"
-                      : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                      : th.type === 'warning'
+                      ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                   )}
+                  style={
+                    th.color && !th.type
+                      ? {
+                          backgroundColor: `${th.color}15`,
+                          borderColor: `${th.color}30`,
+                          color: th.color,
+                        }
+                      : undefined
+                  }
                 >
                   <span
                     className={cn(
                       "h-1 w-2 border-b border-dashed",
-                      th.type === 'critical' ? "border-red-400" : "border-amber-400"
+                      th.type === 'critical'
+                        ? "border-red-400"
+                        : th.type === 'warning'
+                        ? "border-amber-400"
+                        : "border-emerald-400"
                     )}
+                    style={th.color && !th.type ? { borderColor: th.color } : undefined}
                   />
                   {th.badgeLabel || th.label}
                 </span>
