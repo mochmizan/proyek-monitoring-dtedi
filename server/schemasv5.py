@@ -377,3 +377,19 @@ class HubPairRequest(BaseModel):
     hub_name: str = Field(..., min_length=1, max_length=100)
 
 
+# ==========================================
+# SKEMA COMMAND STATUS
+# ==========================================
+
+class CommandStatusResponse(BaseModel):
+    command_id: str
+    dev_id: str
+    hub_id: str
+    payload: Any
+    status: str
+    created_at: OptionalUtcDateTime = None
+    delivered_at: OptionalUtcDateTime = None
+
+    model_config = {"from_attributes": True}
+
+

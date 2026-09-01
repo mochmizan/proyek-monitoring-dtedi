@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from databasev5 import get_db
 from modelsv5 import User, dev_table, hub_table, pending_commands
-from schemasv5 import ACCommand, ATSCommand
+from schemasv5 import ACCommand, ATSCommand, CommandStatusResponse
 from auth import get_current_user
 from app.dependencies import verify_hub_identity
 from app.core.rate_limit import limiter
@@ -107,3 +107,27 @@ def mark_command_delivered(
     cmd.delivered_at = datetime.now(UTC)
     db.commit()
     return {"status": "marked_delivered", "command_id": command_id}
+
+
+@router.get("/api/commands/{command_id}", response_model=CommandStatusResponse)
+@limiter.limit("60/minute")
+def get_command_status(
+    request: Request,
+    command_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    cmd = db.get(pending_commands, command_id)
+    if not cmd:
+        raise HTTPException(status_code=404, detail="Command not found")
+
+    device = db.get(dev_table, cmd.dev_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if cmd.hub_id:
+        hub = db.get(hub_table, cmd.hub_id)
+        if not hub:
+            raise HTTPException(status_code=404, detail="Hub not found")
+
+    return cmd

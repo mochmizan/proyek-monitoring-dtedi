@@ -92,6 +92,16 @@ export interface ACCommand {
 
 export type DeviceCommand = ATSCommand | ACCommand | Record<string, unknown>;
 
+export interface CommandStatusResponse {
+  command_id: string;
+  dev_id: string;
+  hub_id: string;
+  payload: Record<string, unknown>;
+  status: string;
+  created_at?: string | null;
+  delivered_at?: string | null;
+}
+
 export interface RoomMapMarker {
   dev_id: string;
   dev_name?: string | null;

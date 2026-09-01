@@ -1,16 +1,20 @@
 ---
 type: entity
 governed_by: AGENTS.md
-links: [wiki/concept-telemetry-pipeline.md, wiki/concept-time-conventions.md, wiki/workstream-flexible-scheduling.md, wiki/workstream-shadcn-revert.md]
-sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/constants.ts, dashboard/src/routes/, dashboard/AGENTS.md]
-updated: 2026-08-31
+links: [wiki/concept-telemetry-pipeline.md, wiki/concept-time-conventions.md, wiki/concept-command-path.md, wiki/workstream-flexible-scheduling.md, wiki/workstream-shadcn-revert.md]
+sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/constants.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/HistoryChart.tsx, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/, dashboard/AGENTS.md]
+updated: 2026-09-01
 ---
 
 # Dashboard SPA (dashboard/)
 
 The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) speaking same-origin `/api` to HubGate — Vite proxy in dev, Nginx 443 in prod, no CORS anywhere.
 
-Routing is TanStack Router file-based (`src/routes/`: dashboard `/`, `/login`, `/alerts`, `/map`, `/hubs`, `/schedules`, `/settings`, `/room/$roomId`, `/device/$deviceId`); `routeTree.gen.ts` is generated. Server state is TanStack Query polling at `POLL_MS=3000` with cache-first defaults (global `keepPreviousData`, `gcTime 5m`, `refetchOnWindowFocus`, `STALE_MS 10s`) so navigating or refetching never blanks the UI. Client UI state is only Zustand `sidebarOpen`/`selectedRoomId`; sort/filter/range state lives in URL search params validated by Zod.
+Routing is TanStack Router file-based (`src/routes/`: dashboard `/`, `/login`, `/alerts`, `/map`, `/hubs`, `/schedules`, `/settings`, `/room/$roomId`, `/device/$deviceId`); `routeTree.gen.ts` is generated. Server state is TanStack Query polling at `POLL_MS=3000` on live list views with cache-first defaults (global `keepPreviousData`, `gcTime 5m`, `refetchOnWindowFocus`, `STALE_MS 10s`) so navigating or refetching never blanks the UI. Client UI state is only Zustand `sidebarOpen`/`selectedRoomId`; sort/filter/range state lives in URL search params validated by Zod.
+
+Device detail views (`/device/$deviceId`) decouple metadata polling from live telemetry via `queryKeys.devices.detail(devId)` (`staleTime: 60s`, `refetchInterval: false`, `refetchOnWindowFocus: true`), protected by focus and dirty guards (`isEditingRef` + `isDirty`) in `Controls.tsx` so background refetches never overwrite uncommitted threshold inputs. Telemetry history uses `useDeviceHistory` with range-adaptive polling (15s for 6h/24h, static/manual for 7d/30d) and a manual refresh trigger. ATS telemetry renders via `HistoryChart` with a 2-panel stacked layout: AC Grid/Genset (0–260V) on top and DC Starter Battery (10–15V) on the bottom with 11.8V warning and 11.2V critical threshold guides, synchronized X-axis time coordinates, lifted tooltip, and interactive series visibility toggles.
+
+Hardware command dispatch uses `useCommandLifecycle` to coordinate state across `idle`, `queuing`, `queued`, `delivered`, `timeout`, and `error`. It polls `GET /api/commands/{command_id}` every 1.5s until `delivered_at` is confirmed by HubBrain, enforces a 12s timeout fallback with manual retry, and locks controls against double dispatch (`isPending`).
 
 All wall-clock timestamps render `id-ID` with `timeZone: 'Asia/Jakarta'` and a `WIB` suffix; relative ages (FreshnessBadge, hub last-seen) are epoch diffs and timezone-free. `chartUtils.parseToDate` appends `Z` to naive ISO strings as a client-side defense.
 

@@ -10,6 +10,7 @@ import type {
   ThresholdConfig,
   ThresholdUpdateRequest,
   DeviceCommand,
+  CommandStatusResponse,
   RoomMapResponse,
   AlertListResponse,
   AlertFilterParams,
@@ -151,6 +152,13 @@ export async function fetchDevices(status?: 'pending' | 'active' | 'all'): Promi
   return handleResponse<DeviceResponse[]>(res);
 }
 
+export async function fetchDevice(devId: string): Promise<DeviceResponse> {
+  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}`, {
+    credentials: 'same-origin',
+  });
+  return handleResponse<DeviceResponse>(res);
+}
+
 export async function pairDevice(devId: string, payload: DevicePairRequest): Promise<DeviceResponse> {
   const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/pair`, {
     method: 'POST',
@@ -193,6 +201,13 @@ export async function sendDeviceCommand(
     credentials: 'same-origin',
   });
   return handleResponse<{ status: string; command_id: string }>(res);
+}
+
+export async function fetchCommandStatus(commandId: string): Promise<CommandStatusResponse> {
+  const res = await fetch(`${BASE}/api/commands/${encodeURIComponent(commandId)}`, {
+    credentials: 'same-origin',
+  });
+  return handleResponse<CommandStatusResponse>(res);
 }
 
 // ----------------------------------------------------

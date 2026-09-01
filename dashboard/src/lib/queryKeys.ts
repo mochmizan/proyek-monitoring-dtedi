@@ -31,4 +31,8 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.schedules.all, 'detail', id] as const,
     preview: (cron: string, tz?: string) => [...queryKeys.schedules.all, 'preview', cron, tz] as const,
   },
+  commands: {
+    all: ['commands'] as const,
+    detail: (id: string) => [...queryKeys.commands.all, 'detail', id] as const,
+  },
 };

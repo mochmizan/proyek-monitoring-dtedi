@@ -354,6 +354,56 @@ def get_device_history(
     )
 
 
+@router.get("/api/devices/{dev_id}", response_model=DeviceResponse)
+@limiter.limit("60/minute")
+def get_device(
+    request: Request,
+    dev_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    device = db.get(dev_table, dev_id)
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Device '{dev_id}' not found",
+        )
+
+    now_utc = datetime.now(UTC)
+    cutoff = now_utc - timedelta(seconds=25)
+    d_seen = device.last_seen if (device.last_seen and device.last_seen.tzinfo is not None) else (device.last_seen.replace(tzinfo=UTC) if device.last_seen else None)
+    if not device.is_active:
+        computed_status = "pending"
+    elif d_seen and d_seen >= cutoff:
+        computed_status = "online"
+    else:
+        computed_status = "offline"
+
+    thresh_schema = None
+    if device.threshold_config:
+        thresh_schema = ThresholdConfigSchema(
+            warning=device.threshold_config.warning,
+            critical=device.threshold_config.critical,
+            hysteresis=device.threshold_config.hysteresis,
+            debounce_seconds=device.threshold_config.debounce_seconds,
+        )
+
+    return DeviceResponse(
+        dev_id=device.dev_id,
+        dev_name=device.dev_name,
+        dev_type=device.dev_type,
+        hub_id=device.hub_id,
+        is_active=device.is_active,
+        status=computed_status,
+        last_seen=device.last_seen,
+        room_id=device.room_id,
+        marker_x=device.marker_x,
+        marker_y=device.marker_y,
+        created_at=device.created_at,
+        threshold_config=thresh_schema,
+    )
+
+
 @router.get("/api/devices")
 @limiter.limit("60/minute")
 def get_devices(

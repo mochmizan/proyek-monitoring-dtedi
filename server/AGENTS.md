@@ -18,7 +18,7 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 ### Entry & Architecture
 
 - Entry: `hubgatev5.py` shim re-exports `api` from `app/main.py`; run via `uvicorn hubgatev5:api --host 127.0.0.1 --port 8000` (prod behind Nginx 443). Canonical assembly at `app/main.py` (CORS, rate limiter, scheduler `lifespan`, `GET /health` + `/api/health` unauthenticated DB `SELECT 1` check, static mount).
-- Routers: `app/routers/` — `auth`, `hubs`, `rooms`, `devices`, `alerts`, `iot`, `commands`, `schedules`.
+- Routers: `app/routers/` — `auth`, `hubs`, `rooms`, `devices` (`GET /api/devices/{dev_id}` single-device detail with computed status & thresholds), `alerts`, `iot`, `commands` (`GET /api/commands/{command_id}` delivery status check), `schedules`.
 - Core: `app/core/config`, `app/core/rate_limit`, `app/core/logging`.
 - Services: `app/services/alert_engine`, `app/services/presence`, `app/services/scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` cron → `pending_commands`).
 - DB: `app/modelsv5.py`; Alembic at `alembic/` (`alembic.ini` + `versions/04a48dbce60b_initial_schema_as_observed.py` + `b7c9e2f1a4d8_add_schedules.py`); `init_sqlv5.py` is idempotent additive migration for fallback.
@@ -31,19 +31,21 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 
 Outgoing datetimes are tz-aware UTC via `UtcDateTime/OptionalUtcDateTime` (`AfterValidator` attaches UTC to naive SQLite values) in `schemasv5.py` - JSON carries `Z` so browsers never double-shift (alerts `new Date` bug 2026-08-31). Apply the types to any new response-model datetime field. Prod runtime = legacy path `/opt/smsb/SERVERv5/v5` kept fresh by the deploy-hook rsync (see `deploy/AGENTS.md`).
 
-### Payload Validation
+### Payload Validation & Schemas
 
-`app/schemasv5.py`: `IotPayload` is discriminated union on `DEV_TYPE` (`ATSData`, `TSData`, `ACCData`, `ACData`, `PUMPData`); `IotDataBase` uses `extra="allow"` + optional `HUB_TS` (alias `_hub_created_at`) so hub WAL-replay epoch passes through without 422; `ATSCommand`/`ACCommand` validated for mode/power/temperature actions.
+`app/schemasv5.py`: `IotPayload` is discriminated union on `DEV_TYPE` (`ATSData`, `TSData`, `ACCData`, `ACData`, `PUMPData`); `IotDataBase` uses `extra="allow"` + optional `HUB_TS` (alias `_hub_created_at`) so hub WAL-replay epoch passes through without 422; `ATSCommand`/`ACCommand` validated for mode/power/temperature actions; `CommandStatusResponse` models `command_id`, `dev_id`, `hub_id`, `payload`, `status`, `created_at: OptionalUtcDateTime`, `delivered_at: OptionalUtcDateTime`; `DeviceResponse` models full device metadata with `ThresholdConfigSchema` and computed `status` (`online`/`offline`/`pending`).
 
 ### Auth
 
 Argon2id hashing with dummy-hash timing-safe check, sessions (2h sliding / 12h absolute cap), per-username lockout (5 fails → 15 min → 423 Locked), cookie `session_id` (`httponly`/`secure`/`samesite=lax`). Hub auth via `X-Hub-Key`; bootstrap via `HUB_BOOTSTRAP_KEY` env (timing-safe, creates `is_active=False` pending hub).
 
-### Rate Limit & Health & History
+### Rate Limit & Health & History & Commands
 
 - Rate limit keys on `X-Real-IP` / `X-Forwarded-For` `parts[0]` via `get_forwarded_address` (not `get_remote_address`).
 - `GET /health` and `GET /api/health` unauthenticated, return `{"status":"ok","db":"up"|"down"}`.
 - History `GET /api/devices/{id}/history` (`?range=6h,24h,7d,30d,all`) downsamples to ~1000 buckets via AVG (`strftime` on SQLite / `extract epoch` on Postgres); ≤1000 rows returned latest-first without bucketing.
+- Single device detail `GET /api/devices/{dev_id}` returns `DeviceResponse` with 25s presence status and threshold config.
+- Command status check `GET /api/commands/{command_id}` returns `CommandStatusResponse` with UTC `created_at` and `delivered_at`.
 
 ### Alert Engine & Presence
 

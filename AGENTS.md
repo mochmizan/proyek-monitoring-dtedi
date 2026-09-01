@@ -168,6 +168,22 @@ IoT smart-building monitoring: React SPA at `dashboard/`, FastAPI gateway at `se
 - **deploy/**: Nginx & systemd & push-deploy
 - **tools/**: Pi deploy/backup, seeding, sniffers, verifiers
 - **tests/**: repo-level E2E & verifiers
+## Purpose
+
+IoT smart-building monitoring: React SPA at `dashboard/`, FastAPI gateway at `server/` (HubGate V5), Pi edge at `hub/` (HubBrain V5), ESP8266 firmware at `firmware/`, specs in `openspec/`. Design at `docs/2026-07-01-iot-temperature-monitoring-design.md`. `V5` suffix stays until `V6` proposal.
+
+## Ownership
+
+- **Root**: project-wide rules, DOX rail, global preferences
+- **docs/**: design, firmware alignment, testing/deployment/backup guides, handover (no AGENTS.md, owned by root)
+- **dashboard/**: SPA — routes, TanStack Query, Zustand UI, build
+- **server/**: HubGate V5 — FastAPI, auth/RBAC, DB, rooms/devices/alerts API
+- **hub/**: HubBrain V5 — MQTT bridge, whitelist, WAL cache, HTTPS upstream
+- **firmware/**: node sketches (one folder per `.ino`, `firmware/common/secrets.h` gitignored) — owned by root
+- **openspec/**: spec-driven proposals & capability specs
+- **deploy/**: Nginx & systemd & push-deploy
+- **tools/**: Pi deploy/backup, seeding, sniffers, verifiers
+- **tests/**: repo-level E2E & verifiers
 - **graphify-out/**: auto-generated, not edited
 
 ## Local Contracts
@@ -178,8 +194,8 @@ React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, Query 5.1
 
 ### Architecture
 
-- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, cache-first defaults (`keepPreviousData` global, `gcTime 5m`, `refetchOnWindowFocus`, `STALE_MS 10s` stale-while-revalidate, no blank refetch), wall-clock renders `id-ID` `Asia/Jakarta WIB` (server stores UTC), `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta` (server-authoritative warmup, no firmware Sunday auto).
-- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands` `{"mode":"manual","start_genset":"on"}` bundled bypass), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), telemetry `event_time` from hub `_hub_created_at` epoch (WAL replay) else `now_utc`, `alert_engine` evaluates temperature and ATS starter battery undervoltage (`BATTERY_WARNING` 11.8V / `BATTERY_CRITICAL` 11.2V, recovery $\ge 12.0\text{V}$, 60s debounce) and auto-resolves `ATS_EMERGENCY` when `PLN>210 && GENSET<80` (case-insensitive, stuck-latch suppression), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
+- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, cache-first defaults (`keepPreviousData` global, `gcTime 5m`, `refetchOnWindowFocus`, `STALE_MS 10s` stale-while-revalidate, no blank refetch), decoupled `queryKeys.devices.detail(devId)` (`staleTime: 60s`, `refetchInterval: false`, `refetchOnWindowFocus: true`, focus/dirty guarded form sync), `useCommandLifecycle` (1.5s status polling against `GET /api/commands/{command_id}`, 12s timeout, double-dispatch lock), ATS HistoryChart 2-panel stacked layout (AC 0-260V + Battery DC 10-15V with 11.8V/11.2V thresholds, synced X-axis and lifted crosshair, range-adaptive polling: 15s for 6h/24h, manual for 7d/30d), wall-clock renders `id-ID` `Asia/Jakarta WIB` (server stores UTC), `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta` (server-authoritative warmup, no firmware Sunday auto).
+- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands` `{"mode":"manual","start_genset":"on"}` bundled bypass), `GET /api/devices/{dev_id}` (single-device detail with computed status & thresholds) and `GET /api/commands/{command_id}` (`CommandStatusResponse` delivery status check), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), telemetry `event_time` from hub `_hub_created_at` epoch (WAL replay) else `now_utc`, `alert_engine` evaluates temperature and ATS starter battery undervoltage (`BATTERY_WARNING` 11.8V / `BATTERY_CRITICAL` 11.2V, recovery $\ge 12.0\text{V}$, 60s debounce) and auto-resolves `ATS_EMERGENCY` when `PLN>210 && GENSET<80` (case-insensitive, stuck-latch suppression), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
 - **Edge**: Pi bridges `hs109rs/#` → HTTPS, `MAX_PENDING_ROWS=20000` WAL FIFO `0.35s` pacing with `_hub_created_at` epoch injection on replay (preserves capture time across offline bursts), whitelist sync, dynamic `{hub_name}/{dev_type}/command`.
 - **Firmware**: non-blocking I2C, NaN skip, EEPROM AC state (`0xAC`), canonical `<SGM,on>` `<RST,rst>` `<M,auto>` `<T,unixtime>` `<RTC_OK>` framing, `WDT 8S` `MCUSR` `VAC 210/190` hysteresis `SIZE 20/60`, `WARMUP disabled` (server `schedules` authoritative, no `Sunday 18:00` auto). Fleet AP `smsb-iot` `192.168.72.242`, `DEV_NAME=<TYPE>-<last4 MAC>`.
 
@@ -254,10 +270,10 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 
 ## Verification
 
-- `npm run lint` (oxlint) in `dashboard/` — 0 errors, 14 fast-refresh warns
+- `npm run lint` (oxlint) in `dashboard/` — 0 errors, 18 fast-refresh warns
 - `npm run build` in `dashboard/` — `tsc -b && vite build` (hidden sourcemap)
-- `npm run test -- --run` (vitest 3 smoke) + `npx playwright test --list` in `dashboard/`
-- `pytest` at root — 107 tests (server 79 + hub 13 + pipeline)
+- `npm run test -- --run` (vitest 42 tests across 6 suites) + `npx playwright test --list` in `dashboard/`
+- `pytest` at root — 134 tests (server 89 + hub 13 + pipeline/verifier)
 - `docker compose config` binds `127.0.0.1:5432/1883` (not `0.0.0.0`)
 - `bash -n deploy/setup_push_deploy.sh` + `curl https://127.0.0.1/api/health` `{"status":"ok","db":"up"}`
 

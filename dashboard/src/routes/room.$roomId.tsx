@@ -1,9 +1,8 @@
-﻿import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
-import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { 
   ArrowLeft, 
   Wind, 
-  CheckCircle, 
   AlertTriangle, 
   Thermometer, 
   Zap, 
@@ -15,7 +14,9 @@ import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchRooms, fetchRoomMap, fetchCurrentUser, sendDeviceCommand, fetchAlerts } from '../lib/api'
+import { fetchRooms, fetchRoomMap, fetchCurrentUser, fetchAlerts } from '../lib/api';
+import { useCommandLifecycle } from '../hooks/useCommandLifecycle';
+import { CommandStatusBadge } from '../components/device/CommandStatusBadge';
 import { POLL_MS } from '../lib/constants';
 import type { RoomMapMarker, ATSCommand } from '../types/api';
 
@@ -31,7 +32,6 @@ export const Route = createFileRoute('/room/$roomId')({
 function RoomDetailPage() {
   const { roomId } = Route.useParams();
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   const { data: currentUser } = useQuery({
     queryKey: queryKeys.auth.me(),
@@ -65,26 +65,9 @@ function RoomDetailPage() {
   // ATS / Device Command State
   const [selectedDeviceForCmd, setSelectedDeviceForCmd] = useState<RoomMapMarker | null>(null);
   const [commandPayload, setCommandPayload] = useState<ATSCommand>({});
-  const [cmdError, setCmdError] = useState<string | null>(null);
-  const [cmdSuccess, setCmdSuccess] = useState<string | null>(null);
+  const [formValidationError, setFormValidationError] = useState<string | null>(null);
 
-  const commandMutation = useMutation({
-    mutationFn: ({ devId, payload }: { devId: string; payload: ATSCommand }) =>
-      sendDeviceCommand(devId, payload),
-    onSuccess: () => {
-      setCmdSuccess('Command queued successfully for edge delivery');
-      queryClient.invalidateQueries({ queryKey: queryKeys.rooms.map(roomId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.alerts.all });
-      setTimeout(() => {
-        setSelectedDeviceForCmd(null);
-        setCmdSuccess(null);
-        setCommandPayload({});
-      }, 1500);
-    },
-    onError: (err: Error) => {
-      setCmdError(err.message || 'Failed to dispatch command');
-    },
-  });
+  const commandLifecycle = useCommandLifecycle();
 
   const room = rooms.find((r) => r.id === roomId);
 
@@ -115,21 +98,21 @@ function RoomDetailPage() {
 
   const handleOpenCommandModal = (device: RoomMapMarker) => {
     setSelectedDeviceForCmd(device);
-    setCmdError(null);
-    setCmdSuccess(null);
+    setFormValidationError(null);
     setCommandPayload({});
+    commandLifecycle.reset();
   };
 
-  const handleExecuteCommand = (e: React.FormEvent) => {
+  const handleExecuteCommand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDeviceForCmd) return;
-    setCmdError(null);
-    setCmdSuccess(null);
+    if (!commandPayload.mode && !commandPayload.start_genset && !commandPayload.reset) {
+      setFormValidationError('Select at least one command action to send');
+      return;
+    }
+    setFormValidationError(null);
 
-    commandMutation.mutate({
-      devId: selectedDeviceForCmd.dev_id,
-      payload: commandPayload,
-    });
+    await commandLifecycle.sendCommand(selectedDeviceForCmd.dev_id, commandPayload);
   };
 
   return (
@@ -364,40 +347,48 @@ function RoomDetailPage() {
                 <p className="text-xs text-zinc-500 font-mono">{selectedDeviceForCmd.dev_type} Node</p>
               </div>
               <button 
-                onClick={() => setSelectedDeviceForCmd(null)}
-                className="text-zinc-500 hover:text-zinc-300 text-sm"
+                onClick={() => {
+                  commandLifecycle.reset();
+                  setSelectedDeviceForCmd(null);
+                }}
+                className="text-zinc-500 hover:text-zinc-300 text-sm cursor-pointer"
               >
-                âœ•
+                ✕
               </button>
             </div>
 
-            {cmdError && (
+            {formValidationError && (
               <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                <span>{cmdError}</span>
+                <span>{formValidationError}</span>
               </div>
             )}
 
-            {cmdSuccess && (
-              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 flex-shrink-0" />
-                <span>{cmdSuccess}</span>
-              </div>
-            )}
+            <CommandStatusBadge
+              status={commandLifecycle.commandStatus}
+              commandId={commandLifecycle.commandId}
+              queuedAt={commandLifecycle.queuedAt}
+              deliveredAt={commandLifecycle.deliveredAt}
+              errorMessage={commandLifecycle.errorMessage}
+              onDismiss={commandLifecycle.reset}
+              onRetry={commandLifecycle.retry}
+            />
 
             <form onSubmit={handleExecuteCommand} className="space-y-4">
               {/* ATS Mode Selector */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                <label htmlFor="room-modal-mode-select" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
                   Operating Mode
                 </label>
                 <select
+                  id="room-modal-mode-select"
+                  disabled={commandLifecycle.isPending}
                   value={commandPayload.mode || ''}
                   onChange={(e) => setCommandPayload({ 
                     ...commandPayload, 
                     mode: (e.target.value as 'auto' | 'manual') || undefined 
                   })}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-200 text-sm focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">No Mode Change</option>
                   <option value="auto">Auto Mode</option>
@@ -407,16 +398,18 @@ function RoomDetailPage() {
 
               {/* Genset Control (only valid in manual mode) */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                <label htmlFor="room-modal-genset-select" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
                   Genset Ignition (Manual Mode Only)
                 </label>
                 <select
+                  id="room-modal-genset-select"
+                  disabled={commandLifecycle.isPending}
                   value={commandPayload.start_genset || ''}
                   onChange={(e) => setCommandPayload({ 
                     ...commandPayload, 
                     start_genset: (e.target.value as 'on' | 'off') || undefined 
                   })}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-200 text-sm focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">No Genset Action</option>
                   <option value="on">Start Genset (ON)</option>
@@ -433,12 +426,13 @@ function RoomDetailPage() {
                   <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
                     <input
                       type="checkbox"
+                      disabled={commandLifecycle.isPending}
                       checked={commandPayload.reset === 'rst'}
                       onChange={(e) => setCommandPayload({
                         ...commandPayload,
                         reset: e.target.checked ? 'rst' : undefined
                       })}
-                      className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500"
+                      className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
                     />
                     <span>Issue hardware reset command</span>
                   </label>
@@ -448,21 +442,24 @@ function RoomDetailPage() {
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
                 <button
                   type="button"
-                  onClick={() => setSelectedDeviceForCmd(null)}
-                  disabled={commandMutation.isPending}
-                  className="px-4 py-2 border border-zinc-800 rounded hover:bg-zinc-800 text-zinc-300 text-xs font-medium cursor-pointer"
+                  onClick={() => {
+                    commandLifecycle.reset();
+                    setSelectedDeviceForCmd(null);
+                  }}
+                  disabled={commandLifecycle.isPending}
+                  className="px-4 py-2 border border-zinc-800 rounded hover:bg-zinc-800 text-zinc-300 text-xs font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={commandMutation.isPending}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded text-xs font-medium cursor-pointer flex items-center gap-2"
+                  disabled={commandLifecycle.isPending}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium cursor-pointer flex items-center gap-2"
                 >
-                  {commandMutation.isPending ? (
+                  {commandLifecycle.isPending ? (
                     <>
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Sending...</span>
+                      <span>{commandLifecycle.commandStatus === 'queuing' ? 'Dispatching...' : 'Awaiting Delivery...'}</span>
                     </>
                   ) : (
                     <span>Queue Command</span>

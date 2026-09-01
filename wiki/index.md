@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: []
 sources: [AGENTS.md]
-updated: 2026-08-31
+updated: 2026-09-01
 ---
 
 # smsb wiki index

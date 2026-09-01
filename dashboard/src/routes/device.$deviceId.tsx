@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { z } from 'zod';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchDevices, fetchRooms, fetchAlerts, fetchCurrentUser } from '../lib/api';
+import { fetchDevice, fetchRooms, fetchAlerts, fetchCurrentUser } from '../lib/api';
 import { POLL_MS } from '../lib/constants';
 import { HistoryChart } from '../components/device/HistoryChart';
 import { DeviceControls } from '../components/device/Controls';
@@ -27,12 +27,12 @@ function DeviceDetailPage() {
   const [timeRange, setTimeRange] = useState<'6h' | '24h' | '7d' | '30d'>(range ?? '24h');
 
   const { data: currentUser } = useQuery({ queryKey: queryKeys.auth.me(), queryFn: fetchCurrentUser });
-  const { data: devices = [], isFetching: isFetchingDevices } = useQuery({
-    queryKey: queryKeys.devices.list('all'),
-    queryFn: () => fetchDevices('all'),
-    refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
-    placeholderData: keepPreviousData,
+  const { data: device, isLoading: isLoadingDevice, isFetching: isFetchingDevice } = useQuery({
+    queryKey: queryKeys.devices.detail(deviceId),
+    queryFn: () => fetchDevice(deviceId),
+    staleTime: 60_000,
+    refetchInterval: false,
+    refetchOnWindowFocus: true,
   });
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
@@ -48,11 +48,23 @@ function DeviceDetailPage() {
     refetchIntervalInBackground: true,
     placeholderData: keepPreviousData,
   });
-  const { data: historyData } = useDeviceHistory(deviceId, timeRange);
+  const {
+    data: historyData,
+    isFetching: isFetchingHistory,
+    refetch: refetchHistory,
+    dataUpdatedAt: historyUpdatedAt,
+  } = useDeviceHistory(deviceId, timeRange);
 
-  const device = devices.find((d) => d.dev_id === deviceId);
   const room = device ? rooms.find((r) => r.id === device.room_id) : null;
   const role = currentUser?.role || 'viewer';
+
+  if (isLoadingDevice) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center"><p className="text-zinc-400">Loading device details...</p></div>
+      </div>
+    );
+  }
 
   if (!device) {
     return (
@@ -88,12 +100,22 @@ function DeviceDetailPage() {
             <p className="text-xs text-zinc-500 mt-1 font-mono">MAC / ID: {device.dev_id} · Type: {device.dev_type || 'Generic'} · Room: {room?.name || 'Unassigned'}</p>
           </div>
         </div>
-        {isFetchingDevices && <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800"><RefreshCw className="h-3 w-3 animate-spin text-indigo-400" /><span>Polling</span></div>}
+        {isFetchingDevice && <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800"><RefreshCw className="h-3 w-3 animate-spin text-indigo-400" /><span>Refreshing</span></div>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          <HistoryChart points={historyPoints} devType={device.dev_type || 'TS'} timeRange={timeRange} setTimeRange={setTimeRange} warningThresholdVal={device.threshold_config ? device.threshold_config.warning : null} criticalThresholdVal={device.threshold_config ? device.threshold_config.critical : null} />
+          <HistoryChart
+            points={historyPoints}
+            devType={device.dev_type || 'TS'}
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            warningThresholdVal={device.threshold_config ? device.threshold_config.warning : null}
+            criticalThresholdVal={device.threshold_config ? device.threshold_config.critical : null}
+            isFetching={isFetchingHistory}
+            onRefresh={() => { void refetchHistory(); }}
+            dataUpdatedAt={historyUpdatedAt}
+          />
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 space-y-4">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
               {isTS && <Thermometer className="h-4 w-4 text-indigo-400" />}{isATS && <Zap className="h-4 w-4 text-amber-400" />}{isAC && <Wind className="h-4 w-4 text-emerald-400" />}<span>Node Information</span>
@@ -120,7 +142,7 @@ function DeviceDetailPage() {
             </div>
           </div>
         </div>
-        <div className="space-y-6"><DeviceControls device={device} role={role} /></div>
+        <div className="space-y-6"><DeviceControls key={device.dev_id} device={device} role={role} /></div>
       </div>
     </div>
   );
