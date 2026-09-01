@@ -156,8 +156,8 @@ describe('HistoryChart Component', () => {
     });
   });
 
-  describe('TS / Non-ATS Single-Panel History Chart', () => {
-    it('renders single panel for TS with temperature & humidity', () => {
+  describe('TS / Non-ATS Multi-Panel History Chart', () => {
+    it('renders stacked panels for TS with temperature & humidity', () => {
       render(
         <HistoryChart
           points={tsSamplePoints}
@@ -170,6 +170,8 @@ describe('HistoryChart Component', () => {
       );
 
       expect(screen.getByTestId('ts-single-panel-container')).toBeInTheDocument();
+      expect(screen.getByTestId('ts-panel-temp')).toBeInTheDocument();
+      expect(screen.getByTestId('ts-panel-humid')).toBeInTheDocument();
       expect(screen.getByTestId('path-temp')).toBeInTheDocument();
       expect(screen.getByTestId('path-humid')).toBeInTheDocument();
       expect(screen.getByText('Warn (30°C)')).toBeInTheDocument();
@@ -200,6 +202,40 @@ describe('HistoryChart Component', () => {
       // Toggle Humidity Off
       fireEvent.click(humidBtn);
       expect(screen.queryByTestId('path-humid')).not.toBeInTheDocument();
+    });
+
+    it('synchronizes hover crosshairs and unified tooltip across TS panels', () => {
+      const { container } = render(
+        <HistoryChart
+          points={tsSamplePoints}
+          devType="TS"
+          timeRange="6h"
+          setTimeRange={vi.fn()}
+        />
+      );
+
+      const tempSvg = container.querySelector('[data-testid="ts-panel-temp"] svg');
+      expect(tempSvg).toBeInTheDocument();
+
+      // Simulate mousemove on Temperature SVG
+      fireEvent.mouseMove(tempSvg!, { clientX: 200, clientY: 50 });
+
+      // Check crosshair on both panels
+      expect(screen.getByTestId('crosshair-ts')).toBeInTheDocument();
+      expect(screen.getByTestId('crosshair-humid')).toBeInTheDocument();
+
+      // Check unified floating tooltip content
+      const tooltip = screen.getByTestId('ts-hover-tooltip');
+      expect(tooltip).toBeInTheDocument();
+      expect(tooltip).toHaveTextContent('Temp:');
+      expect(tooltip).toHaveTextContent('Humidity:');
+      expect(tooltip).toHaveTextContent('WIB');
+
+      // Simulate mouseleave
+      fireEvent.mouseLeave(tempSvg!);
+      expect(screen.queryByTestId('crosshair-ts')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('crosshair-humid')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ts-hover-tooltip')).not.toBeInTheDocument();
     });
   });
 
