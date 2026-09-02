@@ -168,22 +168,6 @@ IoT smart-building monitoring: React SPA at `dashboard/`, FastAPI gateway at `se
 - **deploy/**: Nginx & systemd & push-deploy
 - **tools/**: Pi deploy/backup, seeding, sniffers, verifiers
 - **tests/**: repo-level E2E & verifiers
-## Purpose
-
-IoT smart-building monitoring: React SPA at `dashboard/`, FastAPI gateway at `server/` (HubGate V5), Pi edge at `hub/` (HubBrain V5), ESP8266 firmware at `firmware/`, specs in `openspec/`. Design at `docs/2026-07-01-iot-temperature-monitoring-design.md`. `V5` suffix stays until `V6` proposal.
-
-## Ownership
-
-- **Root**: project-wide rules, DOX rail, global preferences
-- **docs/**: design, firmware alignment, testing/deployment/backup guides, handover (no AGENTS.md, owned by root)
-- **dashboard/**: SPA — routes, TanStack Query, Zustand UI, build
-- **server/**: HubGate V5 — FastAPI, auth/RBAC, DB, rooms/devices/alerts API
-- **hub/**: HubBrain V5 — MQTT bridge, whitelist, WAL cache, HTTPS upstream
-- **firmware/**: node sketches (one folder per `.ino`, `firmware/common/secrets.h` gitignored) — owned by root
-- **openspec/**: spec-driven proposals & capability specs
-- **deploy/**: Nginx & systemd & push-deploy
-- **tools/**: Pi deploy/backup, seeding, sniffers, verifiers
-- **tests/**: repo-level E2E & verifiers
 - **graphify-out/**: auto-generated, not edited
 
 ## Local Contracts
@@ -194,8 +178,8 @@ React 19.2.7, TypeScript ~6.0.2, Vite 8.1.1, TanStack Router 1.170.17, Query 5.1
 
 ### Architecture
 
-- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, cache-first defaults (`keepPreviousData` global, `gcTime 5m`, `refetchOnWindowFocus`, `STALE_MS 10s` stale-while-revalidate, no blank refetch), decoupled `queryKeys.devices.detail(devId)` (`staleTime: 60s`, `refetchInterval: false`, `refetchOnWindowFocus: true`, focus/dirty guarded form sync), `useCommandLifecycle` (1.5s status polling against `GET /api/commands/{command_id}`, 12s timeout, double-dispatch lock), ATS HistoryChart 3-panel stacked layout (PLN Grid + Genset + Starter Battery DC with 11.8V/11.2V thresholds, independent auto-scaled 12% padding Y-axes, synced X-axis and lifted crosshair, range-adaptive polling: 15s for 6h/24h, manual for 7d/30d), wall-clock renders `id-ID` `Asia/Jakarta WIB` (server stores UTC), `ErrorBoundary` + `QueryCache.onError` + 401 redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta` (server-authoritative warmup, no firmware Sunday auto).
-- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands` `{"mode":"manual","start_genset":"on"}` bundled bypass), PostgreSQL 16 production target (VPS MVCC multi-writer, `pool_size=10, max_overflow=5`, 15s statement_timeout) with SQLite 3 WAL dev/edge target (documented single-writer ceiling, 10s busy_timeout, memory temp_store/cache/mmap), `GET /api/devices/{dev_id}` (single-device detail with computed status & thresholds) and `GET /api/commands/{command_id}` (`CommandStatusResponse` delivery status check), Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), telemetry `event_time` from hub `_hub_created_at` epoch (WAL replay) else `now_utc`, `alert_engine` evaluates temperature and ATS starter battery undervoltage (`BATTERY_WARNING` 11.8V / `BATTERY_CRITICAL` 11.2V, recovery $\ge 12.0\text{V}$, 60s debounce) and auto-resolves `ATS_EMERGENCY` when `PLN>210 && GENSET<80` (case-insensitive, stuck-latch suppression), `GET /health` unauth, history downsamples to ~1000 buckets via AVG, `schedules` table `cron_expr/payload/tz/enabled`.
+- **Frontend**: TanStack Query `api.ts`/`queryKeys.ts` poll 3s (`POLL_MS`) on live views, cache-first defaults (`keepPreviousData` global, `gcTime 5m`, `refetchOnWindowFocus`, `STALE_MS 10s` stale-while-revalidate, no blank refetch), decoupled `queryKeys.devices.detail(devId)` (`staleTime: 60s`, `refetchInterval: false`, `refetchOnWindowFocus: true`, focus/dirty guarded form sync), `useCommandLifecycle` (1.5s status polling against `GET /api/commands/{command_id}`, 12s timeout, double-dispatch lock), ATS HistoryChart 3-panel stacked layout (PLN Grid + Genset + Starter Battery DC with 11.8V/11.2V thresholds, independent auto-scaled 12% padding Y-axes, synced X-axis and lifted crosshair, range-adaptive polling: 15s for 6h/24h, manual for 7d/30d), wall-clock renders `id-ID` `Asia/Jakarta WIB` (server stores UTC), `ErrorBoundary` + `QueryCache.onError` + 401 client-side redirect, Zustand only `sidebarOpen`/`selectedRoomId`, `GET /api/auth/me` session, shadcn `components/ui/*` + `schedules` route flexible cron `Asia/Jakarta` (server-authoritative warmup, no firmware Sunday auto).
+- **Backend**: FastAPI `app/` routers (auth/hubs/rooms/devices/alerts/iot/commands/schedules) + `core/config` + `services/alert_engine,presence,scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` → `pending_commands` `{"mode":"manual","start_genset":"on"}` bundled bypass), PostgreSQL 16 production target (VPS MVCC multi-writer, `pool_size=10, max_overflow=5, pool_recycle=1800, pool_pre_ping=True`, 15s statement_timeout) with SQLite 3 WAL dev/edge target (documented single-writer ceiling, `busy_timeout=10000, synchronous=NORMAL, foreign_keys=ON, temp_store=MEMORY, cache_size=-64000, mmap_size=268435456`), `get_db()` session dependency with automatic rollback on exception and guaranteed close, Downsampling V2 (`GET /api/devices/{id}/history` dynamic bucket resolution, single-pass integer epoch aggregation via `func.unixepoch` on SQLite / `CAST(FLOOR(EXTRACT(epoch ...)))` on Postgres, `AVG`/`MIN`/`MAX` envelopes), Batch Ingestion (`POST /api/iot` and bulk `POST /api/iot/batch` up to 1000 items with dialect-specific `on_conflict_do_nothing`, deterministic UUIDs, in-batch deduplication, batch alert storm suppression on latest reading per device, auth double-commit elimination, lock-free `HubAuthCache` 30s throttle), 5s background presence worker (`app/services/presence.py` `evaluate_device_presence_batch`), idempotent read-only `GET /api/devices` with `selectinload` preventing N+1, single-query `GET /api/rooms`, sub-millisecond indexed `GET /api/rooms/{id}/map` with AC operational state merging, Argon2id, cookies `httponly/secure/samesite=lax`, rate limit via `X-Real-IP`/`X-Forwarded-For` (`parts[0]`), telemetry `event_time` from hub `_hub_created_at` epoch (WAL replay) else `now_utc`, `alert_engine` evaluates temperature and ATS starter battery undervoltage (`BATTERY_WARNING` 11.8V / `BATTERY_CRITICAL` 11.2V, recovery $\ge 12.0\text{V}$, 60s debounce) and auto-resolves `ATS_EMERGENCY` when `PLN>210 && GENSET<80` (case-insensitive, stuck-latch suppression), `GET /health` unauth, `schedules` table `cron_expr/payload/tz/enabled`.
 - **Edge**: Pi bridges `hs109rs/#` → HTTPS, `MAX_PENDING_ROWS=20000` WAL FIFO `0.35s` pacing with `_hub_created_at` epoch injection on replay (preserves capture time across offline bursts), whitelist sync, dynamic `{hub_name}/{dev_type}/command`.
 - **Firmware**: non-blocking I2C, NaN skip, EEPROM AC state (`0xAC`), canonical `<SGM,on>` `<RST,rst>` `<M,auto>` `<T,unixtime>` `<RTC_OK>` framing, `WDT 8S` `MCUSR` `VAC 210/190` hysteresis `SIZE 20/60`, `WARMUP disabled` (server `schedules` authoritative, no `Sunday 18:00` auto). Fleet AP `smsb-iot` `192.168.72.242`, `DEV_NAME=<TYPE>-<last4 MAC>`.
 
@@ -272,8 +256,8 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 
 - `npm run lint` (oxlint) in `dashboard/` — 0 errors, 18 fast-refresh warns
 - `npm run build` in `dashboard/` — `tsc -b && vite build` (hidden sourcemap)
-- `npm run test -- --run` (vitest 42 tests across 6 suites) + `npx playwright test --list` in `dashboard/`
-- `pytest server/ -q` — 177 tests covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, and benchmark verification
+- `npm run test -- --run` (vitest 58 tests across 7 suites) + `npx playwright test --list` in `dashboard/`
+- `pytest server/ -q` — 179 tests covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, and benchmark verification
 - `python -m pytest hub/test_edge_resilience.py -q` — 13 tests covering edge WAL and resilience
 - `just seed-benchmark` — seeds 1,000,000 synthetic rows in ~60s
 - `just benchmark` — executes 15s concurrency stress test validating read/write SLAs and zero locks
@@ -286,7 +270,7 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 
 ## Notes
 
-- Root notes scope: `notes/` — quick unsynthesized capture, currently `notes/field-ops.md` (VPS access, field state, pending reflash).
+- Root notes scope: `notes/` — quick unsynthesized capture, currently `notes/field-ops.md` (VPS access, field state, pending reflash) and `notes/benchmarks-baseline.md` (1M-row concurrency stress benchmarks).
 
 ## Child DOX Index
 

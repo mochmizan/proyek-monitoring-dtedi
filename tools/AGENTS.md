@@ -25,6 +25,17 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 - Pi tooling defaults to `10.33.36.81` / `hubadmin` — override via args where provided
 - `setup_postgres_wsl.sh` opens `pg_hba.conf` to `0.0.0.0/0 md5` — WSL dev bootstrap only, never production
 
+### Benchmark Tooling & Recipes
+
+- **`tools/seed_benchmark_telemetry.py`**:
+  - High-performance synthetic telemetry seeder generating and inserting realistic telemetry rows (500k TS, 500k ATS = 1,000,000 rows across 30 days) using chunked SQLAlchemy Core DML in < 15s (SQLite WAL / PostgreSQL). Validates query plans with EXPLAIN.
+  - CLI: `python tools/seed_benchmark_telemetry.py [--total-rows 1000000] [--days 30] [--batch-size 25000] [--db-url URL] [--clean] [--verify]`
+  - Recipe: `just seed-benchmark [total_rows] [days]` (default: `1000000`, `30`)
+- **`tools/benchmark_concurrency_stress.py`**:
+  - Async multi-worker concurrency stress benchmark executing concurrent write batches (`POST /api/iot/batch`), dashboard polling reads (`GET /api/devices`, `/api/rooms`), and heavy downsampling queries (`GET /api/devices/{id}/history?range=30d`) against HubGate V5 to validate 5 SLAs (read latency P95 < 300ms, batch write latency P95 < 350ms, zero DB locked errors, throughput > 500 pts/sec, bounded room map <= 4 queries). Exports Markdown and JSON reports.
+  - CLI: `python tools/benchmark_concurrency_stress.py [--duration 15] [--writers 2] [--readers 3] [--downsample-workers 1] [--batch-size 75] [--base-url URL] [--output-json PATH] [--output-markdown PATH]`
+  - Recipe: `just benchmark [duration]` (default: `15`)
+
 ## Work Guidance
 
 - New credential handling must read from env/args with no hardcoded defaults
@@ -34,6 +45,8 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 
 ## Verification
 
+- `just seed-benchmark` — seeds 1,000,000 synthetic rows and verifies index usage.
+- `just benchmark` — executes 15s concurrency stress test against SQLite WAL or PostgreSQL.
 - `pytest` at root covers verifiers via `tests/test_verify_*.py`
 - Manual: scripts are standalone — see header comments for usage
 
