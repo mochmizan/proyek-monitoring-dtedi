@@ -244,6 +244,13 @@ def remove_job(schedule_id: str) -> None:
 @asynccontextmanager
 async def scheduler_lifespan(app):
     """FastAPI lifespan that starts/stops APScheduler and rehydrates jobs."""
+    # Ensure database composite and unique indexes exist (especially for SQLite/PG UPSERT)
+    try:
+        from databasev5 import engine, migrate_indexes
+        migrate_indexes(engine)
+    except Exception as e:
+        logger.warning(f"Startup migrate_indexes failed/skipped: {e}")
+
     global scheduler
     scheduler = _build_scheduler()
 

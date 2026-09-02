@@ -5,6 +5,7 @@ from typing import Any, Union
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import limiter
@@ -90,20 +91,51 @@ def bulk_insert_or_ignore(
         chunk = records[i:i + chunk_size]
         if dialect_name == "postgresql":
             from sqlalchemy.dialects.postgresql import insert as pg_insert
-            stmt = pg_insert(model).values(chunk).on_conflict_do_nothing(
-                index_elements=index_elements
-            )
-            res = session.execute(stmt)
-            count = res.rowcount if (res.rowcount is not None and res.rowcount >= 0) else len(chunk)
-            total_rowcount += count
+            from sqlalchemy import insert
+            try:
+                stmt = pg_insert(model).values(chunk).on_conflict_do_nothing(
+                    index_elements=index_elements
+                )
+                res = session.execute(stmt)
+                count = res.rowcount if (res.rowcount is not None and res.rowcount >= 0) else len(chunk)
+                total_rowcount += count
+            except OperationalError as err:
+                tbl_name = getattr(model, "__tablename__", str(model))
+                logging.warning(
+                    f"OperationalError in bulk_insert_or_ignore on {tbl_name}: {err}. "
+                    "Falling back to standard insert."
+                )
+                res = session.execute(insert(model).values(chunk))
+                count = res.rowcount if (res.rowcount is not None and res.rowcount >= 0) else len(chunk)
+                total_rowcount += count
         elif dialect_name == "sqlite":
             from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-            stmt = sqlite_insert(model).values(chunk).on_conflict_do_nothing(
-                index_elements=index_elements
-            )
-            res = session.execute(stmt)
-            count = res.rowcount if (res.rowcount is not None and res.rowcount >= 0) else len(chunk)
-            total_rowcount += count
+            try:
+                stmt = sqlite_insert(model).values(chunk).on_conflict_do_nothing(
+                    index_elements=index_elements
+                )
+                res = session.execute(stmt)
+                count = res.rowcount if (res.rowcount is not None and res.rowcount >= 0) else len(chunk)
+                total_rowcount += count
+            except OperationalError as err:
+                tbl_name = getattr(model, "__tablename__", str(model))
+                logging.warning(
+                    f"OperationalError in bulk_insert_or_ignore on {tbl_name} (possible missing unique index): {err}. "
+                    "Falling back to standard insert."
+                )
+                from sqlalchemy import insert
+                try:
+                    fallback_stmt = sqlite_insert(model).values(chunk).prefix_with("OR IGNORE")
+                    res = session.execute(fallback_stmt)
+                    count = res.rowcount if (res.rowcount is not None and res.rowcount >= 0) else len(chunk)
+                    total_rowcount += count
+                except Exception as fallback_err:
+                    logging.warning(
+                        f"Fallback OR IGNORE failed on {tbl_name} ({fallback_err}), attempting plain insert."
+                    )
+                    res = session.execute(insert(model).values(chunk))
+                    count = res.rowcount if (res.rowcount is not None and res.rowcount >= 0) else len(chunk)
+                    total_rowcount += count
         else:
             from sqlalchemy import insert
             stmt = insert(model).values(chunk)

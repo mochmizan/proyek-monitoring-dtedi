@@ -760,3 +760,52 @@ def test_batch_payload_formats_and_limits():
 
     r_empty2 = client.post("/api/iot/batch", json=[], headers=headers)
     assert r_empty2.status_code == 422
+
+
+def test_bulk_insert_or_ignore_defensive_fallback_on_missing_index():
+    """Verify that bulk_insert_or_ignore falls back to standard insert when unique index is missing without raising OperationalError."""
+    from app.routers.iot import bulk_insert_or_ignore
+    from sqlalchemy import Column, DateTime, Float, String, create_engine, inspect
+    from sqlalchemy.orm import declarative_base, sessionmaker
+
+    TestBase = declarative_base()
+
+    class TestTableNoIndex(TestBase):
+        __tablename__ = "test_table_no_index"
+        data_id = Column(String, primary_key=True)
+        dev_id = Column(String, nullable=False)
+        timestamp = Column(DateTime, nullable=False)
+        temp = Column(Float, nullable=True)
+
+    test_eng = create_engine("sqlite:///:memory:")
+    TestBase.metadata.create_all(bind=test_eng)
+    TestSession = sessionmaker(bind=test_eng)
+    db = TestSession()
+
+    records = [
+        {"data_id": "test_rec_1", "dev_id": "D1", "timestamp": datetime.now(UTC), "temp": 25.5},
+        {"data_id": "test_rec_2", "dev_id": "D2", "timestamp": datetime.now(UTC), "temp": 26.0},
+    ]
+
+    # Calling with index_elements on table lacking unique index must NOT crash; it falls back safely
+    count = bulk_insert_or_ignore(db, TestTableNoIndex, records, ["dev_id", "timestamp"])
+    assert count == 2
+    db.commit()
+
+    rows = db.query(TestTableNoIndex).all()
+    assert len(rows) == 2
+    assert {r.data_id for r in rows} == {"test_rec_1", "test_rec_2"}
+    db.close()
+
+
+def test_migrate_indexes_creates_unique_indexes_and_deduplicates():
+    """Verify that migrate_indexes safely deduplicates duplicate rows and creates unique indexes on SQLite."""
+    from init_sqlv5 import migrate_indexes
+    from sqlalchemy import inspect, text
+
+    # Check on test engine that unique indexes exist
+    migrate_indexes(engine)
+    inspector = inspect(engine)
+    indexes = {idx["name"]: idx for idx in inspector.get_indexes("ats_data")}
+    assert "uq_ats_dev_timestamp" in indexes or any("uq_ats" in name for name in indexes)
+

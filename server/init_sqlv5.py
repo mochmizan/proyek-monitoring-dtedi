@@ -174,6 +174,15 @@ def migrate_indexes(bind_engine=None):
         for tbl, idx_name, sql in indexes_to_create:
             if tbl in existing_tables:
                 try:
+                    if idx_name.startswith("uq_") and target_engine.dialect.name == "sqlite":
+                        conn.execute(text(f"""
+                            DELETE FROM {tbl}
+                            WHERE rowid NOT IN (
+                                SELECT MIN(rowid)
+                                FROM {tbl}
+                                GROUP BY dev_id, timestamp
+                            )
+                        """))
                     conn.execute(text(sql))
                 except Exception as e:
                     logging.warning(f"Fallback migrate_indexes could not create {idx_name}: {e}")

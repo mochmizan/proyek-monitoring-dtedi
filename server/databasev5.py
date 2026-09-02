@@ -107,3 +107,12 @@ def get_db():
         raise
     finally:
         db.close()
+
+
+def migrate_indexes(target_engine=None):
+    """Memastikan unique & composite indexes ada di database target (additive migration)."""
+    try:
+        from init_sqlv5 import migrate_indexes as _migrate
+        _migrate(target_engine or engine)
+    except Exception as e:
+        logging.warning(f"migrate_indexes skipped/failed: {e}")
