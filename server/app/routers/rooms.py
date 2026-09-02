@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from sqlalchemy.orm import Session
+from sqlalchemy import desc, func, select
+from sqlalchemy.orm import Session, joinedload
 
 from databasev5 import get_db
 from modelsv5 import User, dev_table, hub_table, rooms, temperature_data, ats_data, data_table
@@ -49,20 +50,24 @@ def list_rooms(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    all_rooms = db.query(rooms).all()
-    results = []
-    for r in all_rooms:
-        dev_count = db.query(dev_table).filter(dev_table.room_id == r.id).count()
-        results.append(
-            RoomResponse(
-                id=r.id,
-                name=r.name,
-                hub_id=r.hub_id,
-                floor_plan_image_path=r.floor_plan_image_path,
-                device_count=dev_count,
-                created_at=r.created_at,
-            )
+    stmt = (
+        select(rooms, func.count(dev_table.dev_id).label("device_count"))
+        .outerjoin(dev_table, rooms.id == dev_table.room_id)
+        .group_by(rooms.id)
+        .order_by(rooms.name)
+    )
+    rows = db.execute(stmt).all()
+    results = [
+        RoomResponse(
+            id=r.id,
+            name=r.name,
+            hub_id=r.hub_id,
+            floor_plan_image_path=r.floor_plan_image_path,
+            device_count=dev_count,
+            created_at=r.created_at,
         )
+        for r, dev_count in rows
+    ]
     return results
 
 
@@ -281,7 +286,10 @@ def get_room_map(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    room = db.get(rooms, room_id)
+    room = db.execute(
+        select(rooms).options(joinedload(rooms.devices)).where(rooms.id == room_id)
+    ).unique().scalars().first()
+
     if not room:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -296,99 +304,110 @@ def get_room_map(
             has_image = True
             floor_plan_url = room.floor_plan_image_path
 
-    devices = db.query(dev_table).filter(dev_table.room_id == room_id).all()
+    devices = room.devices or []
+    if not devices:
+        return RoomMapResponse(
+            room_id=room.id,
+            room_name=room.name,
+            has_image=has_image,
+            floor_plan_url=floor_plan_url,
+            devices=[],
+        )
+
+    ts_dev_ids = [d.dev_id for d in devices if d.dev_type in ("TS", "AC", "ACC")]
+    ats_dev_ids = [d.dev_id for d in devices if d.dev_type == "ATS"]
+    legacy_dev_ids = [d.dev_id for d in devices if d.dev_id not in ts_dev_ids and d.dev_id not in ats_dev_ids]
+
+    latest_readings_map: dict[str, dict] = {}
+
+    # Query 2: Batch TS readings via Window Function
+    if ts_dev_ids:
+        ts_ranked = (
+            select(
+                temperature_data,
+                func.row_number().over(
+                    partition_by=temperature_data.dev_id,
+                    order_by=desc(temperature_data.timestamp),
+                ).label("rn"),
+            )
+            .where(temperature_data.dev_id.in_(ts_dev_ids))
+            .subquery()
+        )
+        ts_stmt = select(ts_ranked).where(ts_ranked.c.rn == 1)
+        for row in db.execute(ts_stmt).mappings().all():
+            dev_id = row["dev_id"]
+            ts_dt = row["timestamp"]
+            latest_readings_map[dev_id] = {
+                "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
+                "temp": row["temp"],
+                "humid": row["humid"],
+            }
+
+    # Query 3: Batch ATS readings via Window Function
+    if ats_dev_ids:
+        ats_ranked = (
+            select(
+                ats_data,
+                func.row_number().over(
+                    partition_by=ats_data.dev_id,
+                    order_by=desc(ats_data.timestamp),
+                ).label("rn"),
+            )
+            .where(ats_data.dev_id.in_(ats_dev_ids))
+            .subquery()
+        )
+        ats_stmt = select(ats_ranked).where(ats_ranked.c.rn == 1)
+        for row in db.execute(ats_stmt).mappings().all():
+            dev_id = row["dev_id"]
+            latest_readings_map[dev_id] = {
+                "state": row["state"],
+                "pln": row["pln"],
+                "genset": row["genset"],
+                "aki": row["aki"],
+                "rem_hour": row["rem_hour"],
+                "rem_min": row["rem_min"],
+                "rem_sec": row["rem_sec"],
+                "auto_mode": row["auto_mode"],
+                "emergency": row["emergency"],
+            }
+
+    # Query 4: Batch legacy readings via Window Function
+    if legacy_dev_ids:
+        leg_ranked = (
+            select(
+                data_table,
+                func.row_number().over(
+                    partition_by=data_table.dev_id,
+                    order_by=desc(data_table.timestamp),
+                ).label("rn"),
+            )
+            .where(data_table.dev_id.in_(legacy_dev_ids))
+            .subquery()
+        )
+        leg_stmt = select(leg_ranked).where(leg_ranked.c.rn == 1)
+        for row in db.execute(leg_stmt).mappings().all():
+            dev_id = row["dev_id"]
+            ts_dt = row["timestamp"]
+            p = row["payload"] or {}
+            payload_copy = dict(p) if isinstance(p, dict) else {}
+            if "timestamp" not in payload_copy:
+                payload_copy["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None)
+            latest_readings_map[dev_id] = payload_copy
+
     marker_list = []
-
     for d in devices:
-        latest_reading = None
         status_str = "active" if d.is_active else "inactive"
-
-        if d.dev_type == "TS":
-            last_ts = (
-                db.query(temperature_data)
-                .filter(temperature_data.dev_id == d.dev_id)
-                .order_by(temperature_data.timestamp.desc())
-                .first()
-            )
-            if last_ts:
-                latest_reading = {
-                    "timestamp": last_ts.timestamp.isoformat() if last_ts.timestamp else None,
-                    "temp": last_ts.temp,
-                    "humid": last_ts.humid,
-                }
-        elif d.dev_type == "ATS":
-            last_ats = (
-                db.query(ats_data)
-                .filter(ats_data.dev_id == d.dev_id)
-                .order_by(ats_data.timestamp.desc())
-                .first()
-            )
-            if last_ats:
-                latest_reading = {
-                    "timestamp": last_ats.timestamp.isoformat() if last_ats.timestamp else None,
-                    "state": last_ats.state,
-                    "pln": last_ats.pln,
-                    "genset": last_ats.genset,
-                    "aki": last_ats.aki,
-                    "rem_hour": last_ats.rem_hour,
-                    "rem_min": last_ats.rem_min,
-                    "rem_sec": last_ats.rem_sec,
-                    "auto_mode": last_ats.auto_mode,
-                    "emergency": last_ats.emergency,
-                }
-        else:
-            last_legacy = (
-                db.query(data_table)
-                .filter(data_table.dev_id == d.dev_id)
-                .order_by(data_table.timestamp.desc())
-                .first()
-            )
-            if last_legacy and last_legacy.payload:
-                latest_reading = last_legacy.payload
-            else:
-                last_ts = (
-                    db.query(temperature_data)
-                    .filter(temperature_data.dev_id == d.dev_id)
-                    .order_by(temperature_data.timestamp.desc())
-                    .first()
-                )
-                if last_ts:
-                    latest_reading = {
-                        "timestamp": last_ts.timestamp.isoformat() if last_ts.timestamp else None,
-                        "temp": last_ts.temp,
-                        "humid": last_ts.humid,
-                    }
-                else:
-                    last_ats = (
-                        db.query(ats_data)
-                        .filter(ats_data.dev_id == d.dev_id)
-                        .order_by(ats_data.timestamp.desc())
-                        .first()
-                    )
-                    if last_ats:
-                        latest_reading = {
-                            "timestamp": last_ats.timestamp.isoformat() if last_ats.timestamp else None,
-                            "state": last_ats.state,
-                            "pln": last_ats.pln,
-                            "genset": last_ats.genset,
-                            "aki": last_ats.aki,
-                            "rem_hour": last_ats.rem_hour,
-                            "rem_min": last_ats.rem_min,
-                            "rem_sec": last_ats.rem_sec,
-                            "auto_mode": last_ats.auto_mode,
-                            "emergency": last_ats.emergency,
-                        }
-
+        reading = latest_readings_map.get(d.dev_id)
         marker_list.append(
             RoomMapMarker(
                 dev_id=d.dev_id,
                 dev_name=d.dev_name,
-                dev_type=d.dev_type,
+                dev_type=d.dev_type or "",
                 marker_x=d.marker_x,
                 marker_y=d.marker_y,
                 is_active=d.is_active,
                 status=status_str,
-                latest_reading=latest_reading,
+                latest_reading=reading,
             )
         )
 

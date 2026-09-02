@@ -28,8 +28,25 @@ from modelsv5 import (
 from auth import hash_password
 from hubgatev5 import api
 
+from contextlib import contextmanager
+from sqlalchemy import text
+
 client = TestClient(api)
 api.state.limiter.enabled = False
+
+
+@contextmanager
+def defer_sqlite_foreign_keys(session):
+    """
+    Narrow context manager temporarily disabling SQLite foreign keys solely to seed
+    corrupted or orphaned database state (e.g. testing defensive 404 handling of orphaned commands).
+    Foreign key enforcement is unconditionally restored on exit.
+    """
+    session.execute(text("PRAGMA foreign_keys = OFF;"))
+    try:
+        yield
+    finally:
+        session.execute(text("PRAGMA foreign_keys = ON;"))
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_test_environment():
@@ -146,18 +163,22 @@ def setup_test_environment():
             created_at=datetime.now(UTC) - timedelta(minutes=5),
             delivered_at=datetime.now(UTC) - timedelta(minutes=4),
         )
-        # Create orphaned command pointing to nonexistent device
-        cmd_orphan = pending_commands(
-            command_id="cmd-orphan-999",
-            dev_id="NONEXISTENT-DEV",
-            hub_id="HUB_PHASE_A",
-            payload={"action": "ping"},
-            status="pending",
-            created_at=datetime.now(UTC),
-        )
-        db.add_all([cmd1, cmd2, cmd_orphan])
-
+        db.add_all([cmd1, cmd2])
         db.commit()
+
+        # Create orphaned command pointing to nonexistent device inside narrow FK-bypass context
+        # to test defensive API 404 handling on orphaned database records
+        with defer_sqlite_foreign_keys(db):
+            cmd_orphan = pending_commands(
+                command_id="cmd-orphan-999",
+                dev_id="NONEXISTENT-DEV",
+                hub_id="HUB_PHASE_A",
+                payload={"action": "ping"},
+                status="pending",
+                created_at=datetime.now(UTC),
+            )
+            db.add(cmd_orphan)
+            db.commit()
     finally:
         db.close()
 

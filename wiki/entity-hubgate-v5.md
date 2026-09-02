@@ -16,8 +16,12 @@ Authentication is Argon2id with 2h sliding / 12h absolute sessions in httpOnly c
 
 Device management endpoints include list `GET /api/devices` and single-entity `GET /api/devices/{dev_id}` (returning `DeviceResponse` with presence derivation and attached `threshold_config`). Command dispatch endpoints include `POST /api/devices/{dev_id}/command` and status verification `GET /api/commands/{command_id}` (returning `CommandStatusResponse` with UTC `created_at` and `delivered_at` timestamps).
 
-Telemetry lands at `POST /api/iot` as a Pydantic discriminated union on `DEV_TYPE` (ATSData/TSData/ACCData/ACData). Row timestamps use `event_time` = hub `_hub_created_at` epoch when replayed from an offline WAL, else server `now_utc`. History (`GET /api/devices/{id}/history`) downsamples to ~1000 AVG buckets per range window.
+Telemetry lands at `POST /api/iot` (single item) or `POST /api/iot/batch` (up to 100 items/batch via `IotBatchRequest`) as a Pydantic discriminated union on `DEV_TYPE`. Bulk upserts use dialect-specific idempotency (`bulk_insert_or_ignore` using `ON CONFLICT DO NOTHING` on PostgreSQL and `INSERT OR IGNORE` on SQLite) keyed on deterministic `data_id = sha256(dev_id:timestamp_iso)[:16]`. In batch ingestion, alert rules and presence updates are evaluated once on the newest point per device.
 
-In production it runs from the legacy path `/opt/smsb/SERVERv5/v5` (see [entity-deploy-pipeline.md](entity-deploy-pipeline.md)) against a ~430MB SQLite database; PostgreSQL is used via docker compose in dev with SQLite fallback. Outgoing datetimes follow the UtcDateTime contract ([concept-time-conventions.md](concept-time-conventions.md)).
+Device history (`GET /api/devices/{id}/history`) utilizes [concept-downsampling-v2.md](concept-downsampling-v2.md) — single-pass mathematical epoch bucketing (`unixepoch` on SQLite 3.38+, `extract(epoch)` on PostgreSQL) computing average and exact min/max envelopes for temperature, humidity, PLN, genset, and battery voltage. Queries are bounded strictly to `max_points` (default 1000) and execute in < 300ms on PostgreSQL prod.
+
+Presence is handled by a dedicated 5s background sweeper thread (`app/services/presence.py`), freeing all read endpoints (`GET /api/devices`, `GET /api/rooms`, `GET /api/rooms/{id}/map`) from database writes. `list_rooms` uses a single SQL outer join and `get_room_map` uses `joinedload` with window functions, executing <= 4 SQL queries total.
+
+In production, HubGate targets **PostgreSQL 16** (hosted on VPS 10.33.102.172 / 100.108.98.30) with connection pool bounds (`pool_size=10, max_overflow=5`) and 15s statement timeout, while supporting SQLite 3 WAL mode for local edge nodes. Outgoing datetimes follow the UtcDateTime contract ([concept-time-conventions.md](concept-time-conventions.md)).
 
 Hubs can be hard-deleted by admins via `DELETE /api/hubs/{hub_id}` (409 while devices are paired; room links nulled) — added 2026-08-31 to remove seeded dummy hubs.

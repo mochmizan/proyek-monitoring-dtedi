@@ -162,6 +162,16 @@ export interface TelemetryHistoryPoint {
   genset?: number | null;
   aki?: number | null;
   state?: string | null;
+  temp_min?: number | null;
+  temp_max?: number | null;
+  humid_min?: number | null;
+  humid_max?: number | null;
+  pln_min?: number | null;
+  pln_max?: number | null;
+  genset_min?: number | null;
+  genset_max?: number | null;
+  aki_min?: number | null;
+  aki_max?: number | null;
 }
 
 export interface DeviceHistoryResponse {
@@ -170,6 +180,7 @@ export interface DeviceHistoryResponse {
   range: string;
   total_points: number;
   points: TelemetryHistoryPoint[];
+  bucket_seconds?: number | null;
 }
 
 export interface HubDeviceSummary {

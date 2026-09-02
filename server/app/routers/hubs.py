@@ -1,10 +1,12 @@
 # app/routers/hubs.py
 import os
 import secrets
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from databasev5 import get_db
@@ -13,6 +15,7 @@ from schemasv5 import HubRegisterPayload, HubResponse, HubDeviceSummary, HubPair
 from modelsv5 import User, rooms
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
+from app.dependencies import hub_auth_cache
 
 router = APIRouter(tags=["hubs"])
 
@@ -39,6 +42,7 @@ def register_new_hub(
     )
     db.add(new_hub)
     db.commit()
+    hub_auth_cache.invalidate(payload.HUB_ID)
     return {"status": "hub_registered", "hub_id": payload.HUB_ID}
 
 
@@ -52,18 +56,45 @@ def list_hubs(
     now_utc = datetime.now(UTC)
     cutoff = now_utc - timedelta(seconds=HUB_ONLINE_WINDOW_SECONDS)
 
-    all_devices = db.query(dev_table).all()
-    devices_by_hub: dict[str, list] = {}
-    for d in all_devices:
-        devices_by_hub.setdefault(d.hub_id, []).append(d)
+    # Query 1: Hubs with SQL-aggregated device count
+    hub_stmt = (
+        select(
+            hub_table,
+            func.count(dev_table.dev_id).label("device_count"),
+        )
+        .outerjoin(dev_table, dev_table.hub_id == hub_table.hub_id)
+        .group_by(hub_table.hub_id)
+        .order_by(hub_table.created_at.asc())
+    )
+    hub_rows = db.execute(hub_stmt).all()
 
-    all_hubs = db.query(hub_table).all()
+    # Query 2: Lightweight projection query for device summaries
+    dev_stmt = (
+        select(
+            dev_table.hub_id,
+            dev_table.dev_id,
+            dev_table.dev_name,
+            dev_table.dev_type,
+            dev_table.last_seen,
+        )
+        .where(dev_table.hub_id.isnot(None))
+    )
+    devices_by_hub: dict[str, list[HubDeviceSummary]] = defaultdict(list)
+    for row in db.execute(dev_stmt).mappings():
+        devices_by_hub[row["hub_id"]].append(
+            HubDeviceSummary(
+                dev_id=row["dev_id"],
+                dev_name=row["dev_name"],
+                dev_type=row["dev_type"],
+                last_seen=row["last_seen"],
+            )
+        )
+
     results = []
-    for h in all_hubs:
+    for h, dev_count in hub_rows:
         h_seen = h.last_seen if (h.last_seen and h.last_seen.tzinfo is not None) else (h.last_seen.replace(tzinfo=UTC) if h.last_seen else None)
         hub_status = "online" if (h_seen and h_seen >= cutoff) else "offline"
 
-        hub_devices = devices_by_hub.get(h.hub_id, [])
         results.append(
             HubResponse(
                 hub_id=h.hub_id,
@@ -71,16 +102,8 @@ def list_hubs(
                 room=h.room,
                 status=hub_status,
                 last_seen=h.last_seen,
-                device_count=len(hub_devices),
-                devices=[
-                    HubDeviceSummary(
-                        dev_id=d.dev_id,
-                        dev_name=d.dev_name,
-                        dev_type=d.dev_type,
-                        last_seen=d.last_seen,
-                    )
-                    for d in hub_devices
-                ],
+                device_count=dev_count,
+                devices=devices_by_hub.get(h.hub_id, []),
             )
         )
     return results
@@ -107,6 +130,7 @@ def pair_hub(
         existing.last_seen = now_utc
         existing.status = "online"
         db.commit()
+        hub_auth_cache.invalidate(payload.hub_id)
         return {"status": "paired", "hub_id": existing.hub_id}
 
     bootstrap_key = os.getenv("HUB_BOOTSTRAP_KEY", "")
@@ -134,6 +158,7 @@ def pair_hub(
         db.add(new_hub)
         db.commit()
 
+    hub_auth_cache.invalidate(payload.hub_id)
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "pending_approval", "hub_id": payload.hub_id})
 
 
@@ -151,6 +176,7 @@ def approve_hub(
 
     hub.is_active = True
     db.commit()
+    hub_auth_cache.invalidate(hub_id)
     return {"status": "approved", "hub_id": hub_id}
 
 
@@ -169,6 +195,7 @@ def revoke_hub(
     hub.is_active = False
     hub.status = "offline"
     db.commit()
+    hub_auth_cache.invalidate(hub_id)
     return {"status": "revoked", "hub_id": hub_id}
 
 
@@ -225,4 +252,5 @@ def delete_hub(
     db.query(rooms).filter(rooms.hub_id == hub_id).update({"hub_id": None})
     db.delete(hub)
     db.commit()
+    hub_auth_cache.invalidate(hub_id)
     return {"status": "deleted", "hub_id": hub_id}

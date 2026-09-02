@@ -12,6 +12,8 @@ browser_screenshots/
 # ===== Databases (regenerable / contain user hashes) =====
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite3
 
 # ===== Python =====

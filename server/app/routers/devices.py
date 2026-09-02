@@ -4,15 +4,16 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from sqlalchemy import Integer, cast, func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy import Integer, cast, func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
 from databasev5 import get_db
 from modelsv5 import dev_table, hub_table, rooms, device_threshold_config, temperature_data, ats_data, event_log, User
 from schemasv5 import DevicePairRequest, DeviceResponse, ThresholdConfigSchema, ThresholdUpdateRequest, TelemetryHistoryPoint, DeviceHistoryResponse
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
-from app.services.presence import prune_stale_pending, update_device_presence_on_list
+from app.routers.alerts import parse_datetime_param
+from app.dependencies import hub_auth_cache, stage_hub_heartbeat
 
 router = APIRouter(tags=["devices"])
 
@@ -200,157 +201,275 @@ def update_device_thresholds(
     )
 
 
+def _build_epoch_bucket_expr(dialect_name: str, col, bucket_seconds: int):
+    """
+    Constructs a single-pass epoch bucket expression for SQL GROUP BY and SELECT.
+    Returns integer Unix epoch seconds at the start of the bucket.
+    """
+    if dialect_name == "sqlite":
+        epoch = func.unixepoch(col)
+        if bucket_seconds > 1:
+            return (cast(epoch / bucket_seconds, Integer) * bucket_seconds).label("bucket_ts")
+        return epoch.label("bucket_ts")
+    else:
+        # PostgreSQL & generic ANSI SQL
+        if bucket_seconds > 1:
+            return cast(
+                func.floor(func.extract("epoch", col) / bucket_seconds) * bucket_seconds,
+                Integer,
+            ).label("bucket_ts")
+        return cast(func.extract("epoch", col), Integer).label("bucket_ts")
+
+
+def _compute_time_window(
+    db: Session,
+    dev_type: str,
+    dev_id: str,
+    range_str: str,
+    max_points: int,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> tuple[datetime, datetime, int]:
+    """
+    Determines start_dt, end_dt, and mathematically computes bucket_seconds
+    without issuing full table scans or count() queries.
+    """
+    now = datetime.now(UTC)
+
+    if start_time is not None or end_time is not None:
+        end_dt = parse_datetime_param(end_time) if end_time else now
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=UTC)
+
+        if start_time is not None:
+            start_dt = parse_datetime_param(start_time)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=UTC)
+        else:
+            valid_ranges = {"6h", "24h", "7d", "30d", "all"}
+            if range_str not in valid_ranges:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, all",
+                )
+            if range_str == "6h":
+                start_dt = end_dt - timedelta(hours=6)
+            elif range_str == "24h":
+                start_dt = end_dt - timedelta(hours=24)
+            elif range_str == "7d":
+                start_dt = end_dt - timedelta(days=7)
+            elif range_str == "30d":
+                start_dt = end_dt - timedelta(days=30)
+            elif range_str == "all":
+                table = temperature_data if dev_type in ("TS", "AC", "ACC") else ats_data
+                min_ts = (
+                    db.query(func.min(table.timestamp))
+                    .filter(table.dev_id == dev_id)
+                    .scalar()
+                )
+                if min_ts is None:
+                    return now, now, 1
+                start_dt = min_ts if min_ts.tzinfo is not None else min_ts.replace(tzinfo=UTC)
+
+        if start_dt > end_dt:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="start_time must be earlier than or equal to end_time",
+            )
+    else:
+        valid_ranges = {"6h", "24h", "7d", "30d", "all"}
+        if range_str not in valid_ranges:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, all",
+            )
+        end_dt = now
+        if range_str == "6h":
+            start_dt = now - timedelta(hours=6)
+        elif range_str == "24h":
+            start_dt = now - timedelta(hours=24)
+        elif range_str == "7d":
+            start_dt = now - timedelta(days=7)
+        elif range_str == "30d":
+            start_dt = now - timedelta(days=30)
+        elif range_str == "all":
+            table = temperature_data if dev_type in ("TS", "AC", "ACC") else ats_data
+            min_ts = (
+                db.query(func.min(table.timestamp))
+                .filter(table.dev_id == dev_id)
+                .scalar()
+            )
+            if min_ts is None:
+                return now, now, 1
+            start_dt = min_ts if min_ts.tzinfo is not None else min_ts.replace(tzinfo=UTC)
+
+    duration_sec = max(1.0, (end_dt - start_dt).total_seconds())
+    bucket_seconds = max(1, int(duration_sec // max_points))
+    return start_dt, end_dt, bucket_seconds
+
+
+def _downsample_ts(
+    db: Session,
+    dev_id: str,
+    start_dt: datetime,
+    end_dt: datetime,
+    bucket_seconds: int,
+) -> list[TelemetryHistoryPoint]:
+    """Single-pass TS downsampling with min/max envelopes."""
+    dialect_name = db.get_bind().dialect.name
+    bucket_expr = _build_epoch_bucket_expr(dialect_name, temperature_data.timestamp, bucket_seconds)
+
+    rows = (
+        db.query(
+            bucket_expr,
+            func.avg(temperature_data.temp).label("temp"),
+            func.min(temperature_data.temp).label("temp_min"),
+            func.max(temperature_data.temp).label("temp_max"),
+            func.avg(temperature_data.humid).label("humid"),
+            func.min(temperature_data.humid).label("humid_min"),
+            func.max(temperature_data.humid).label("humid_max"),
+        )
+        .filter(
+            temperature_data.dev_id == dev_id,
+            temperature_data.timestamp >= start_dt,
+            temperature_data.timestamp <= end_dt,
+        )
+        .group_by(bucket_expr)
+        .order_by(bucket_expr.asc())
+        .all()
+    )
+
+    points: list[TelemetryHistoryPoint] = []
+    for r in rows:
+        points.append(
+            TelemetryHistoryPoint(
+                timestamp=datetime.fromtimestamp(int(float(r.bucket_ts)), tz=UTC),
+                temp=round(float(r.temp), 2) if r.temp is not None else None,
+                temp_min=round(float(r.temp_min), 2) if r.temp_min is not None else None,
+                temp_max=round(float(r.temp_max), 2) if r.temp_max is not None else None,
+                humid=round(float(r.humid), 2) if r.humid is not None else None,
+                humid_min=round(float(r.humid_min), 2) if r.humid_min is not None else None,
+                humid_max=round(float(r.humid_max), 2) if r.humid_max is not None else None,
+            )
+        )
+    return points
+
+
+def _downsample_ats(
+    db: Session,
+    dev_id: str,
+    start_dt: datetime,
+    end_dt: datetime,
+    bucket_seconds: int,
+) -> list[TelemetryHistoryPoint]:
+    """Single-pass ATS downsampling with min/max envelopes and state aggregation."""
+    dialect_name = db.get_bind().dialect.name
+    bucket_expr = _build_epoch_bucket_expr(dialect_name, ats_data.timestamp, bucket_seconds)
+
+    rows = (
+        db.query(
+            bucket_expr,
+            func.avg(ats_data.pln).label("pln"),
+            func.min(ats_data.pln).label("pln_min"),
+            func.max(ats_data.pln).label("pln_max"),
+            func.avg(ats_data.genset).label("genset"),
+            func.min(ats_data.genset).label("genset_min"),
+            func.max(ats_data.genset).label("genset_max"),
+            func.avg(ats_data.aki).label("aki"),
+            func.min(ats_data.aki).label("aki_min"),
+            func.max(ats_data.aki).label("aki_max"),
+            func.max(ats_data.state).label("state"),
+        )
+        .filter(
+            ats_data.dev_id == dev_id,
+            ats_data.timestamp >= start_dt,
+            ats_data.timestamp <= end_dt,
+        )
+        .group_by(bucket_expr)
+        .order_by(bucket_expr.asc())
+        .all()
+    )
+
+    points: list[TelemetryHistoryPoint] = []
+    for r in rows:
+        points.append(
+            TelemetryHistoryPoint(
+                timestamp=datetime.fromtimestamp(int(float(r.bucket_ts)), tz=UTC),
+                pln=round(float(r.pln), 2) if r.pln is not None else None,
+                pln_min=round(float(r.pln_min), 2) if r.pln_min is not None else None,
+                pln_max=round(float(r.pln_max), 2) if r.pln_max is not None else None,
+                genset=round(float(r.genset), 2) if r.genset is not None else None,
+                genset_min=round(float(r.genset_min), 2) if r.genset_min is not None else None,
+                genset_max=round(float(r.genset_max), 2) if r.genset_max is not None else None,
+                aki=round(float(r.aki), 2) if r.aki is not None else None,
+                aki_min=round(float(r.aki_min), 2) if r.aki_min is not None else None,
+                aki_max=round(float(r.aki_max), 2) if r.aki_max is not None else None,
+                state=r.state,
+            )
+        )
+    return points
+
+
 @router.get("/api/devices/{dev_id}/history", response_model=DeviceHistoryResponse)
 @limiter.limit("60/minute")
 def get_device_history(
     request: Request,
     dev_id: str,
     range: str = Query("24h"),
+    max_points: int = Query(1000, ge=10, le=5000),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
+    device = (
+        db.query(dev_table)
+        .filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id))
+        .first()
+    )
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Device not found",
         )
 
-    valid_ranges = {"6h", "24h", "7d", "30d", "all"}
-    if range not in valid_ranges:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid range '{range}'. Valid options: 6h, 24h, 7d, 30d, all",
+    start_dt, end_dt, bucket_sec = _compute_time_window(
+        db=db,
+        dev_type=device.dev_type or "",
+        dev_id=device.dev_id,
+        range_str=range,
+        max_points=max_points,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+    # Short-circuit if device has no time window / no data
+    if start_dt == end_dt and range == "all" and start_time is None and end_time is None:
+        return DeviceHistoryResponse(
+            dev_id=device.dev_id,
+            dev_type=device.dev_type or "",
+            range=range,
+            total_points=0,
+            points=[],
+            bucket_seconds=bucket_sec,
         )
 
-    now = datetime.now(UTC)
-    cutoff = None
-    if range == "6h":
-        cutoff = now - timedelta(hours=6)
-    elif range == "24h":
-        cutoff = now - timedelta(hours=24)
-    elif range == "7d":
-        cutoff = now - timedelta(days=7)
-    elif range == "30d":
-        cutoff = now - timedelta(days=30)
-    elif range == "all":
-        cutoff = None
-
-    points: list[TelemetryHistoryPoint] = []
-
-    def _bucket_seconds() -> int:
-        window_end = now
-        if cutoff is not None:
-            window_start = cutoff
-        else:
-            if device.dev_type in ("TS", "AC", "ACC"):
-                window_start = db.query(func.min(temperature_data.timestamp)).filter(
-                    temperature_data.dev_id == device.dev_id
-                ).scalar() or now
-            else:
-                window_start = db.query(func.min(ats_data.timestamp)).filter(
-                    ats_data.dev_id == device.dev_id
-                ).scalar() or now
-            if window_start.tzinfo is None:
-                window_start = window_start.replace(tzinfo=UTC)
-        return max(1, int((window_end - window_start).total_seconds()) // 1000)
-
-    def _epoch_expr(col):
-        if db.get_bind().dialect.name == "sqlite":
-            return cast(func.strftime("%s", col), Integer)
-        return cast(func.extract("epoch", col), Integer)
-
     if device.dev_type in ("TS", "AC", "ACC"):
-        q = db.query(temperature_data).filter(temperature_data.dev_id == device.dev_id)
-        if cutoff is not None:
-            q = q.filter(temperature_data.timestamp >= cutoff)
-        if q.count() <= 1000:
-            rows = q.order_by(temperature_data.timestamp.desc()).limit(1000).all()
-            rows.reverse()
-            for r in rows:
-                ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
-                points.append(
-                    TelemetryHistoryPoint(
-                        timestamp=ts,
-                        temp=r.temp,
-                        humid=r.humid,
-                    )
-                )
-        else:
-            bucket_sec = _bucket_seconds()
-            epoch = _epoch_expr(temperature_data.timestamp)
-            bucket_expr = cast(epoch / bucket_sec, Integer)
-            rows = (
-                q.with_entities(
-                    bucket_expr.label("b"),
-                    func.avg(temperature_data.temp).label("temp"),
-                    func.avg(temperature_data.humid).label("humid"),
-                    func.avg(epoch).label("ts"),
-                )
-                .group_by(bucket_expr)
-                .order_by(bucket_expr)
-                .all()
-            )
-            for r in rows:
-                points.append(
-                    TelemetryHistoryPoint(
-                        timestamp=datetime.fromtimestamp(float(r.ts), tz=UTC),
-                        temp=r.temp,
-                        humid=r.humid,
-                    )
-                )
+        points = _downsample_ts(db, device.dev_id, start_dt, end_dt, bucket_sec)
     elif device.dev_type == "ATS":
-        q = db.query(ats_data).filter(ats_data.dev_id == device.dev_id)
-        if cutoff is not None:
-            q = q.filter(ats_data.timestamp >= cutoff)
-        if q.count() <= 1000:
-            rows = q.order_by(ats_data.timestamp.desc()).limit(1000).all()
-            rows.reverse()
-            for r in rows:
-                ts = r.timestamp if (r.timestamp and r.timestamp.tzinfo is not None) else (r.timestamp.replace(tzinfo=UTC) if r.timestamp else None)
-                points.append(
-                    TelemetryHistoryPoint(
-                        timestamp=ts,
-                        pln=r.pln,
-                        genset=r.genset,
-                        aki=r.aki,
-                        state=r.state,
-                    )
-                )
-        else:
-            bucket_sec = _bucket_seconds()
-            epoch = _epoch_expr(ats_data.timestamp)
-            bucket_expr = cast(epoch / bucket_sec, Integer)
-            rows = (
-                q.with_entities(
-                    bucket_expr.label("b"),
-                    func.avg(ats_data.pln).label("pln"),
-                    func.avg(ats_data.genset).label("genset"),
-                    func.avg(ats_data.aki).label("aki"),
-                    func.max(ats_data.state).label("state"),
-                    func.avg(epoch).label("ts"),
-                )
-                .group_by(bucket_expr)
-                .order_by(bucket_expr)
-                .all()
-            )
-            for r in rows:
-                points.append(
-                    TelemetryHistoryPoint(
-                        timestamp=datetime.fromtimestamp(float(r.ts), tz=UTC),
-                        pln=r.pln,
-                        genset=r.genset,
-                        aki=r.aki,
-                        state=r.state,
-                    )
-                )
+        points = _downsample_ats(db, device.dev_id, start_dt, end_dt, bucket_sec)
+    else:
+        points = []
+
+    effective_range = "custom" if (start_time is not None or end_time is not None) else range
 
     return DeviceHistoryResponse(
         dev_id=device.dev_id,
         dev_type=device.dev_type or "",
-        range=range,
+        range=effective_range,
         total_points=len(points),
         points=points,
+        bucket_seconds=bucket_sec,
     )
 
 
@@ -362,7 +481,15 @@ def get_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
+    stmt = (
+        select(dev_table)
+        .options(
+            selectinload(dev_table.threshold_config),
+            selectinload(dev_table.room),
+        )
+        .where(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id))
+    )
+    device = db.execute(stmt).scalars().first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -420,21 +547,29 @@ def get_devices(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Akses Ditolak: Hub ID dan Key harus disertakan!",
             )
-        registered_hub = db.get(hub_table, x_hub_id)
-        if not registered_hub or not registered_hub.is_active:
+        entry = hub_auth_cache.get_or_load(x_hub_id, db)
+        if not entry or not entry.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Akses Ditolak: Hub tidak terdaftar atau non-aktif!",
             )
-        registered_hub_key = registered_hub.hub_key or ""
-        if not secrets.compare_digest(registered_hub_key, x_hub_key):
+        if not secrets.compare_digest(entry.hub_key, x_hub_key):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Akses Ditolak: API Key Hub tidak cocok!",
             )
 
-        registered_hub.last_seen = datetime.now(UTC)
-        db.commit()
+        registered_hub = db.get(hub_table, x_hub_id)
+        if not registered_hub or not registered_hub.is_active:
+            hub_auth_cache.invalidate(x_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Akses Ditolak: Hub tidak terdaftar atau non-aktif!",
+            )
+
+        stage_hub_heartbeat(registered_hub)
+        if db.dirty:
+            db.commit()
 
         devices = db.query(dev_table).filter(
             dev_table.is_active == True,  # noqa: E712
@@ -452,20 +587,27 @@ def get_devices(
         ]
 
     # 2. User session authentication path
-    from auth import get_current_user
-    user = get_current_user(request, db)
+    override = getattr(request.app, "dependency_overrides", {}).get(get_current_user)
+    if override:
+        user = override()
+    else:
+        user = get_current_user(request, db)
 
     now_utc = datetime.now(UTC)
     cutoff = now_utc - timedelta(seconds=25)
-    prune_stale_pending(db, cutoff)
-    update_device_presence_on_list(db, now_utc, cutoff)
 
-    query = db.query(dev_table)
+    stmt = (
+        select(dev_table)
+        .options(
+            selectinload(dev_table.threshold_config),
+            selectinload(dev_table.room),
+        )
+    )
     if status_filter == "pending":
-        query = query.filter(dev_table.is_active == False)  # noqa: E712
+        stmt = stmt.where(dev_table.is_active == False)  # noqa: E712
     elif status_filter == "active":
-        query = query.filter(dev_table.is_active == True)  # noqa: E712
-    elif status_filter == "all" or status_filter is None:
+        stmt = stmt.where(dev_table.is_active == True)  # noqa: E712
+    elif status_filter in ("all", None):
         pass
     else:
         raise HTTPException(
@@ -473,7 +615,7 @@ def get_devices(
             detail="Invalid status filter. Use 'pending', 'active', or 'all'.",
         )
 
-    devices = query.all()
+    devices = db.execute(stmt).scalars().all()
     results = []
     for d in devices:
         thresh_schema = None

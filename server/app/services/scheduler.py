@@ -246,12 +246,27 @@ async def scheduler_lifespan(app):
     """FastAPI lifespan that starts/stops APScheduler and rehydrates jobs."""
     global scheduler
     scheduler = _build_scheduler()
-    # Rehydrate
+
+    # Rehydrate schedules using a single scoped SessionLocal()
+    from databasev5 import SessionLocal
+    from modelsv5 import schedules
+    from sqlalchemy import select
+    from app.services.presence import evaluate_device_presence_batch, PRESENCE_INTERVAL_SECONDS
+
+    db = SessionLocal()
     try:
-        for s in _load_enabled_schedules():
+        enabled_schedules = (
+            db.execute(select(schedules).where(schedules.enabled == True))  # noqa: E712
+            .scalars()
+            .all()
+        )
+
+        has_updates = False
+        for s in enabled_schedules:
             try:
-                _validate_cron_expr(s.cron_expr, s.tz or CANONICAL_TZ)
-                trigger = CronTrigger.from_crontab(s.cron_expr.strip(), timezone=s.tz or CANONICAL_TZ)
+                tz_str = s.tz or CANONICAL_TZ
+                _validate_cron_expr(s.cron_expr, tz_str)
+                trigger = CronTrigger.from_crontab(s.cron_expr.strip(), timezone=tz_str)
                 scheduler.add_job(
                     fire_schedule,
                     trigger=trigger,
@@ -262,25 +277,35 @@ async def scheduler_lifespan(app):
                     max_instances=1,
                     misfire_grace_time=60,
                 )
-                # Update next_run_at preview
                 try:
-                    nxt = get_next_runs(s.cron_expr, s.tz or CANONICAL_TZ, 1)
-                    if nxt:
-                        from databasev5 import SessionLocal
-                        db = SessionLocal()
-                        try:
-                            obj = db.get(type(s), s.id)
-                            if obj:
-                                obj.next_run_at = nxt[0]
-                                db.commit()
-                        finally:
-                            db.close()
+                    nxt = get_next_runs(s.cron_expr, tz_str, 1)
+                    if nxt and s.next_run_at != nxt[0]:
+                        s.next_run_at = nxt[0]
+                        has_updates = True
                 except Exception:
                     pass
             except Exception as e:
                 logger.warning(f"Failed to rehydrate schedule {s.id}: {e}")
+
+        if has_updates:
+            db.commit()
     except Exception as e:
-        logger.warning(f"Failed to load schedules for rehydrate: {e}")
+        db.rollback()
+        logger.warning(f"Failed to load schedules during startup: {e}")
+    finally:
+        db.close()
+
+    # Register background presence evaluation job
+    scheduler.add_job(
+        evaluate_device_presence_batch,
+        trigger="interval",
+        seconds=PRESENCE_INTERVAL_SECONDS,
+        id="engine-device-presence",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=15,
+    )
 
     try:
         scheduler.start()

@@ -22,12 +22,14 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 ## Concepts
 
 - [concept-telemetry-pipeline.md](concept-telemetry-pipeline.md) — End-to-end data flow: ESP → MQTT → hub WAL → HTTPS → DB → dashboard
+- [concept-downsampling-v2.md](concept-downsampling-v2.md) — Single-pass SQL epoch bucketing, min/max envelopes, and sub-second 30d SLAs
 - [concept-command-path.md](concept-command-path.md) — Downlink: web command → pending_commands → hub poll → MQTT → serial frame
 - [concept-alert-engine.md](concept-alert-engine.md) — Threshold evaluation, debounce, hysteresis, ATS emergency auto-resolve
 - [concept-time-conventions.md](concept-time-conventions.md) — UTC storage, _hub_created_at replay epochs, Z-suffix contract, WIB rendering
 
 ## Workstreams
 
+- [workstream-backend-hardening-v5.md](workstream-backend-hardening-v5.md) — Multi-phase backend hardening: engine pool limits, downsampling v2, batch ingestion, presence worker, zero-lock verification
 - [workstream-ats-emergency-2026-08.md](workstream-ats-emergency-2026-08.md) — Genset-disconnect EMERGENCY latch: timeline, decisions, pending reflash
 - [workstream-firmware-proofing.md](workstream-firmware-proofing.md) — 14-gap hardening of PROMINI/WEMOS_ATS (dcfeb84), bench soak pending
 - [workstream-flexible-scheduling.md](workstream-flexible-scheduling.md) — Replacing firmware Sunday warmup with server APScheduler cron

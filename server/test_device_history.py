@@ -14,10 +14,12 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_hubgatev5.db"
 import init_sqlv5
 init_sqlv5.init_db()
 
-from databasev5 import SessionLocal
+from databasev5 import SessionLocal, engine
+from sqlalchemy import event
 from modelsv5 import (
     User, UserSession, LoginAttempt, hub_table, dev_table,
-    temperature_data, ats_data, data_table
+    temperature_data, ats_data, data_table, rooms,
+    pending_commands, schedules, device_threshold_config
 )
 from auth import hash_password
 from hubgatev5 import api
@@ -25,17 +27,28 @@ from hubgatev5 import api
 client = TestClient(api)
 api.state.limiter.enabled = False
 
+_tracked_sql_queries: list[str] = []
+
+def _history_sql_listener(conn, cursor, statement, parameters, context, executemany):
+    _tracked_sql_queries.append(statement)
+
+event.listen(engine, "before_cursor_execute", _history_sql_listener)
+
 @pytest.fixture(scope="module", autouse=True)
 def setup_test_environment():
     db = SessionLocal()
     try:
-        # Clear tables for clean module isolation
+        # Clear tables for clean module isolation (child-first order to satisfy FK constraints)
         db.query(UserSession).delete()
         db.query(LoginAttempt).delete()
+        db.query(device_threshold_config).delete()
         db.query(temperature_data).delete()
         db.query(ats_data).delete()
         db.query(data_table).delete()
+        db.query(pending_commands).delete()
+        db.query(schedules).delete()
         db.query(dev_table).delete()
+        db.query(rooms).delete()
         db.query(hub_table).delete()
         db.query(User).delete()
         db.commit()
@@ -412,5 +425,120 @@ def test_device_lookup_by_dev_name():
     )
     assert resp_thresh.status_code == 200
     assert resp_thresh.json()["warning"] == 29.5
+
+
+# ==========================================
+# 5. PHASE 2 PERFORMANCE & INVARIANT TESTS
+# ==========================================
+
+def test_zero_count_executed_during_history_query():
+    """Verify that zero count(*) queries are executed during device history retrieval."""
+    cookies = get_auth_cookies()
+    _tracked_sql_queries.clear()
+
+    resp = client.get("/api/devices/TS_DEV_01/history?range=24h", cookies=cookies)
+    assert resp.status_code == 200
+
+    # Ensure no query contains count(
+    count_queries = [q for q in _tracked_sql_queries if "count(" in q.lower()]
+    assert len(count_queries) == 0, f"Unexpected count(*) queries found: {count_queries}"
+
+
+def test_ts_envelope_min_max_presence():
+    """Verify that TS history points contain valid min/max envelope fields."""
+    cookies = get_auth_cookies()
+    resp = client.get("/api/devices/TS_DEV_01/history?range=24h", cookies=cookies)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert "bucket_seconds" in data
+    assert data["bucket_seconds"] > 0
+
+    p = data["points"][0]
+    assert "temp_min" in p
+    assert "temp_max" in p
+    assert "humid_min" in p
+    assert "humid_max" in p
+    assert p["temp_min"] <= p["temp"] <= p["temp_max"]
+
+
+def test_ats_envelope_min_max_presence():
+    """Verify that ATS history points contain valid min/max envelope fields."""
+    cookies = get_auth_cookies()
+    resp = client.get("/api/devices/ATS_DEV_01/history?range=24h", cookies=cookies)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert "bucket_seconds" in data
+    p = data["points"][0]
+    assert "pln_min" in p
+    assert "pln_max" in p
+    assert "genset_min" in p
+    assert "genset_max" in p
+    assert "aki_min" in p
+    assert "aki_max" in p
+    assert p["pln_min"] <= p["pln"] <= p["pln_max"]
+
+
+def test_custom_time_range_parameters():
+    """Verify start_time and end_time query parameters."""
+    cookies = get_auth_cookies()
+    now = datetime.now(UTC)
+    start_dt = now - timedelta(hours=15)
+    end_dt = now - timedelta(hours=1)
+
+    resp = client.get(
+        f"/api/devices/TS_DEV_01/history?start_time={start_dt.isoformat()}&end_time={end_dt.isoformat()}&max_points=50",
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["range"] == "custom"
+    assert data["total_points"] <= 50
+    # In setup: 12h ago and 2h ago fall in this range
+    assert data["total_points"] >= 2
+
+
+def test_max_points_bounds_validation():
+    """Verify max_points bounds validation (ge=10, le=5000)."""
+    cookies = get_auth_cookies()
+
+    resp_too_low = client.get("/api/devices/TS_DEV_01/history?max_points=5", cookies=cookies)
+    assert resp_too_low.status_code == 422
+
+    resp_too_high = client.get("/api/devices/TS_DEV_01/history?max_points=5001", cookies=cookies)
+    assert resp_too_high.status_code == 422
+
+    resp_valid = client.get("/api/devices/TS_DEV_01/history?max_points=20", cookies=cookies)
+    assert resp_valid.status_code == 200
+
+
+def test_empty_device_history_returns_200():
+    """Newly paired device with 0 records returns 200 and empty points array."""
+    db = SessionLocal()
+    empty_dev_id = "TS_EMPTY_DEV_HIST"
+    try:
+        dev = dev_table(
+            dev_id=empty_dev_id,
+            dev_name="Empty Sensor Hist",
+            dev_type="TS",
+            hub_id="HUB_TEST_HIST",
+            is_active=True,
+        )
+        db.merge(dev)
+        db.query(temperature_data).filter(temperature_data.dev_id == empty_dev_id).delete()
+        db.commit()
+
+        cookies = get_auth_cookies()
+        resp = client.get(f"/api/devices/{empty_dev_id}/history?range=all", cookies=cookies)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_points"] == 0
+        assert data["points"] == []
+    finally:
+        db.query(dev_table).filter(dev_table.dev_id == empty_dev_id).delete()
+        db.commit()
+        db.close()
+
 
 

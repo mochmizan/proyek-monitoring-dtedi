@@ -1,4 +1,4 @@
-﻿# smsb â€” heterogeneous monorepo (justfile)
+# smsb â€” heterogeneous monorepo (justfile)
 # Install: winget install Casey.Just  |  cargo install just  |  brew install just
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 set shell := ["bash", "-uc"]
@@ -17,8 +17,14 @@ dev-infra:
 
 # â”€â”€ quality gates (DOX Verification) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test:
-    pytest -q
+    pytest server/ -q
     python -m pytest hub/test_edge_resilience.py -q
+
+seed-benchmark total_rows="1000000" days="30":
+    python tools/seed_benchmark_telemetry.py --total-rows {{total_rows}} --days {{days}} --clean --verify
+
+benchmark duration="15":
+    python tools/benchmark_concurrency_stress.py --duration {{duration}}
 
 lint:
     npm --prefix dashboard run lint

@@ -1,4 +1,4 @@
-﻿# test_milestone2_3.py
+# test_milestone2_3.py
 # Comprehensive Integration Tests for Milestone 2 & 3
 
 import os
@@ -285,7 +285,7 @@ def test_edge_daemon_polling():
     logging.info("--- Test 5: Edge Daemon main.py (Headless Polling Loop) ---")
     
     # Add sys.path of hub
-    hub_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "hub", "V5"))
+    hub_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hub"))
     if hub_path not in sys.path:
         sys.path.insert(0, hub_path)
         

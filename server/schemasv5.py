@@ -118,8 +118,14 @@ class ACCommand(BaseModel):
 
 class TSData(IotDataBase):
     DEV_TYPE: Literal["TS"]
-    TEMP: float
-    HUMID: float
+    TEMP: Optional[float] = Field(default=None)
+    HUMID: Optional[float] = Field(default=None)
+
+    @model_validator(mode="after")
+    def validate_has_measurement(self) -> "TSData":
+        if self.TEMP is None and self.HUMID is None:
+            raise ValueError("TS payload must contain at least one metric ('TEMP' or 'HUMID').")
+        return self
 
 
 class ACCData(IotDataBase):
@@ -134,8 +140,8 @@ class ACData(IotDataBase):
     AC1_TEMP: float
     AC2_POWER: str
     AC2_TEMP: float
-    TEMP: float
-    HUMID: float
+    TEMP: Optional[float] = Field(default=None)
+    HUMID: Optional[float] = Field(default=None)
 
 # Contoh: Jika ada jenis IoT baru, tinggal tambahkan class-nya di sini
 '''
@@ -156,6 +162,17 @@ IotPayload = Annotated[
     Union[ATSData, TSData, ACCData, ACData], 
     Field(discriminator="DEV_TYPE")
 ]
+
+
+class IotBatchRequest(BaseModel):
+    items: list[IotPayload] = Field(..., min_length=1, max_length=1000)
+
+
+class IotBatchResponse(BaseModel):
+    status: str
+    processed_count: int
+    ingested_count: int
+    ignored_count: int
 
 
 # ==========================================
@@ -334,7 +351,24 @@ class TelemetryHistoryPoint(BaseModel):
     aki: Optional[float] = None
     state: Optional[str] = None
 
+    # Min/Max Envelopes for High-Fidelity Downsampled Visualizations
+    temp_min: Optional[float] = None
+    temp_max: Optional[float] = None
+    humid_min: Optional[float] = None
+    humid_max: Optional[float] = None
+    pln_min: Optional[float] = None
+    pln_max: Optional[float] = None
+    genset_min: Optional[float] = None
+    genset_max: Optional[float] = None
+    aki_min: Optional[float] = None
+    aki_max: Optional[float] = None
+
     model_config = {"from_attributes": True}
+
+
+# Aliases for type clarity
+TSDataPoint = TelemetryHistoryPoint
+ATSDataPoint = TelemetryHistoryPoint
 
 
 class DeviceHistoryResponse(BaseModel):
@@ -343,6 +377,7 @@ class DeviceHistoryResponse(BaseModel):
     range: str
     total_points: int
     points: list[TelemetryHistoryPoint] = Field(default_factory=list)
+    bucket_seconds: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

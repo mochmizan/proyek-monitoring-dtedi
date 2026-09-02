@@ -72,6 +72,9 @@ def get_pending_commands(
     hub: hub_table = Depends(verify_hub_identity),
     db: Session = Depends(get_db),
 ):
+    if db.dirty:
+        db.commit()
+
     cmds = db.query(pending_commands).filter(
         pending_commands.hub_id == hub.hub_id,
         pending_commands.status == "pending",

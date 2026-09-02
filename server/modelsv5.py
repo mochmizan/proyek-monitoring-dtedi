@@ -3,7 +3,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Index, JSON, Integer
+from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Index, JSON, Integer, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -25,6 +25,9 @@ class hub_table(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     last_seen = Column(DateTime(timezone=True), nullable=True)   # [V5 PRESENCE] Heartbeat terakhir Hub
     status = Column(String, default="offline", nullable=True)    # [V5 PRESENCE] Status koneksi Hub ('online'/'offline')
+
+    # Relasi ke dev_table
+    devices = relationship("dev_table", back_populates="hub")
 
 
 class rooms(Base):
@@ -61,10 +64,19 @@ class dev_table(Base):
     marker_x = Column(Float, nullable=True)
     marker_y = Column(Float, nullable=True)
 
-    # Relasi ke data_table, rooms, dan device_threshold_config
-    telemetry_data = relationship("data_table", back_populates="device", cascade="all, delete-orphan")
+    # Relasi ke hub_table, rooms, data_table, temperature_data, ats_data, dan device_threshold_config
+    hub = relationship("hub_table", back_populates="devices")
     room = relationship("rooms", back_populates="devices")
+    telemetry_data = relationship("data_table", back_populates="device", cascade="all, delete-orphan")
+    temperature_records = relationship("temperature_data", back_populates="device", cascade="all, delete-orphan")
+    ats_records = relationship("ats_data", back_populates="device", cascade="all, delete-orphan")
     threshold_config = relationship("device_threshold_config", back_populates="device", uselist=False, cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_dev_table_hub_id", "hub_id"),
+        Index("ix_dev_table_room_id", "room_id"),
+        Index("ix_dev_table_dev_name", "dev_name"),
+    )
 
 
 class device_threshold_config(Base):
@@ -92,6 +104,11 @@ class data_table(Base):
     # Relasi balik ke dev_table
     device = relationship("dev_table", back_populates="telemetry_data")
 
+    __table_args__ = (
+        Index("ix_data_table_dev_ts_desc", "dev_id", text("timestamp DESC")),
+        UniqueConstraint("dev_id", "timestamp", name="uq_data_dev_timestamp"),
+    )
+
 
 class event_log(Base):
     __tablename__ = "event_log"
@@ -110,6 +127,13 @@ class event_log(Base):
     threshold = Column(Float, nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
 
+    __table_args__ = (
+        Index("ix_event_log_dev_metric_ts", "dev_id", "metric", text("timestamp DESC")),
+        Index("ix_event_log_room_ts", "room_id", text("timestamp DESC")),
+        Index("ix_event_log_dev_resolved", "dev_id", "resolved_at"),
+        Index("ix_event_log_ts_desc", text("timestamp DESC")),
+    )
+
 
 class temperature_data(Base):
     __tablename__ = "temperature_data"
@@ -117,11 +141,15 @@ class temperature_data(Base):
     data_id = Column(String, primary_key=True)
     dev_id = Column(String, ForeignKey("dev_table.dev_id", ondelete="CASCADE"), nullable=False)
     timestamp = Column(DateTime(timezone=True), nullable=False)
-    temp = Column(Float, nullable=False)
-    humid = Column(Float, nullable=False)
+    temp = Column(Float, nullable=True)
+    humid = Column(Float, nullable=True)
+
+    # Relasi balik ke dev_table
+    device = relationship("dev_table", back_populates="temperature_records")
 
     __table_args__ = (
         Index("idx_temp_dev_timestamp", "dev_id", timestamp.desc()),
+        UniqueConstraint("dev_id", "timestamp", name="uq_temp_dev_timestamp"),
     )
 
 
@@ -141,8 +169,12 @@ class ats_data(Base):
     auto_mode = Column(Boolean, nullable=False)
     emergency = Column(Boolean, nullable=False)
 
+    # Relasi balik ke dev_table
+    device = relationship("dev_table", back_populates="ats_records")
+
     __table_args__ = (
         Index("idx_ats_dev_timestamp", "dev_id", timestamp.desc()),
+        UniqueConstraint("dev_id", "timestamp", name="uq_ats_dev_timestamp"),
     )
 
 
@@ -156,6 +188,14 @@ class pending_commands(Base):
     status = Column(String, default="pending", nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     delivered_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relasi ke dev_table dan hub_table
+    device = relationship("dev_table", backref="pending_commands")
+    hub = relationship("hub_table", backref="pending_commands")
+
+    __table_args__ = (
+        Index("ix_pending_commands_hub_status_created", "hub_id", "status", "created_at"),
+    )
 
 
 class User(Base):
@@ -178,6 +218,13 @@ class UserSession(Base):
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+
+    # Relasi ke User
+    user = relationship("User", backref="sessions")
+
+    __table_args__ = (
+        Index("ix_sessions_user_expires", "user_id", "expires_at"),
+    )
 
 
 class LoginAttempt(Base):
@@ -203,6 +250,10 @@ class schedules(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
     next_run_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relasi ke dev_table dan hub_table
+    device = relationship("dev_table", backref="schedules")
+    hub = relationship("hub_table", backref="schedules")
 
     __table_args__ = (
         Index("ix_schedules_enabled_hub", "enabled", "hub_id"),

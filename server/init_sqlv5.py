@@ -134,9 +134,11 @@ def try_alembic_upgrade(bind_engine=None):
         import alembic.config
         import alembic.command
         import os
-        alembic_ini = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alembic.ini")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        alembic_ini = os.path.join(base_dir, "alembic.ini")
         if os.path.exists(alembic_ini):
             cfg = alembic.config.Config(alembic_ini)
+            cfg.set_main_option("script_location", os.path.join(base_dir, "alembic"))
             # Override URL to current engine URL
             target_engine = bind_engine or engine
             cfg.set_main_option("sqlalchemy.url", str(target_engine.url))
@@ -146,6 +148,35 @@ def try_alembic_upgrade(bind_engine=None):
     except Exception as e:
         logging.warning(f"Alembic upgrade skipped/fallback: {e}")
     return False
+
+def migrate_indexes(bind_engine=None):
+    """Ensures composite indexes exist on target tables as an additive fallback."""
+    target_engine = bind_engine or engine
+    inspector = inspect(target_engine)
+    existing_tables = set(inspector.get_table_names())
+
+    indexes_to_create = [
+        ("event_log", "ix_event_log_dev_metric_ts", "CREATE INDEX IF NOT EXISTS ix_event_log_dev_metric_ts ON event_log (dev_id, metric, timestamp DESC)"),
+        ("event_log", "ix_event_log_room_ts", "CREATE INDEX IF NOT EXISTS ix_event_log_room_ts ON event_log (room_id, timestamp DESC)"),
+        ("event_log", "ix_event_log_dev_resolved", "CREATE INDEX IF NOT EXISTS ix_event_log_dev_resolved ON event_log (dev_id, resolved_at)"),
+        ("event_log", "ix_event_log_ts_desc", "CREATE INDEX IF NOT EXISTS ix_event_log_ts_desc ON event_log (timestamp DESC)"),
+        ("dev_table", "ix_dev_table_hub_id", "CREATE INDEX IF NOT EXISTS ix_dev_table_hub_id ON dev_table (hub_id)"),
+        ("dev_table", "ix_dev_table_room_id", "CREATE INDEX IF NOT EXISTS ix_dev_table_room_id ON dev_table (room_id)"),
+        ("dev_table", "ix_dev_table_dev_name", "CREATE INDEX IF NOT EXISTS ix_dev_table_dev_name ON dev_table (dev_name)"),
+        ("pending_commands", "ix_pending_commands_hub_status_created", "CREATE INDEX IF NOT EXISTS ix_pending_commands_hub_status_created ON pending_commands (hub_id, status, created_at)"),
+        ("data_table", "ix_data_table_dev_ts_desc", "CREATE INDEX IF NOT EXISTS ix_data_table_dev_ts_desc ON data_table (dev_id, timestamp DESC)"),
+        ("sessions", "ix_sessions_user_expires", "CREATE INDEX IF NOT EXISTS ix_sessions_user_expires ON sessions (user_id, expires_at)"),
+        ("temperature_data", "uq_temp_dev_timestamp", "CREATE UNIQUE INDEX IF NOT EXISTS uq_temp_dev_timestamp ON temperature_data (dev_id, timestamp)"),
+        ("ats_data", "uq_ats_dev_timestamp", "CREATE UNIQUE INDEX IF NOT EXISTS uq_ats_dev_timestamp ON ats_data (dev_id, timestamp)"),
+        ("data_table", "uq_data_dev_timestamp", "CREATE UNIQUE INDEX IF NOT EXISTS uq_data_dev_timestamp ON data_table (dev_id, timestamp)"),
+    ]
+    with target_engine.begin() as conn:
+        for tbl, idx_name, sql in indexes_to_create:
+            if tbl in existing_tables:
+                try:
+                    conn.execute(text(sql))
+                except Exception as e:
+                    logging.warning(f"Fallback migrate_indexes could not create {idx_name}: {e}")
 
 def init_db(bind_engine=None):
     try:
@@ -158,6 +189,7 @@ def init_db(bind_engine=None):
 
         logging.info("Memulai pembuatan / verifikasi tabel V5 di database...")
         Base.metadata.create_all(bind=target_engine)
+        migrate_indexes(target_engine)
         logging.info("Pembuatan tabel database V5 BERHASIL!")
 
         # Seeding Default Hub Pertama (Jika belum ada Hub sama sekali)

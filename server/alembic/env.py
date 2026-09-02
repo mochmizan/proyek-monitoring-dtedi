@@ -13,9 +13,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Respect DATABASE_URL from env, fallback to sqlite
-from databasev5 import DATABASE_URL as DB_URL  # noqa: E402
-config.set_main_option("sqlalchemy.url", DB_URL)
+# Respect DATABASE_URL from env, fallback to sqlite if not explicitly provided
+current_url = config.get_main_option("sqlalchemy.url")
+if not current_url or "driver://user:pass" in current_url:
+    from databasev5 import DATABASE_URL as DB_URL  # noqa: E402
+    config.set_main_option("sqlalchemy.url", DB_URL)
 
 from databasev5 import Base  # noqa: E402
 import modelsv5  # noqa: F401,E402 ensure metadata populated
