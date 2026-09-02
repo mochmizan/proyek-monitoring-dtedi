@@ -23,6 +23,17 @@ import type {
   SchedulePreviewResponse,
 } from '../types/api';
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+}
+
 const BASE = import.meta.env.VITE_API_BASE || '';
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -45,7 +56,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     } catch {
       // Ignore JSON parsing fallback
     }
-    throw new Error(errorMessage);
+    throw new ApiError(res.status, errorMessage);
   }
   return res.json() as Promise<T>;
 }
@@ -72,10 +83,13 @@ export async function logoutUser(): Promise<{ status: string }> {
   return handleResponse<{ status: string }>(res);
 }
 
-export async function fetchCurrentUser(): Promise<UserResponse> {
+export async function fetchCurrentUser(): Promise<UserResponse | null> {
   const res = await fetch(`${BASE}/api/auth/me`, {
     credentials: 'same-origin',
   });
+  if (res.status === 401) {
+    return null;
+  }
   return handleResponse<UserResponse>(res);
 }
 

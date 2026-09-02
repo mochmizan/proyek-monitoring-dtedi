@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState, useMemo } from "react"
 import { z } from "zod"
@@ -28,17 +28,6 @@ const schedulesSearchSchema = z.object({
 
 export const Route = createFileRoute("/schedules")({
   validateSearch: (search) => schedulesSearchSchema.parse(search),
-  beforeLoad: async ({ context }) => {
-    try {
-      const user = await context.queryClient.ensureQueryData({
-        queryKey: queryKeys.auth.me(),
-        queryFn: fetchCurrentUser,
-      })
-      if (!user) throw redirect({ to: "/login" })
-    } catch {
-      throw redirect({ to: "/login" })
-    }
-  },
   component: SchedulesPage,
 })
 

@@ -1,5 +1,6 @@
-import { createRootRouteWithContext, Link, Outlet, redirect, useLocation, useRouter, isRedirect } from '@tanstack/react-router';
+import { createRootRouteWithContext, Link, Outlet, redirect, useLocation, useRouter, useRouterState, isRedirect } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import { 
   LayoutDashboard, 
@@ -40,6 +41,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       const user = await context.queryClient.ensureQueryData({
         queryKey: queryKeys.auth.me(),
         queryFn: fetchCurrentUser,
+        staleTime: 60000,
       });
       if (!user) {
         throw redirect({
@@ -67,7 +69,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 function RootLayout() {
   const location = useLocation();
   const router = useRouter();
+  const isNavigating = useRouterState({ select: (s) => s.status === 'pending' });
   const queryClient = useQueryClient();
+  const isLoginPage = location.pathname === '/login';
 
   const { data: currentUser } = useQuery({
     queryKey: queryKeys.auth.me(),
@@ -75,11 +79,28 @@ function RootLayout() {
     staleTime: 60000,
   });
 
+  useEffect(() => {
+    if (!isLoginPage && currentUser) {
+      const routes = ['/hubs', '/alerts', '/map', '/schedules', '/settings'];
+      const preloadAll = () => {
+        routes.forEach((to) => {
+          router.preloadRoute({ to: to as any }).catch(() => {});
+        });
+      };
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(preloadAll);
+      } else {
+        setTimeout(preloadAll, 1000);
+      }
+    }
+  }, [isLoginPage, !!currentUser, router]);
+
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
     refetchInterval: POLL_ALERTS_MS,
     refetchIntervalInBackground: false,
+    enabled: !isLoginPage && !!currentUser,
   });
 
   const logoutMutation = useMutation({
@@ -96,9 +117,10 @@ function RootLayout() {
   };
 
   // If path is /login, render without the dashboard shell
-  if (location.pathname === '/login') {
+  if (isLoginPage) {
     return (
       <div className="w-full min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+        {isNavigating && <div className="fixed top-0 left-0 right-0 h-1 bg-indigo-500 z-50 animate-pulse" />}
         <Outlet />
       </div>
     );
@@ -117,6 +139,7 @@ function RootLayout() {
 
   return (
     <div className="flex w-full min-h-screen bg-zinc-950 text-zinc-100 overflow-hidden">
+      {isNavigating && <div className="fixed top-0 left-0 right-0 h-1 bg-indigo-500 z-50 animate-pulse" />}
       {/* Sidebar */}
       <aside className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col justify-between flex-shrink-0">
         <div>

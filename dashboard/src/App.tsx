@@ -3,11 +3,15 @@ import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { routeTree } from './routeTree.gen';
 import { queryClient } from './lib/queryClient';
 
-const router = createRouter({
+export const router = createRouter({
   routeTree,
   context: {
     queryClient,
   },
+  defaultPreload: 'intent',
+  defaultPreloadDelay: 50,
+  defaultPendingMs: 100,
+  defaultPendingMinMs: 200,
 });
 
 declare module '@tanstack/react-router' {

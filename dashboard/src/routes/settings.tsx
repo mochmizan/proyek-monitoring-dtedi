@@ -4,7 +4,7 @@ import { cn } from '../lib/utils';
 import { Layers, Cpu, Sliders } from 'lucide-react';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchCurrentUser } from '../lib/api';
+import type { UserResponse } from '../types/api';
 import { RoomsTab } from '../components/settings/RoomsTab';
 import { DevicesTab } from '../components/settings/DevicesTab';
 import { HubsTab } from '../components/settings/HubsTab';
@@ -14,11 +14,11 @@ const settingsSearchSchema = z.object({
 });
 
 export const Route = createFileRoute('/settings')({
-  beforeLoad: async ({ context }) => {
-    try {
-      const user = await context.queryClient.ensureQueryData({ queryKey: queryKeys.auth.me(), queryFn: fetchCurrentUser });
-      if (!user || user.role !== 'admin') throw redirect({ to: '/' });
-    } catch { throw redirect({ to: '/' }); }
+  beforeLoad: ({ context }) => {
+    const user = (context as { user?: UserResponse }).user ?? context.queryClient.getQueryData<UserResponse>(queryKeys.auth.me());
+    if (!user || user.role !== 'admin') {
+      throw redirect({ to: '/' });
+    }
   },
   validateSearch: (search) => settingsSearchSchema.parse(search),
   component: SettingsPage,

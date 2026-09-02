@@ -1,5 +1,6 @@
-﻿import { QueryClient, QueryCache, MutationCache, keepPreviousData } from '@tanstack/react-query';
+import { QueryClient, QueryCache, MutationCache, keepPreviousData } from '@tanstack/react-query';
 import { STALE_MS } from './constants';
+import { ApiError } from './api';
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -18,7 +19,10 @@ export const queryClient = new QueryClient({
       gcTime: 5 * 60 * 1000,
       placeholderData: keepPreviousData,
       refetchOnWindowFocus: true,
-      retry: 1,
+      retry: (failureCount, error) => {
+        if (error instanceof ApiError && error.status === 401) return false;
+        return failureCount < 1;
+      },
     },
   },
 });

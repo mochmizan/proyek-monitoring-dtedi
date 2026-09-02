@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
@@ -20,19 +20,6 @@ import { FreshnessBadge } from '../components/FreshnessBadge';
 import type { HubResponse, HubDeviceSummary } from '../types/api';
 
 export const Route = createFileRoute('/hubs')({
-  beforeLoad: async ({ context }) => {
-    try {
-      const user = await context.queryClient.ensureQueryData({
-        queryKey: queryKeys.auth.me(),
-        queryFn: fetchCurrentUser,
-      });
-      if (!user) {
-        throw redirect({ to: '/login' });
-      }
-    } catch {
-      throw redirect({ to: '/login' });
-    }
-  },
   component: HubsPage,
 });
 
