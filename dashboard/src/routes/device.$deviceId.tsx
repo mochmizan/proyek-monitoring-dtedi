@@ -10,6 +10,7 @@ import { POLL_MS } from '../lib/constants';
 import { HistoryChart } from '../components/device/HistoryChart';
 import { DeviceControls } from '../components/device/Controls';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
+import { formatAlertReading } from '../lib/formatAlert';
 
 const deviceSearchSchema = z.object({
   range: z.enum(['6h', '24h', '7d', '30d']).catch('24h').optional(),
@@ -112,26 +113,6 @@ function DeviceDetailPage() {
           <div>
             <h1 className="text-2xl font-bold text-zinc-100">{displayName}</h1>
             <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
-              {/* Status Badge */}
-              <span
-                className={cn(
-                  "px-2.5 py-0.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5",
-                  isPending
-                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                    : isOnline
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    : "bg-zinc-800/80 text-zinc-400 border-zinc-700/50"
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    isPending ? "bg-amber-400" : isOnline ? "bg-emerald-400 animate-pulse" : "bg-zinc-500"
-                  )}
-                />
-                {isPending ? 'Pending Approval' : isOnline ? 'Online' : 'Offline'}
-              </span>
-
               {/* Type Chip */}
               <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-400 font-medium">
                 Type: <strong className="text-zinc-200 font-medium">{device.dev_type || 'Generic'}</strong>
@@ -166,6 +147,26 @@ function DeviceDetailPage() {
                   <Copy className="h-3 w-3 text-zinc-500 hover:text-zinc-300 ml-0.5" />
                 )}
               </button>
+
+              {/* Status Badge */}
+              <span
+                className={cn(
+                  "px-2.5 py-0.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5",
+                  isPending
+                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                    : isOnline
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    : "bg-zinc-800/80 text-zinc-400 border-zinc-700/50"
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    isPending ? "bg-amber-400" : isOnline ? "bg-emerald-400 animate-pulse" : "bg-zinc-500"
+                  )}
+                />
+                {isPending ? 'Pending Approval' : isOnline ? 'Online' : 'Offline'}
+              </span>
             </div>
           </div>
         </div>
@@ -219,15 +220,19 @@ function DeviceDetailPage() {
                           {a.severity}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-medium text-zinc-200">{a.message || a.metric || 'Threshold Breach'}</td>
-                      <td className="px-4 py-3 font-mono">
-                        {a.value !== null && a.value !== undefined
-                          ? a.metric === 'battery'
-                            ? `${Number(a.value).toFixed(2)} V`
+                      <td className="px-4 py-3 font-medium text-zinc-200">
+                        {a.message || (
+                          a.metric === 'battery'
+                            ? 'Starter Battery Undervoltage'
                             : a.metric === 'emergency'
-                            ? 'Triggered'
-                            : `${a.value}°C`
-                          : '—'}
+                              ? 'ATS Emergency State'
+                              : a.metric === 'connectivity' || a.metric === 'presence'
+                                ? 'Connection Status'
+                                : a.metric || 'Threshold Breach'
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono">
+                        {formatAlertReading(a)}
                       </td>
                       <td className="px-4 py-3 text-zinc-500">
                         {new Date(a.timestamp).toLocaleString('id-ID', {

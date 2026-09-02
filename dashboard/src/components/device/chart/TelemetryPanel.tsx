@@ -82,22 +82,15 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
                 className={cn(
                   "px-2.5 py-1 text-xs font-semibold rounded-md border transition-all cursor-pointer inline-flex items-center gap-1.5",
                   isActive
-                    ? "bg-zinc-900 border-zinc-700 text-zinc-200"
+                    ? "text-blue-400 bg-blue-500/10 border-blue-500/25"
                     : "bg-zinc-950/60 border-zinc-800 text-zinc-500 hover:text-zinc-400"
                 )}
-                style={
-                  isActive
-                    ? {
-                        color: s.color,
-                        borderColor: `${s.color}40`,
-                        backgroundColor: `${s.color}15`,
-                      }
-                    : undefined
-                }
               >
                 <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: isActive ? s.color : '#52525b' }}
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    isActive ? "bg-blue-400" : "bg-zinc-600"
+                  )}
                 />
                 <span>{isActive ? '✓ Auto Scale' : 'Auto Scale'}</span>
               </button>

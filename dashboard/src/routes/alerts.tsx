@@ -6,8 +6,9 @@ import { cn } from '../lib/utils';
 import { ChevronDown, Check, RefreshCw, ShieldAlert } from 'lucide-react';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api'
+import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api';
 import { POLL_MS } from '../lib/constants';
+import { formatAlertReading, formatAlertThreshold } from '../lib/formatAlert';
 
 const alertsSearchSchema = z.object({
   rooms: z.preprocess(
@@ -316,26 +317,16 @@ function AlertsPage() {
                         ? 'Starter Battery Undervoltage'
                         : alert.metric === 'emergency'
                           ? 'ATS Emergency State'
-                          : 'Temperature Threshold'
+                          : alert.metric === 'connectivity' || alert.metric === 'presence'
+                            ? 'Connection Status'
+                            : 'Temperature Threshold'
                     )}
                   </td>
                   <td className="px-6 py-4 font-mono font-bold text-zinc-100">
-                    {alert.value !== null && alert.value !== undefined ? (
-                      alert.metric === 'battery'
-                        ? `${Number(alert.value).toFixed(2)} V`
-                        : alert.metric === 'emergency'
-                          ? 'Triggered'
-                          : `${alert.value}°C`
-                    ) : '—'}
+                    {formatAlertReading(alert)}
                   </td>
                   <td className="px-6 py-4 font-mono text-zinc-500">
-                    {alert.threshold !== null && alert.threshold !== undefined ? (
-                      alert.metric === 'battery'
-                        ? `${Number(alert.threshold).toFixed(2)} V`
-                        : alert.metric === 'emergency'
-                          ? '—'
-                          : `${alert.threshold}°C`
-                    ) : '—'}
+                    {formatAlertThreshold(alert)}
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(

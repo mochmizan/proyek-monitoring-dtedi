@@ -291,11 +291,11 @@ export function DeviceControls({ device, role }: ControlsProps) {
                   </div>
                 </div>
               )}
-              <div className="flex justify-end pt-2">
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
                 <button
                   type="submit"
                   disabled={commandLifecycle.isPending}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-semibold cursor-pointer flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20"
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
                   {commandLifecycle.isPending ? (
                     <>
@@ -329,7 +329,7 @@ export function DeviceControls({ device, role }: ControlsProps) {
                 onDismiss={commandLifecycle.reset}
                 onRetry={commandLifecycle.retry}
               />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label htmlFor="ats-mode-select" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Operating Mode</label>
                   <select
@@ -373,11 +373,11 @@ export function DeviceControls({ device, role }: ControlsProps) {
                   </label>
                 </div>
               )}
-              <div className="flex justify-end pt-2">
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
                 <button
                   type="submit"
                   disabled={commandLifecycle.isPending}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium cursor-pointer flex items-center gap-2"
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
                   {commandLifecycle.isPending ? (
                     <>
