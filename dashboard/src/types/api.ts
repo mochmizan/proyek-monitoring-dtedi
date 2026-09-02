@@ -110,7 +110,7 @@ export interface RoomMapMarker {
   marker_y?: number | null;
   is_active: boolean;
   status?: string | null;
-  latest_reading?: Record<string, unknown> | null;
+  latest_reading?: Record<string, any> | null;
 }
 
 export interface RoomMapResponse {

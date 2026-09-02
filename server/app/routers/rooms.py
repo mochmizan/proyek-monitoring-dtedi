@@ -314,90 +314,86 @@ def get_room_map(
             devices=[],
         )
 
-    ts_dev_ids = [d.dev_id for d in devices if d.dev_type in ("TS", "AC", "ACC")]
-    ats_dev_ids = [d.dev_id for d in devices if d.dev_type == "ATS"]
-    legacy_dev_ids = [d.dev_id for d in devices if d.dev_id not in ts_dev_ids and d.dev_id not in ats_dev_ids]
-
-    latest_readings_map: dict[str, dict] = {}
-
-    # Query 2: Batch TS readings via Window Function
-    if ts_dev_ids:
-        ts_ranked = (
-            select(
-                temperature_data,
-                func.row_number().over(
-                    partition_by=temperature_data.dev_id,
-                    order_by=desc(temperature_data.timestamp),
-                ).label("rn"),
-            )
-            .where(temperature_data.dev_id.in_(ts_dev_ids))
-            .subquery()
-        )
-        ts_stmt = select(ts_ranked).where(ts_ranked.c.rn == 1)
-        for row in db.execute(ts_stmt).mappings().all():
-            dev_id = row["dev_id"]
-            ts_dt = row["timestamp"]
-            latest_readings_map[dev_id] = {
-                "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
-                "temp": row["temp"],
-                "humid": row["humid"],
-            }
-
-    # Query 3: Batch ATS readings via Window Function
-    if ats_dev_ids:
-        ats_ranked = (
-            select(
-                ats_data,
-                func.row_number().over(
-                    partition_by=ats_data.dev_id,
-                    order_by=desc(ats_data.timestamp),
-                ).label("rn"),
-            )
-            .where(ats_data.dev_id.in_(ats_dev_ids))
-            .subquery()
-        )
-        ats_stmt = select(ats_ranked).where(ats_ranked.c.rn == 1)
-        for row in db.execute(ats_stmt).mappings().all():
-            dev_id = row["dev_id"]
-            latest_readings_map[dev_id] = {
-                "state": row["state"],
-                "pln": row["pln"],
-                "genset": row["genset"],
-                "aki": row["aki"],
-                "rem_hour": row["rem_hour"],
-                "rem_min": row["rem_min"],
-                "rem_sec": row["rem_sec"],
-                "auto_mode": row["auto_mode"],
-                "emergency": row["emergency"],
-            }
-
-    # Query 4: Batch legacy readings via Window Function
-    if legacy_dev_ids:
-        leg_ranked = (
-            select(
-                data_table,
-                func.row_number().over(
-                    partition_by=data_table.dev_id,
-                    order_by=desc(data_table.timestamp),
-                ).label("rn"),
-            )
-            .where(data_table.dev_id.in_(legacy_dev_ids))
-            .subquery()
-        )
-        leg_stmt = select(leg_ranked).where(leg_ranked.c.rn == 1)
-        for row in db.execute(leg_stmt).mappings().all():
-            dev_id = row["dev_id"]
-            ts_dt = row["timestamp"]
-            p = row["payload"] or {}
-            payload_copy = dict(p) if isinstance(p, dict) else {}
-            if "timestamp" not in payload_copy:
-                payload_copy["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None)
-            latest_readings_map[dev_id] = payload_copy
-
     marker_list = []
     for d in devices:
         status_str = "active" if d.is_active else "inactive"
-        reading = latest_readings_map.get(d.dev_id)
+        latest_reading = None
+
+        if d.dev_type == "ATS":
+            ats_row = (
+                db.query(ats_data)
+                .filter(ats_data.dev_id == d.dev_id)
+                .order_by(ats_data.timestamp.desc())
+                .first()
+            )
+            if ats_row:
+                ts_dt = ats_row.timestamp
+                latest_reading = {
+                    "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
+                    "state": ats_row.state,
+                    "pln": ats_row.pln,
+                    "genset": ats_row.genset,
+                    "aki": ats_row.aki,
+                    "rem_hour": ats_row.rem_hour,
+                    "rem_min": ats_row.rem_min,
+                    "rem_sec": ats_row.rem_sec,
+                    "auto_mode": ats_row.auto_mode,
+                    "emergency": ats_row.emergency,
+                }
+        elif d.dev_type in ("TS", "AC", "ACC"):
+            ts_row = (
+                db.query(temperature_data)
+                .filter(temperature_data.dev_id == d.dev_id)
+                .order_by(temperature_data.timestamp.desc())
+                .first()
+            )
+            if ts_row:
+                ts_dt = ts_row.timestamp
+                latest_reading = {
+                    "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
+                    "temp": ts_row.temp,
+                    "humid": ts_row.humid,
+                }
+            if d.dev_type in ("AC", "ACC"):
+                dt_row = (
+                    db.query(data_table)
+                    .filter(data_table.dev_id == d.dev_id)
+                    .order_by(data_table.timestamp.desc())
+                    .first()
+                )
+                if dt_row and dt_row.payload and isinstance(dt_row.payload, dict):
+                    p = dt_row.payload
+                    if latest_reading is None:
+                        latest_reading = {}
+                        ts_dt = dt_row.timestamp
+                        if ts_dt:
+                            latest_reading["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else str(ts_dt)
+                    for k in ("AC1_POWER", "AC1_TEMP", "AC2_POWER", "AC2_TEMP"):
+                        val = p.get(k)
+                        if val is None:
+                            val = p.get(k.lower())
+                        if val is not None:
+                            if "POWER" in k and isinstance(val, str):
+                                val = val.upper()
+                            latest_reading[k] = val
+                            latest_reading[k.lower()] = val
+
+        # If no reading found yet, check data_table
+        if latest_reading is None:
+            dt_row = (
+                db.query(data_table)
+                .filter(data_table.dev_id == d.dev_id)
+                .order_by(data_table.timestamp.desc())
+                .first()
+            )
+            if dt_row:
+                p = dt_row.payload or {}
+                payload_copy = dict(p) if isinstance(p, dict) else {}
+                if "timestamp" not in payload_copy and dt_row.timestamp:
+                    ts_dt = dt_row.timestamp
+                    payload_copy["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else str(ts_dt)
+                latest_reading = payload_copy
+
         marker_list.append(
             RoomMapMarker(
                 dev_id=d.dev_id,
@@ -407,7 +403,7 @@ def get_room_map(
                 marker_y=d.marker_y,
                 is_active=d.is_active,
                 status=status_str,
-                latest_reading=reading,
+                latest_reading=latest_reading,
             )
         )
 

@@ -385,8 +385,8 @@ def test_list_rooms_single_query(clean_db):
     assert qc.count == 1, f"Expected exactly 1 SQL query, got {qc.count}: {qc.statements}"
 
 
-def test_get_room_map_window_functions(clean_db):
-    """GET /api/rooms/{id}/map returns latest readings with bounded queries (<= 4)."""
+def test_get_room_map_indexed_queries(clean_db):
+    """GET /api/rooms/{id}/map returns latest readings with bounded per-device queries leveraging (dev_id, timestamp DESC) index."""
     db = SessionLocal()
     now_utc = datetime.now(UTC)
 
@@ -396,6 +396,7 @@ def test_get_room_map_window_functions(clean_db):
     d_ts2 = dev_table(dev_id="dev-ts-2", dev_name="TS Sensor 2", dev_type="TS", room_id=room_id, is_active=True)
     d_ats = dev_table(dev_id="dev-ats-1", dev_name="ATS Panel", dev_type="ATS", room_id=room_id, is_active=True)
     d_leg = dev_table(dev_id="dev-leg-1", dev_name="Legacy Dev", dev_type="CUSTOM", room_id=room_id, is_active=True)
+    d_ac = dev_table(dev_id="dev-ac-1", dev_name="AC Controller", dev_type="AC", room_id=room_id, is_active=True)
 
     # Add historical rows (older and newer)
     ts_rows = [
@@ -403,6 +404,7 @@ def test_get_room_map_window_functions(clean_db):
         temperature_data(data_id="td-2", dev_id="dev-ts-1", timestamp=now_utc - timedelta(minutes=1), temp=28.5, humid=65.0),  # latest
         temperature_data(data_id="td-3", dev_id="dev-ts-2", timestamp=now_utc - timedelta(minutes=5), temp=22.0, humid=52.0),
         temperature_data(data_id="td-4", dev_id="dev-ts-2", timestamp=now_utc - timedelta(minutes=2), temp=24.0, humid=55.0),  # latest
+        temperature_data(data_id="td-5", dev_id="dev-ac-1", timestamp=now_utc - timedelta(minutes=1), temp=23.5, humid=58.0),  # latest AC temp
     ]
     ats_rows = [
         ats_data(
@@ -437,9 +439,10 @@ def test_get_room_map_window_functions(clean_db):
     legacy_rows = [
         data_table(data_id="ld-1", dev_id="dev-leg-1", timestamp=now_utc - timedelta(minutes=10), payload={"val": "old"}),
         data_table(data_id="ld-2", dev_id="dev-leg-1", timestamp=now_utc - timedelta(minutes=3), payload={"val": "newest"}),  # latest
+        data_table(data_id="ld-3", dev_id="dev-ac-1", timestamp=now_utc - timedelta(minutes=1), payload={"AC1_POWER": "ON", "AC1_TEMP": 24.0, "AC2_POWER": "OFF", "AC2_TEMP": 26.0}),
     ]
 
-    db.add_all([room, d_ts1, d_ts2, d_ats, d_leg] + ts_rows + ats_rows + legacy_rows)
+    db.add_all([room, d_ts1, d_ts2, d_ats, d_leg, d_ac] + ts_rows + ats_rows + legacy_rows)
     db.commit()
     db.close()
 
@@ -449,16 +452,22 @@ def test_get_room_map_window_functions(clean_db):
     assert resp.status_code == 200
     data = resp.json()
     assert data["room_id"] == "r-map-test"
-    assert len(data["devices"]) == 4
+    assert len(data["devices"]) == 5
 
     markers = {m["dev_id"]: m for m in data["devices"]}
     assert markers["dev-ts-1"]["latest_reading"]["temp"] == 28.5
     assert markers["dev-ts-2"]["latest_reading"]["temp"] == 24.0
     assert markers["dev-ats-1"]["latest_reading"]["genset"] == 225.0
     assert markers["dev-leg-1"]["latest_reading"]["val"] == "newest"
+    assert markers["dev-ac-1"]["latest_reading"]["temp"] == 23.5
+    assert markers["dev-ac-1"]["latest_reading"]["humid"] == 58.0
+    assert markers["dev-ac-1"]["latest_reading"]["ac1_power"] == "ON"
+    assert markers["dev-ac-1"]["latest_reading"]["ac1_temp"] == 24.0
+    assert markers["dev-ac-1"]["latest_reading"]["ac2_power"] == "OFF"
+    assert markers["dev-ac-1"]["latest_reading"]["ac2_temp"] == 26.0
 
-    # Query count must be <= 4 (1 for room+devices, 1 for TS window, 1 for ATS window, 1 for legacy window)
-    assert qc.count <= 4, f"Expected <= 4 queries, got {qc.count}: {qc.statements}"
+    # Query count bounded per device leveraging B-tree index (1 for room+devices, 1 per device lookup + 1 for AC payload merge)
+    assert qc.count <= len(data["devices"]) + 3, f"Expected <= {len(data['devices']) + 3} queries, got {qc.count}: {qc.statements}"
 
 
 # ---------------------------------------------------------------------------

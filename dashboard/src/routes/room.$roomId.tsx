@@ -129,7 +129,7 @@ function RoomDetailPage() {
           <div>
             <h1 className="text-2xl font-bold text-zinc-100">{roomName}</h1>
             <p className="text-xs text-zinc-500 mt-0.5">
-              {devices.length} assigned devices Â· {activeAlerts.length} active alerts
+              {devices.length} assigned devices · {activeAlerts.length} active alerts
             </p>
           </div>
         </div>
@@ -204,7 +204,24 @@ function RoomDetailPage() {
                       {device.latest_reading && (
                         <div className="text-xs text-indigo-400 font-semibold mt-1">
                           {device.dev_type === 'TS' && typeof device.latest_reading.temp === 'number' && (
-                            <span>{device.latest_reading.temp.toFixed(1)}Â°C / {String(device.latest_reading.humid ?? '')}%</span>
+                            <span>{device.latest_reading.temp.toFixed(1)}°C / {String(device.latest_reading.humid ?? '')}%</span>
+                          )}
+                          {(device.dev_type === 'AC' || device.dev_type === 'ACC') && (
+                            <div className="space-y-0.5">
+                              {device.latest_reading.temp != null && (
+                                <div>
+                                  {typeof device.latest_reading.temp === 'number'
+                                    ? `${device.latest_reading.temp.toFixed(1)}°C`
+                                    : `${device.latest_reading.temp}°C`}
+                                  {device.latest_reading.humid != null ? ` / ${String(device.latest_reading.humid)}%` : ''}
+                                </div>
+                              )}
+                              {(device.latest_reading.ac1_power || device.latest_reading.ac2_power) ? (
+                                <div className="text-[10px] text-zinc-300 font-normal">
+                                  AC1: {String(device.latest_reading.ac1_power || 'OFF')} | AC2: {String(device.latest_reading.ac2_power || 'OFF')}
+                                </div>
+                              ) : null}
+                            </div>
                           )}
                           {device.dev_type === 'ATS' && (
                             <span>State: {String(device.latest_reading.state ?? 'N/A')}</span>
@@ -257,15 +274,52 @@ function RoomDetailPage() {
                         <div>
                           <div className="text-[10px] text-zinc-500 uppercase font-semibold">Temperature</div>
                           <div className="text-xl font-bold text-zinc-100">
-                            {typeof reading.temp === 'number' ? `${reading.temp.toFixed(1)}Â°C` : 'â€”'}
+                            {typeof reading.temp === 'number' ? `${reading.temp.toFixed(1)}°C` : '—'}
                           </div>
                         </div>
                         <div>
                           <div className="text-[10px] text-zinc-500 uppercase font-semibold">Humidity</div>
                           <div className="text-xl font-bold text-indigo-400">
-                            {typeof reading.humid === 'number' ? `${reading.humid.toFixed(1)}%` : String(reading.humid ?? 'â€”')}
+                            {typeof reading.humid === 'number' ? `${reading.humid.toFixed(1)}%` : String(reading.humid ?? '—')}
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {isAC && reading && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="bg-zinc-900/60 p-2 rounded border border-zinc-800/80">
+                            <div className="text-zinc-500 font-medium mb-1">ROOM TEMP</div>
+                            <div className="text-lg font-bold text-zinc-100">
+                              {reading.temp != null ? `${reading.temp}°C` : '—'}
+                            </div>
+                          </div>
+                          <div className="bg-zinc-900/60 p-2 rounded border border-zinc-800/80">
+                            <div className="text-zinc-500 font-medium mb-1">HUMIDITY</div>
+                            <div className="text-lg font-bold text-zinc-100">
+                              {reading.humid != null ? `${reading.humid}%` : '—'}
+                            </div>
+                          </div>
+                        </div>
+                        {(reading.ac1_power || reading.ac2_power || reading.ac1_temp || reading.ac2_temp) && (
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="bg-zinc-900/40 p-2 rounded border border-zinc-800/50">
+                              <span className="text-zinc-400 font-semibold">AC 1: </span>
+                              <span className={reading.ac1_power === 'ON' ? 'text-emerald-400 font-bold' : 'text-zinc-500'}>
+                                {reading.ac1_power || 'OFF'}
+                              </span>
+                              {reading.ac1_temp ? <span className="text-zinc-300 ml-1">({reading.ac1_temp}°C)</span> : null}
+                            </div>
+                            <div className="bg-zinc-900/40 p-2 rounded border border-zinc-800/50">
+                              <span className="text-zinc-400 font-semibold">AC 2: </span>
+                              <span className={reading.ac2_power === 'ON' ? 'text-emerald-400 font-bold' : 'text-zinc-500'}>
+                                {reading.ac2_power || 'OFF'}
+                              </span>
+                              {reading.ac2_temp ? <span className="text-zinc-300 ml-1">({reading.ac2_temp}°C)</span> : null}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -277,15 +331,15 @@ function RoomDetailPage() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">PLN Voltage:</span>
-                          <span className="font-mono text-zinc-200">{String(reading.pln ?? 'â€”')} V</span>
+                          <span className="font-mono text-zinc-200">{String(reading.pln ?? '—')} V</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Genset Voltage:</span>
-                          <span className="font-mono text-zinc-200">{String(reading.genset ?? 'â€”')} V</span>
+                          <span className="font-mono text-zinc-200">{String(reading.genset ?? '—')} V</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Battery (AKI):</span>
-                          <span className="font-mono text-zinc-200">{String(reading.aki ?? 'â€”')} V</span>
+                          <span className="font-mono text-zinc-200">{String(reading.aki ?? '—')} V</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Mode:</span>
@@ -296,7 +350,7 @@ function RoomDetailPage() {
                       </div>
                     )}
 
-                    {(!reading || (!isTS && !isATS)) && (
+                    {(!reading || (!isTS && !isATS && !isAC)) && (
                       <div className="text-xs text-zinc-500 text-center py-2">
                         {device.is_active ? 'Awaiting telemetry packet...' : 'Device pending pairing'}
                       </div>
@@ -311,7 +365,7 @@ function RoomDetailPage() {
                     params={{ deviceId: device.dev_name || device.dev_id }}
                     className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
                   >
-                    View Device â†’
+                    View Device →
                   </Link>
 
                   {(isATS || isAC) && canControl && (
