@@ -221,6 +221,29 @@ export function buildPathSegments(
   };
 }
 
+export interface YScaleResult {
+  minY: number;
+  maxY: number;
+  yTicks: number[];
+}
+
+export type PresetMetricType = 'temp' | 'humid' | 'pln' | 'genset' | 'battery';
+
+export const PRESET_SCALES: Record<PresetMetricType, YScaleResult> = {
+  temp: { minY: 15, maxY: 40, yTicks: [15, 20, 25, 30, 35, 40] },
+  humid: { minY: 0, maxY: 100, yTicks: [0, 25, 50, 75, 100] },
+  pln: { minY: 0, maxY: 260, yTicks: [0, 65, 130, 195, 260] },
+  genset: { minY: 0, maxY: 260, yTicks: [0, 65, 130, 195, 260] },
+  battery: { minY: 10, maxY: 15, yTicks: [10, 11, 12, 13, 14, 15] },
+};
+
+/**
+ * Returns fixed preset scale bounds and ticks for standard telemetry metrics.
+ */
+export function getPresetScale(metric: 'temp' | 'humid' | 'pln' | 'genset' | 'battery'): YScaleResult {
+  return PRESET_SCALES[metric];
+}
+
 /**
  * Computes Y-axis scale min, max, and ticks.
  */
@@ -233,7 +256,7 @@ export function computeYScale(
   minSpan: number = 6,
   clampMin?: number,
   clampMax?: number
-): { minY: number; maxY: number; yTicks: number[] } {
+): YScaleResult {
   let rawMin = values.length > 0 ? Math.min(...values) : fallbackMin;
   let rawMax = values.length > 0 ? Math.max(...values) : fallbackMax;
 
@@ -261,3 +284,4 @@ export function computeYScale(
 
   return { minY, maxY, yTicks };
 }
+

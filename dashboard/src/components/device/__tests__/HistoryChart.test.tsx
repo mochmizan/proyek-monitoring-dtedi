@@ -125,7 +125,7 @@ describe('HistoryChart Component', () => {
       expect(screen.getByTestId('threshold-critical')).toBeInTheDocument();
     });
 
-    it('toggles ATS series visibility on legend pill click', () => {
+    it('toggles ATS auto-scale on panel header button click', () => {
       render(
         <HistoryChart
           points={atsSamplePoints}
@@ -140,30 +140,38 @@ describe('HistoryChart Component', () => {
       expect(screen.getByTestId('path-genset')).toBeInTheDocument();
       expect(screen.getByTestId('path-aki')).toBeInTheDocument();
 
-      // Toggle PLN Off
+      // Toggle PLN Auto Scale
       const plnBtn = screen.getByTestId('toggle-pln');
       expect(plnBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(plnBtn).toHaveTextContent('✓ Auto Scale');
       fireEvent.click(plnBtn);
       expect(plnBtn).toHaveAttribute('aria-pressed', 'false');
-      expect(screen.queryByTestId('path-pln')).not.toBeInTheDocument();
+      expect(plnBtn).toHaveTextContent('Auto Scale');
+      // Path remains visible
+      expect(screen.getByTestId('path-pln')).toBeInTheDocument();
 
-      // Toggle Genset Off
+      // Toggle Genset Auto Scale
       const gensetBtn = screen.getByTestId('toggle-genset');
       expect(gensetBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(gensetBtn).toHaveTextContent('✓ Auto Scale');
       fireEvent.click(gensetBtn);
       expect(gensetBtn).toHaveAttribute('aria-pressed', 'false');
-      expect(screen.queryByTestId('path-genset')).not.toBeInTheDocument();
+      expect(gensetBtn).toHaveTextContent('Auto Scale');
+      expect(screen.getByTestId('path-genset')).toBeInTheDocument();
 
-      // Toggle Battery AKI Off
+      // Toggle Battery AKI Auto Scale
       const akiBtn = screen.getByTestId('toggle-aki');
       expect(akiBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(akiBtn).toHaveTextContent('✓ Auto Scale');
       fireEvent.click(akiBtn);
       expect(akiBtn).toHaveAttribute('aria-pressed', 'false');
-      expect(screen.queryByTestId('path-aki')).not.toBeInTheDocument();
+      expect(akiBtn).toHaveTextContent('Auto Scale');
+      expect(screen.getByTestId('path-aki')).toBeInTheDocument();
 
-      // Re-enable PLN
+      // Re-enable PLN Auto Scale
       fireEvent.click(plnBtn);
       expect(plnBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(plnBtn).toHaveTextContent('✓ Auto Scale');
       expect(screen.getByTestId('path-pln')).toBeInTheDocument();
     });
 
@@ -259,7 +267,7 @@ describe('HistoryChart Component', () => {
       expect(screen.getByTestId('threshold-critical')).toBeInTheDocument();
     });
 
-    it('toggles TS series visibility on legend pill click', () => {
+    it('toggles TS auto-scale on panel header button click', () => {
       render(
         <HistoryChart
           points={tsSamplePoints}
@@ -275,14 +283,25 @@ describe('HistoryChart Component', () => {
       expect(screen.getByTestId('path-temp')).toBeInTheDocument();
       expect(screen.getByTestId('path-humid')).toBeInTheDocument();
 
-      // Toggle Temperature Off
+      // Initially both have auto scale active
+      expect(tempBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(tempBtn).toHaveTextContent('✓ Auto Scale');
+      expect(humidBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(humidBtn).toHaveTextContent('✓ Auto Scale');
+
+      // Toggle Temperature Auto Scale Off
       fireEvent.click(tempBtn);
-      expect(screen.queryByTestId('path-temp')).not.toBeInTheDocument();
+      expect(tempBtn).toHaveAttribute('aria-pressed', 'false');
+      expect(tempBtn).toHaveTextContent('Auto Scale');
+      // Paths remain visible
+      expect(screen.getByTestId('path-temp')).toBeInTheDocument();
       expect(screen.getByTestId('path-humid')).toBeInTheDocument();
 
-      // Toggle Humidity Off
+      // Toggle Humidity Auto Scale Off
       fireEvent.click(humidBtn);
-      expect(screen.queryByTestId('path-humid')).not.toBeInTheDocument();
+      expect(humidBtn).toHaveAttribute('aria-pressed', 'false');
+      expect(humidBtn).toHaveTextContent('Auto Scale');
+      expect(screen.getByTestId('path-humid')).toBeInTheDocument();
     });
 
     it('synchronizes hover crosshairs and unified tooltip across TS panels', () => {

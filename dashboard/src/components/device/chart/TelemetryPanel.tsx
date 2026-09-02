@@ -69,24 +69,24 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
         </span>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Legend Series Toggles */}
+          {/* Auto Scale Toggles */}
           {panel.series.map((s) => {
-            const isVisible = s.visible !== false;
+            const isActive = s.active !== false;
             return (
               <button
                 key={s.id}
                 type="button"
                 onClick={() => onToggleSeries(s.id)}
-                aria-pressed={isVisible}
+                aria-pressed={isActive}
                 data-testid={s.toggleTestId}
                 className={cn(
                   "px-2.5 py-1 text-xs font-semibold rounded-md border transition-all cursor-pointer inline-flex items-center gap-1.5",
-                  isVisible
+                  isActive
                     ? "bg-zinc-900 border-zinc-700 text-zinc-200"
-                    : "bg-zinc-950/60 border-zinc-800 text-zinc-500 line-through opacity-60"
+                    : "bg-zinc-950/60 border-zinc-800 text-zinc-500 hover:text-zinc-400"
                 )}
                 style={
-                  isVisible
+                  isActive
                     ? {
                         color: s.color,
                         borderColor: `${s.color}40`,
@@ -97,9 +97,9 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
               >
                 <span
                   className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: isVisible ? s.color : '#52525b' }}
+                  style={{ backgroundColor: isActive ? s.color : '#52525b' }}
                 />
-                <span>{isVisible ? '✓ ' : ''}{s.label}</span>
+                <span>{isActive ? '✓ Auto Scale' : 'Auto Scale'}</span>
               </button>
             );
           })}

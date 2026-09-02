@@ -5,6 +5,7 @@ import type { TelemetryHistoryPoint } from '../../types/api';
 import {
   MultiPanelChartContainer,
   computeYScale,
+  getPresetScale,
   type PanelConfig,
   type TimeRange,
 } from './chart';
@@ -32,14 +33,14 @@ export function HistoryChart({
   warningThresholdVal,
   criticalThresholdVal,
 }: HistoryChartProps) {
-  // Series visibility toggles for ATS
-  const [showPln, setShowPln] = useState(true);
-  const [showGenset, setShowGenset] = useState(true);
-  const [showAki, setShowAki] = useState(true);
+  // Auto-scale toggles for ATS
+  const [autoScalePln, setAutoScalePln] = useState(true);
+  const [autoScaleGenset, setAutoScaleGenset] = useState(true);
+  const [autoScaleAki, setAutoScaleAki] = useState(true);
 
-  // Series visibility toggles for TS
-  const [showTemp, setShowTemp] = useState(true);
-  const [showHumid, setShowHumid] = useState(true);
+  // Auto-scale toggles for TS
+  const [autoScaleTemp, setAutoScaleTemp] = useState(true);
+  const [autoScaleHumid, setAutoScaleHumid] = useState(true);
 
   const isATS = devType === 'ATS';
   const isTS = devType === 'TS' || devType === 'AC' || devType === 'ACC';
@@ -74,20 +75,20 @@ export function HistoryChart({
   const handleToggleSeries = (seriesId: string) => {
     switch (seriesId) {
       case 'pln':
-        setShowPln((v) => !v);
+        setAutoScalePln((v) => !v);
         break;
       case 'genset':
-        setShowGenset((v) => !v);
+        setAutoScaleGenset((v) => !v);
         break;
       case 'aki':
       case 'battery':
-        setShowAki((v) => !v);
+        setAutoScaleAki((v) => !v);
         break;
       case 'temp':
-        setShowTemp((v) => !v);
+        setAutoScaleTemp((v) => !v);
         break;
       case 'humid':
-        setShowHumid((v) => !v);
+        setAutoScaleHumid((v) => !v);
         break;
     }
   };
@@ -99,9 +100,15 @@ export function HistoryChart({
     const warnBatteryVal = warningThresholdVal ?? 11.8;
     const critBatteryVal = criticalThresholdVal ?? 11.2;
 
-    const plnScale = computeYScale(plnValues, 180, 240, [], 0.12, 20);
-    const gensetScale = computeYScale(gensetValues, 0, 240, [], 0.12, 30, 0);
-    const batteryScale = computeYScale(akiValues, 10.0, 14.5, [], 0.12, 2.0);
+    const plnScale = autoScalePln
+      ? computeYScale(plnValues, 180, 240, [], 0.12, 20)
+      : getPresetScale('pln');
+    const gensetScale = autoScaleGenset
+      ? computeYScale(gensetValues, 0, 240, [], 0.12, 30, 0)
+      : getPresetScale('genset');
+    const batteryScale = autoScaleAki
+      ? computeYScale(akiValues, 10.0, 14.5, [], 0.12, 2.0)
+      : getPresetScale('battery');
 
     panels = [
       {
@@ -139,7 +146,8 @@ export function HistoryChart({
             tooltipLabel: 'PLN:',
             color: '#10b981',
             unit: 'V',
-            visible: showPln,
+            visible: true,
+            active: autoScalePln,
             testId: 'path-pln',
             toggleTestId: 'toggle-pln',
             getValue: (p) => p.pln,
@@ -173,7 +181,8 @@ export function HistoryChart({
             tooltipLabel: 'Genset:',
             color: '#f59e0b',
             unit: 'V',
-            visible: showGenset,
+            visible: true,
+            active: autoScaleGenset,
             testId: 'path-genset',
             toggleTestId: 'toggle-genset',
             getValue: (p) => p.genset,
@@ -216,7 +225,8 @@ export function HistoryChart({
             tooltipLabel: 'Battery:',
             color: '#818cf8',
             unit: 'V',
-            visible: showAki,
+            visible: true,
+            active: autoScaleAki,
             testId: 'path-aki',
             toggleTestId: 'toggle-aki',
             getValue: (p) => p.aki,
@@ -227,7 +237,9 @@ export function HistoryChart({
   } else {
     // TS / AC Multi-Panel Configuration
     // Panel 1: Temperature with gradient fill & thresholds
-    const tempScale = computeYScale(tempValues, 20, 35, [], 0.12, 6);
+    const tempScale = autoScaleTemp
+      ? computeYScale(tempValues, 20, 35, [], 0.12, 6)
+      : getPresetScale('temp');
 
     const tempThresholds = [];
     if (warningThresholdVal !== null && warningThresholdVal !== undefined) {
@@ -252,7 +264,9 @@ export function HistoryChart({
     }
 
     // Panel 2: Humidity with dedicated scale
-    const humidScale = computeYScale(humidValues, 30, 80, [], 0.12, 10, 0, 100);
+    const humidScale = autoScaleHumid
+      ? computeYScale(humidValues, 30, 80, [], 0.12, 10, 0, 100)
+      : getPresetScale('humid');
 
     panels = [
       {
@@ -276,7 +290,8 @@ export function HistoryChart({
             unit: '°C',
             isArea: true,
             gradientId: 'tempGradient',
-            visible: showTemp,
+            visible: true,
+            active: autoScaleTemp,
             testId: 'path-temp',
             toggleTestId: 'toggle-temp',
             getValue: (p) => p.temp,
@@ -301,7 +316,8 @@ export function HistoryChart({
             tooltipLabel: 'Humidity:',
             color: '#10b981',
             unit: '%',
-            visible: showHumid,
+            visible: true,
+            active: autoScaleHumid,
             testId: 'path-humid',
             toggleTestId: 'toggle-humid',
             getValue: (p) => p.humid,

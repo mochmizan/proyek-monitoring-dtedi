@@ -7,6 +7,8 @@ import {
   getOutages,
   buildPathSegments,
   computeYScale,
+  PRESET_SCALES,
+  getPresetScale,
 } from '../chartMath';
 import type { TelemetryHistoryPoint } from '../../../../types/api';
 
@@ -231,4 +233,57 @@ describe('chartMath Unit Tests', () => {
       expect(result.yTicks).toHaveLength(5);
     });
   });
+
+  describe('PRESET_SCALES and getPresetScale', () => {
+    it('provides correct fixed ranges and ticks for temp', () => {
+      const scale = getPresetScale('temp');
+      expect(scale).toEqual({
+        minY: 15,
+        maxY: 40,
+        yTicks: [15, 20, 25, 30, 35, 40],
+      });
+      expect(PRESET_SCALES.temp).toEqual(scale);
+    });
+
+    it('provides correct fixed ranges and ticks for humid', () => {
+      const scale = getPresetScale('humid');
+      expect(scale).toEqual({
+        minY: 0,
+        maxY: 100,
+        yTicks: [0, 25, 50, 75, 100],
+      });
+      expect(PRESET_SCALES.humid).toEqual(scale);
+    });
+
+    it('provides correct fixed ranges and ticks for pln', () => {
+      const scale = getPresetScale('pln');
+      expect(scale).toEqual({
+        minY: 0,
+        maxY: 260,
+        yTicks: [0, 65, 130, 195, 260],
+      });
+      expect(PRESET_SCALES.pln).toEqual(scale);
+    });
+
+    it('provides correct fixed ranges and ticks for genset', () => {
+      const scale = getPresetScale('genset');
+      expect(scale).toEqual({
+        minY: 0,
+        maxY: 260,
+        yTicks: [0, 65, 130, 195, 260],
+      });
+      expect(PRESET_SCALES.genset).toEqual(scale);
+    });
+
+    it('provides correct fixed ranges and ticks for battery', () => {
+      const scale = getPresetScale('battery');
+      expect(scale).toEqual({
+        minY: 10,
+        maxY: 15,
+        yTicks: [10, 11, 12, 13, 14, 15],
+      });
+      expect(PRESET_SCALES.battery).toEqual(scale);
+    });
+  });
 });
+

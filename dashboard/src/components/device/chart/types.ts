@@ -15,6 +15,7 @@ export interface SeriesConfig {
   testId?: string;
   toggleTestId?: string;
   visible?: boolean;
+  active?: boolean;
 }
 
 export interface ThresholdGuide {
