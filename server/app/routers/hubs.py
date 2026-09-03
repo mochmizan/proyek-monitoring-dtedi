@@ -19,7 +19,7 @@ from app.dependencies import hub_auth_cache
 
 router = APIRouter(tags=["hubs"])
 
-HUB_ONLINE_WINDOW_SECONDS = 25
+HUB_ONLINE_WINDOW_SECONDS = 60
 
 
 @router.post("/api/admin/hubs")

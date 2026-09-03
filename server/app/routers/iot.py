@@ -170,8 +170,13 @@ def receive_unapproved_alert(
             db.commit()
             return {"status": "registered_as_pending"}
         else:
-            if not exist.is_active and exist.room_id is None:
+            if not exist.is_active:
                 exist.created_at = now_utc
+                exist.hub_id = hub.hub_id
+                if payload.DEV_NAME and (not exist.dev_name or exist.dev_name == exist.dev_id):
+                    exist.dev_name = payload.DEV_NAME
+                if payload.DEV_TYPE and not exist.dev_type:
+                    exist.dev_type = payload.DEV_TYPE
                 db.commit()
             return {"status": "already_exists"}
     except Exception:

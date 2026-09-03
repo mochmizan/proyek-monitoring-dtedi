@@ -219,6 +219,7 @@ def create_room(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Hub '{payload.hub_id}' not found",
             )
+        hub.room = clean_name
 
     room_id = f"room_{uuid.uuid4().hex[:12]}"
     new_room = rooms(
@@ -267,8 +268,13 @@ def update_room(
                 detail="Room name already exists",
             )
         room.name = clean_name
+        if room.hub_id:
+            h = db.get(hub_table, room.hub_id)
+            if h:
+                h.room = clean_name
 
     if payload.hub_id is not None:
+        old_hub_id = room.hub_id
         if payload.hub_id != "":
             hub = db.get(hub_table, payload.hub_id)
             if not hub:
@@ -276,8 +282,17 @@ def update_room(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Hub '{payload.hub_id}' not found",
                 )
+            if old_hub_id and old_hub_id != payload.hub_id:
+                old_h = db.get(hub_table, old_hub_id)
+                if old_h and old_h.room == room.name:
+                    old_h.room = None
             room.hub_id = payload.hub_id
+            hub.room = room.name
         else:
+            if old_hub_id:
+                old_h = db.get(hub_table, old_hub_id)
+                if old_h and old_h.room == room.name:
+                    old_h.room = None
             room.hub_id = None
 
     if payload.floor_plan_image_path is not None:

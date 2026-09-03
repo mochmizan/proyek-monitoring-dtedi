@@ -92,16 +92,17 @@ function HubCard({
           <div className="flex items-center gap-2">
             <button
               onClick={() => onApprove(hub.hub_id)}
-              disabled={online}
-              title={online ? 'Hub already active' : 'Approve hub'}
+              disabled={hub.is_active ?? online}
+              title={(hub.is_active ?? online) ? 'Hub already active' : 'Approve hub'}
               className="px-2 py-1 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/40 rounded text-[10px] font-semibold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Approve
             </button>
             <button
               onClick={() => onRevoke(hub.hub_id)}
+              disabled={hub.is_active === false}
               title="Revoke hub access"
-              className="px-2 py-1 bg-red-950/30 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded text-[10px] font-semibold cursor-pointer"
+              className="px-2 py-1 bg-red-950/30 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded text-[10px] font-semibold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Revoke
             </button>

@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 from databasev5 import SessionLocal
-from modelsv5 import dev_table, event_log, rooms
+from modelsv5 import dev_table, event_log, rooms, data_table, temperature_data, ats_data, device_threshold_config
 
 logger = logging.getLogger(__name__)
 
-HUB_ONLINE_WINDOW_SECONDS = 25
+HUB_ONLINE_WINDOW_SECONDS = 60
 DEVICE_OFFLINE_WINDOW_SECONDS = 25
 PRESENCE_INTERVAL_SECONDS = 15
 
@@ -95,10 +95,15 @@ def evaluate_device_presence_batch() -> None:
                     del open_alerts_by_dev[dev.dev_id]
 
         # 3. Bulk prune stale unapproved/pending devices in a single core statement
+        # Protect devices that have telemetry history or threshold configurations
         prune_stmt = delete(dev_table).where(
             dev_table.is_active == False,  # noqa: E712
             dev_table.room_id.is_(None),
             dev_table.created_at < cutoff,
+            ~dev_table.dev_id.in_(select(data_table.dev_id)),
+            ~dev_table.dev_id.in_(select(temperature_data.dev_id)),
+            ~dev_table.dev_id.in_(select(ats_data.dev_id)),
+            ~dev_table.dev_id.in_(select(device_threshold_config.dev_id)),
         )
         prune_res = db.execute(prune_stmt)
         if prune_res.rowcount and prune_res.rowcount > 0:
@@ -177,6 +182,10 @@ def prune_stale_pending(db: Session, cutoff: datetime):
             dev_table.is_active == False,  # noqa: E712
             dev_table.room_id.is_(None),
             dev_table.created_at < cutoff,
+            ~dev_table.dev_id.in_(select(data_table.dev_id)),
+            ~dev_table.dev_id.in_(select(temperature_data.dev_id)),
+            ~dev_table.dev_id.in_(select(ats_data.dev_id)),
+            ~dev_table.dev_id.in_(select(device_threshold_config.dev_id)),
         )
         .all()
     )

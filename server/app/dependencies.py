@@ -90,7 +90,7 @@ class HubAuthCache:
             self._cache.clear()
 
 
-hub_auth_cache = HubAuthCache(throttle_seconds=30.0)
+hub_auth_cache = HubAuthCache(throttle_seconds=15.0)
 
 
 def stage_hub_heartbeat(hub: hub_table) -> bool:

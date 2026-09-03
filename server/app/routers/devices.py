@@ -27,7 +27,13 @@ def approve_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
+    clean_id = dev_id.strip()
+    device = db.query(dev_table).filter(
+        or_(
+            func.lower(dev_table.dev_id) == clean_id.lower(),
+            dev_table.dev_name == clean_id,
+        )
+    ).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
@@ -45,7 +51,13 @@ def pair_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
+    clean_id = dev_id.strip()
+    device = db.query(dev_table).filter(
+        or_(
+            func.lower(dev_table.dev_id) == clean_id.lower(),
+            dev_table.dev_name == clean_id,
+        )
+    ).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -65,8 +77,12 @@ def pair_device(
     device.marker_y = payload.marker_y
     device.is_active = True
 
+    # Synchronize hub_id with room's assigned hub if missing or unassigned
+    if room.hub_id and (not device.hub_id or device.hub_id != room.hub_id):
+        device.hub_id = room.hub_id
+
     if payload.warning_threshold is not None and payload.critical_threshold is not None:
-        if device.dev_type == "ATS":
+        if (device.dev_type or "").upper() == "ATS":
             if payload.warning_threshold < payload.critical_threshold:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -130,7 +146,13 @@ def unpair_device(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
+    clean_id = dev_id.strip()
+    device = db.query(dev_table).filter(
+        or_(
+            func.lower(dev_table.dev_id) == clean_id.lower(),
+            dev_table.dev_name == clean_id,
+        )
+    ).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -155,14 +177,20 @@ def update_device_thresholds(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
-    device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
+    clean_id = dev_id.strip()
+    device = db.query(dev_table).filter(
+        or_(
+            func.lower(dev_table.dev_id) == clean_id.lower(),
+            dev_table.dev_name == clean_id,
+        )
+    ).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Device '{dev_id}' not found",
         )
 
-    if device.dev_type == "ATS":
+    if (device.dev_type or "").upper() == "ATS":
         if payload.warning < payload.critical:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

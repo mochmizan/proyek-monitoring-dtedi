@@ -204,6 +204,7 @@ export interface HubResponse {
   hub_name: string;
   room?: string | null;
   status: 'online' | 'offline';
+  is_active?: boolean;
   last_seen?: string | null;
   device_count: number;
   devices: HubDeviceSummary[];
