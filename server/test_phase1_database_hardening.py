@@ -142,10 +142,12 @@ def test_postgres_engine_kwargs_configuration():
 
     # 1. Defaults verification
     defaults = get_engine_kwargs(pg_url)
-    assert defaults["pool_size"] == 10
-    assert defaults["max_overflow"] == 5
+    assert defaults["pool_size"] == 20
+    assert defaults["max_overflow"] == 10
+    assert defaults["pool_timeout"] == 10
     assert defaults["pool_recycle"] == 1800
     assert defaults["pool_pre_ping"] is True
+    assert defaults["connect_args"]["connect_timeout"] == 5
     assert defaults["connect_args"]["options"] == "-c statement_timeout=15000"
     assert defaults["echo"] is False
 
@@ -154,7 +156,9 @@ def test_postgres_engine_kwargs_configuration():
         os.environ,
         {
             "DB_POOL_SIZE": "25",
-            "DB_MAX_OVERFLOW": "10",
+            "DB_MAX_OVERFLOW": "15",
+            "DB_POOL_TIMEOUT": "12",
+            "DB_CONNECT_TIMEOUT": "8",
             "DB_POOL_RECYCLE": "3600",
             "DB_STATEMENT_TIMEOUT_MS": "25000",
             "DB_ECHO": "true",
@@ -162,9 +166,11 @@ def test_postgres_engine_kwargs_configuration():
     ):
         overrides = get_engine_kwargs(pg_url)
         assert overrides["pool_size"] == 25
-        assert overrides["max_overflow"] == 10
+        assert overrides["max_overflow"] == 15
+        assert overrides["pool_timeout"] == 12
         assert overrides["pool_recycle"] == 3600
         assert overrides["pool_pre_ping"] is True
+        assert overrides["connect_args"]["connect_timeout"] == 8
         assert overrides["connect_args"]["options"] == "-c statement_timeout=25000"
         assert overrides["echo"] is True
 

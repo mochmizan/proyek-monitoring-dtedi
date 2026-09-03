@@ -40,11 +40,14 @@ def get_engine_kwargs(database_url: str = DATABASE_URL) -> dict:
     else:
         # PostgreSQL Configuration & Connection Pool Guard
         statement_timeout_ms = int(os.getenv("DB_STATEMENT_TIMEOUT_MS", "15000"))
+        connect_timeout_s = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))
         connect_args = {
-            "options": f"-c statement_timeout={statement_timeout_ms}"
+            "connect_timeout": connect_timeout_s,
+            "options": f"-c statement_timeout={statement_timeout_ms}",
         }
-        pool_size = int(os.getenv("DB_POOL_SIZE", "10"))
-        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "5"))
+        pool_size = int(os.getenv("DB_POOL_SIZE", "20"))
+        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+        pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "10"))
         pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "1800"))
 
         return {
@@ -52,6 +55,7 @@ def get_engine_kwargs(database_url: str = DATABASE_URL) -> dict:
             "connect_args": connect_args,
             "pool_size": pool_size,
             "max_overflow": max_overflow,
+            "pool_timeout": pool_timeout,
             "pool_recycle": pool_recycle,
             "pool_pre_ping": True,
         }
