@@ -25,6 +25,14 @@ export interface RoomCardProps {
   className?: string;
 }
 
+function parseTimestampMs(ts?: string | null): number {
+  if (!ts) return 0;
+  // If string lacks timezone indicator (Z or +/-offset), treat as UTC by appending Z
+  const normalized = /Z|[+-]\d{2}(?::?\d{2})?$/i.test(ts) ? ts : `${ts}Z`;
+  const ms = new Date(normalized).getTime();
+  return isNaN(ms) ? 0 : ms;
+}
+
 export function RoomCard({ room, status, devices, alerts, sparklinePoints, className }: RoomCardProps) {
   const computedStatus: RoomCardStatus = React.useMemo(() => {
     if (status) return status;
@@ -68,28 +76,24 @@ export function RoomCard({ room, status, devices, alerts, sparklinePoints, class
   );
   const hasSectionB = atsDevices.length > 0;
 
-  // Freshness calculation
+  // Freshness calculation: prioritize device telemetry timestamp over sparkline bucket start
   const latestTsMs = React.useMemo(() => {
-    let maxMs = 0;
-    if (sparklinePoints && sparklinePoints.length > 0) {
-      const last = sparklinePoints[sparklinePoints.length - 1];
-      if (last.timestamp) {
-        const ms = new Date(last.timestamp).getTime();
-        if (!isNaN(ms) && ms > maxMs) maxMs = ms;
-      }
-    }
+    let deviceMaxMs = 0;
     if (devices) {
       for (const d of devices) {
-        if (d.latest_reading?.timestamp) {
-          const ms = new Date(d.latest_reading.timestamp).getTime();
-          if (!isNaN(ms) && ms > maxMs) maxMs = ms;
-        } else if (d.last_seen) {
-          const ms = new Date(d.last_seen).getTime();
-          if (!isNaN(ms) && ms > maxMs) maxMs = ms;
-        }
+        const ms = parseTimestampMs(d.latest_reading?.timestamp) || parseTimestampMs(d.last_seen);
+        if (ms > deviceMaxMs) deviceMaxMs = ms;
       }
     }
-    return maxMs > 0 ? maxMs : undefined;
+    if (deviceMaxMs > 0) return deviceMaxMs;
+
+    if (sparklinePoints && sparklinePoints.length > 0) {
+      const last = sparklinePoints[sparklinePoints.length - 1];
+      const sparklineMs = parseTimestampMs(last.timestamp);
+      if (sparklineMs > 0) return sparklineMs;
+    }
+
+    return undefined;
   }, [sparklinePoints, devices]);
 
   const deviceCount = devices ? devices.length : room.device_count ?? 0;

@@ -7,6 +7,14 @@ from sqlalchemy.orm import Session
 from modelsv5 import ats_data, data_table, dev_table, temperature_data
 
 
+def _format_ts(ts_dt: Any) -> Optional[str]:
+    if not ts_dt:
+        return None
+    if hasattr(ts_dt, "tzinfo") and ts_dt.tzinfo is None:
+        ts_dt = ts_dt.replace(tzinfo=UTC)
+    return ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else str(ts_dt)
+
+
 def get_latest_readings_for_devices(
     db: Session,
     devices: list[dev_table],
@@ -45,9 +53,8 @@ def get_latest_readings_for_devices(
             )
         )
         for row in db.execute(stmt).scalars().all():
-            ts_dt = row.timestamp
             readings[row.dev_id] = {
-                "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
+                "timestamp": _format_ts(row.timestamp),
                 "temp": row.temp,
                 "humid": row.humid,
             }
@@ -72,9 +79,8 @@ def get_latest_readings_for_devices(
             )
         )
         for row in db.execute(stmt).scalars().all():
-            ts_dt = row.timestamp
             readings[row.dev_id] = {
-                "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
+                "timestamp": _format_ts(row.timestamp),
                 "state": row.state,
                 "pln": row.pln,
                 "genset": row.genset,
@@ -112,9 +118,9 @@ def get_latest_readings_for_devices(
                 cur = readings.get(row.dev_id)
                 if cur is None:
                     cur = {}
-                    ts_dt = row.timestamp
-                    if ts_dt:
-                        cur["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else str(ts_dt)
+                    cur_ts = _format_ts(row.timestamp)
+                    if cur_ts:
+                        cur["timestamp"] = cur_ts
                     readings[row.dev_id] = cur
                 for k in ("AC1_POWER", "AC1_TEMP", "AC2_POWER", "AC2_TEMP"):
                     val = p.get(k)
@@ -129,8 +135,7 @@ def get_latest_readings_for_devices(
                 p = row.payload or {}
                 payload_copy = dict(p) if isinstance(p, dict) else {}
                 if "timestamp" not in payload_copy and row.timestamp:
-                    ts_dt = row.timestamp
-                    payload_copy["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else str(ts_dt)
+                    payload_copy["timestamp"] = _format_ts(row.timestamp)
                 readings[row.dev_id] = payload_copy
 
     return readings

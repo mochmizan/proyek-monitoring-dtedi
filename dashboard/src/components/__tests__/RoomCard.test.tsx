@@ -210,4 +210,94 @@ describe('RoomCard Component', () => {
       expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
     });
   });
+
+  describe('Timestamp parsing and Freshness Prioritization', () => {
+    it('normalizes naive timestamp without timezone as UTC and renders correct freshness', () => {
+      vi.useFakeTimers();
+      const now = Date.UTC(2026, 8, 3, 12, 10, 0);
+      vi.setSystemTime(now);
+
+      // Naive ISO string without Z or offset (10s before now in UTC)
+      const naiveTs = '2026-09-03T12:09:50';
+      const devices: DeviceResponse[] = [
+        {
+          dev_id: 'dev-ts-1',
+          dev_type: 'TS',
+          is_active: true,
+          latest_reading: {
+            temp: 22.0,
+            humid: 50.0,
+            timestamp: naiveTs,
+          },
+        },
+      ];
+
+      render(<RoomCard room={baseRoom} devices={devices} />);
+
+      // Must be parsed as UTC (10s ago), not local browser time
+      expect(screen.getByText('Updated 10s ago')).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+
+    it('prioritizes device telemetry timestamp over sparkline bucket start timestamp', () => {
+      vi.useFakeTimers();
+      const now = Date.UTC(2026, 8, 3, 12, 10, 0);
+      vi.setSystemTime(now);
+
+      // Device reading is fresh (10s ago)
+      const freshDeviceTs = new Date(now - 10000).toISOString();
+      const devices: DeviceResponse[] = [
+        {
+          dev_id: 'dev-ts-1',
+          dev_type: 'TS',
+          is_active: true,
+          latest_reading: {
+            temp: 22.0,
+            humid: 50.0,
+            timestamp: freshDeviceTs,
+          },
+        },
+      ];
+
+      // Sparkline bucket is from 15 minutes ago
+      const bucketStartTs = new Date(now - 15 * 60 * 1000).toISOString();
+      const sparklinePoints: RoomSparklinePoint[] = [
+        { timestamp: bucketStartTs, temp: 22.0, humid: 50.0 },
+      ];
+
+      render(
+        <RoomCard
+          room={baseRoom}
+          devices={devices}
+          sparklinePoints={sparklinePoints}
+        />
+      );
+
+      // Freshness should reflect 10s ago, NOT 15m ago (900s ago)
+      expect(screen.getByText('Updated 10s ago')).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+
+    it('falls back to sparkline timestamp when devices have no readings or timestamps', () => {
+      vi.useFakeTimers();
+      const now = Date.UTC(2026, 8, 3, 12, 10, 0);
+      vi.setSystemTime(now);
+
+      const bucketStartTs = new Date(now - 30000).toISOString();
+      const sparklinePoints: RoomSparklinePoint[] = [
+        { timestamp: bucketStartTs, temp: 22.0, humid: 50.0 },
+      ];
+
+      render(
+        <RoomCard
+          room={baseRoom}
+          devices={[]}
+          sparklinePoints={sparklinePoints}
+        />
+      );
+
+      expect(screen.getByText('Updated 30s ago')).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+  });
 });

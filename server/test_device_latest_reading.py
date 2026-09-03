@@ -125,6 +125,7 @@ def test_get_devices_populates_latest_reading_and_no_nplus1():
     assert ts_dev["latest_reading"] is not None
     assert ts_dev["latest_reading"]["temp"] == 28.5
     assert ts_dev["latest_reading"]["humid"] == 65.2
+    assert ts_dev["latest_reading"]["timestamp"].endswith("+00:00") or ts_dev["latest_reading"]["timestamp"].endswith("Z")
 
     # 2. ATS unit check
     ats_dev = by_id["dev-ats-lr"]
@@ -133,6 +134,7 @@ def test_get_devices_populates_latest_reading_and_no_nplus1():
     assert ats_dev["latest_reading"]["state"] == "PLN"
     assert ats_dev["latest_reading"]["pln"] == 220.5
     assert ats_dev["latest_reading"]["aki"] == 12.6
+    assert ats_dev["latest_reading"]["timestamp"].endswith("+00:00") or ats_dev["latest_reading"]["timestamp"].endswith("Z")
 
     # 3. AC controller check
     ac_dev = by_id["dev-ac-lr"]
@@ -141,12 +143,14 @@ def test_get_devices_populates_latest_reading_and_no_nplus1():
     assert ac_dev["latest_reading"]["temp"] == 24.0
     assert ac_dev["latest_reading"]["ac1_power"] == "ON"
     assert ac_dev["latest_reading"]["ac2_power"] == "OFF"
+    assert ac_dev["latest_reading"]["timestamp"].endswith("+00:00") or ac_dev["latest_reading"]["timestamp"].endswith("Z")
 
     # 4. Legacy device check
     leg_dev = by_id["dev-leg-lr"]
     assert "latest_reading" in leg_dev
     assert leg_dev["latest_reading"] is not None
     assert leg_dev["latest_reading"]["power_kw"] == 12.4
+    assert leg_dev["latest_reading"]["timestamp"].endswith("+00:00") or leg_dev["latest_reading"]["timestamp"].endswith("Z")
 
     # 5. Empty device check
     empty_dev = by_id["dev-nodata-lr"]
@@ -161,7 +165,25 @@ def test_get_devices_populates_latest_reading_and_no_nplus1():
     resp_single_ts = client.get("/api/devices/dev-ts-lr", cookies=cookies)
     assert resp_single_ts.status_code == 200
     assert resp_single_ts.json()["latest_reading"]["temp"] == 28.5
+    assert resp_single_ts.json()["latest_reading"]["timestamp"].endswith("+00:00") or resp_single_ts.json()["latest_reading"]["timestamp"].endswith("Z")
 
     resp_single_ats = client.get("/api/devices/dev-ats-lr", cookies=cookies)
     assert resp_single_ats.status_code == 200
     assert resp_single_ats.json()["latest_reading"]["state"] == "PLN"
+    assert resp_single_ats.json()["latest_reading"]["timestamp"].endswith("+00:00") or resp_single_ats.json()["latest_reading"]["timestamp"].endswith("Z")
+
+
+def test_format_ts_helper_enforces_utc():
+    from app.services.telemetry import _format_ts
+
+    assert _format_ts(None) is None
+    assert _format_ts("") is None
+
+    # Naive datetime gets converted to UTC ISO format with +00:00
+    naive_dt = datetime(2026, 9, 3, 12, 0, 0)
+    formatted = _format_ts(naive_dt)
+    assert formatted == "2026-09-03T12:00:00+00:00"
+
+    # Aware datetime preserves timezone
+    aware_dt = datetime(2026, 9, 3, 12, 0, 0, tzinfo=UTC)
+    assert _format_ts(aware_dt) == "2026-09-03T12:00:00+00:00"
