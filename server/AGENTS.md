@@ -75,17 +75,18 @@ Composite SARGable performance indexes:
 - Lifespan Worker: `app/services/presence.py` runs a 5s background worker (`evaluate_device_presence_batch`) sweeping devices where `now_utc - last_seen > 25s`, setting `last_status = 'offline'` and logging `DEVICE_OFFLINE` alerts; auto-resolves alerts when online; prunes stale unapproved devices older than 25s; runs in an isolated scoped `SessionLocal()` with rollback protection.
 - Idempotent Read-Only Invariant: `GET /api/devices`, `GET /api/rooms`, `GET /api/rooms/{id}/map` perform exactly 0 database write operations for user queries. Device status is derived purely in memory on read. `GET /api/devices` uses `selectinload(dev_table.threshold_config)` and `selectinload(dev_table.room)` preventing N+1 queries.
 - Optimized Room Queries: `list_rooms` executes exactly 1 SQL outer join query with `func.count(dev_table.dev_id)` and group by. `get_room_map` executes sub-millisecond indexed queries (`timestamp.desc()` leveraging composite SARGable indexes `idx_temp_dev_timestamp`, `idx_ats_dev_timestamp`), with AC operational state merging (combining `temperature_data` ambient temp/humidity with `data_table` `AC1_POWER`, `AC1_TEMP`, `AC2_POWER`, `AC2_TEMP`).
+- Two-Pass Room Sparklines (`GET /api/rooms/sparklines`): Single-query two-pass CTE aggregation with dynamic time buckets (`_build_epoch_bucket_expr`). Pass 1 aggregates per-device averages into `device_bucket_agg`; Pass 2 groups by room and calculates room `MAX` envelopes for temp and humidity, with automatic ANSI SQL null-omission and empty room `points: []` guarantees. Supports SQLite and PostgreSQL dialects.
 
 ## Work Guidance
 
 - New device types: extend discriminated union in `schemasv5.py` (`DEV_TYPE` literal + new model), keep `model_validator` + `ValidationInfo` pattern for DB-aware validation.
 - New endpoints: add SlowAPI `limiter` decorator + auth dependency (`require_role` or hub header).
 - Keep `JSONB().with_variant(JSON, "sqlite")` for Postgres/SQLite compat.
-- Keep tests green: all 179 tests run cleanly via `pytest server/ -q`.
+- Keep tests green: all 186 tests run cleanly via `pytest server/ -q`.
 
 ## Verification
 
-- `pytest server/ -q` — runs all 179 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, and benchmark verification.
+- `pytest server/ -q` — runs all 186 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, and benchmark verification.
 - `python tools/seed_benchmark_telemetry.py --total-rows 1000000 --days 30 --clean --verify` — seeds 1,000,000 synthetic rows in ~60s and verifies composite index query plans.
 - `python tools/benchmark_concurrency_stress.py` — executes 15s multi-worker stress test validating all read, write, throughput, and zero-lock SLAs.
 

@@ -2,7 +2,7 @@
 # Validasi Payload Pydantic HubGate V5
 from datetime import UTC, datetime
 from typing import Annotated, Literal, Union, Optional, Any
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator, ValidationInfo
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator, ValidationInfo, RootModel
 
 
 # Outgoing datetime contract: SQLite returns naive UTC; serialize as tz-aware UTC so
@@ -299,6 +299,29 @@ class FloorPlanUploadResponse(BaseModel):
     message: str = "Floor plan uploaded successfully"
 
     model_config = {"from_attributes": True}
+
+
+# ==========================================
+# SKEMA ROOM SPARKLINE
+# ==========================================
+
+class RoomSparklinePoint(BaseModel):
+    timestamp: str
+    temp: Optional[float] = None
+    humid: Optional[float] = None
+
+    model_config = {"from_attributes": True}
+
+
+class RoomSparkline(BaseModel):
+    points: list[RoomSparklinePoint] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class RoomSparklinesResponse(RootModel[dict[str, RoomSparkline]]):
+    pass
+
 
 
 # ==========================================

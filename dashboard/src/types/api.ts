@@ -38,6 +38,14 @@ export interface FloorPlanUploadResponse {
   message: string;
 }
 
+export interface RoomSparklinePoint {
+  timestamp: string;
+  temp: number | null;
+  humid: number | null;
+}
+
+export type RoomSparklinesResponse = Record<string, { points: RoomSparklinePoint[] }>;
+
 export interface ThresholdConfig {
   warning: number;
   critical: number;
@@ -65,6 +73,7 @@ export interface DeviceResponse {
   marker_y?: number | null;
   created_at?: string | null;
   threshold_config?: ThresholdConfig | null;
+  latest_reading?: Record<string, any> | null;
 }
 
 export interface DevicePairRequest {

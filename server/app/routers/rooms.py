@@ -2,19 +2,23 @@
 import logging
 import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from databasev5 import get_db
 from modelsv5 import User, dev_table, hub_table, rooms, temperature_data, ats_data, data_table
-from schemasv5 import RoomCreate, RoomUpdate, RoomResponse, RoomMapMarker, RoomMapResponse, FloorPlanUploadResponse
+from schemasv5 import (
+    RoomCreate, RoomUpdate, RoomResponse, RoomMapMarker, RoomMapResponse, FloorPlanUploadResponse,
+    RoomSparklinePoint, RoomSparkline, RoomSparklinesResponse
+)
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
 from app.core.config import FLOORPLAN_UPLOAD_DIR, STATIC_DIR, ALLOWED_FLOORPLAN_TYPES, ALLOWED_FLOORPLAN_EXTENSIONS, MAX_FLOORPLAN_FILE_SIZE
+from app.routers.devices import _build_epoch_bucket_expr
 
 router = APIRouter(tags=["rooms"])
 
@@ -69,6 +73,126 @@ def list_rooms(
         for r, dev_count in rows
     ]
     return results
+
+
+@router.get("/api/rooms/sparklines", response_model=RoomSparklinesResponse)
+@limiter.limit("60/minute")
+def get_room_sparklines(
+    request: Request,
+    range: str = Query("6h"),
+    max_points: int = Query(24, ge=5, le=1000),
+    room_ids: Optional[list[str]] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    valid_ranges = {"1h", "6h", "24h", "7d", "30d", "all"}
+    if range not in valid_ranges:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid range '{range}'. Valid options: 1h, 6h, 24h, 7d, 30d, all",
+        )
+
+    now = datetime.now(UTC)
+    end_dt = now
+    if range == "1h":
+        start_dt = now - timedelta(hours=1)
+    elif range == "6h":
+        start_dt = now - timedelta(hours=6)
+    elif range == "24h":
+        start_dt = now - timedelta(hours=24)
+    elif range == "7d":
+        start_dt = now - timedelta(days=7)
+    elif range == "30d":
+        start_dt = now - timedelta(days=30)
+    elif range == "all":
+        min_ts = db.query(func.min(temperature_data.timestamp)).scalar()
+        if min_ts is None:
+            start_dt = now
+        else:
+            start_dt = min_ts if min_ts.tzinfo is not None else min_ts.replace(tzinfo=UTC)
+
+    duration_sec = max(1.0, (end_dt - start_dt).total_seconds())
+    bucket_seconds = max(1, int(duration_sec / max_points))
+
+    target_room_ids: Optional[list[str]] = None
+    if room_ids is not None:
+        target_room_ids = []
+        for item in room_ids:
+            for r_id in item.split(","):
+                clean_id = r_id.strip()
+                if clean_id and clean_id not in target_room_ids:
+                    target_room_ids.append(clean_id)
+
+    if target_room_ids is not None:
+        result: dict[str, RoomSparkline] = {rid: RoomSparkline(points=[]) for rid in target_room_ids}
+        for r in db.query(rooms.id).filter(rooms.id.in_(target_room_ids)).all():
+            if r[0] not in result:
+                result[r[0]] = RoomSparkline(points=[])
+    else:
+        result = {r[0]: RoomSparkline(points=[]) for r in db.query(rooms.id).all()}
+
+    dialect_name = db.get_bind().dialect.name
+    bucket_expr = _build_epoch_bucket_expr(dialect_name, temperature_data.timestamp, bucket_seconds)
+
+    stmt_p1 = (
+        select(
+            dev_table.room_id.label("room_id"),
+            dev_table.dev_id.label("dev_id"),
+            bucket_expr,
+            func.avg(temperature_data.temp).label("dev_temp"),
+            func.avg(temperature_data.humid).label("dev_humid"),
+        )
+        .join(dev_table, temperature_data.dev_id == dev_table.dev_id)
+        .where(
+            dev_table.dev_type.in_(("TS", "AC", "ACC")),
+            dev_table.room_id.is_not(None),
+            temperature_data.timestamp.between(start_dt, end_dt),
+        )
+    )
+    if target_room_ids is not None:
+        stmt_p1 = stmt_p1.where(dev_table.room_id.in_(target_room_ids))
+
+    stmt_p1 = stmt_p1.group_by(
+        dev_table.room_id,
+        dev_table.dev_id,
+        bucket_expr,
+    )
+
+    cte = stmt_p1.cte("device_bucket_agg")
+
+    stmt_p2 = (
+        select(
+            cte.c.room_id,
+            cte.c.bucket_ts,
+            func.max(cte.c.dev_temp).label("room_temp"),
+            func.max(cte.c.dev_humid).label("room_humid"),
+        )
+        .group_by(cte.c.room_id, cte.c.bucket_ts)
+        .order_by(cte.c.room_id.asc(), cte.c.bucket_ts.asc())
+    )
+
+    rows = db.execute(stmt_p2).all()
+
+    for row in rows:
+        rid = row.room_id
+        if rid not in result:
+            result[rid] = RoomSparkline(points=[])
+
+        dt = datetime.fromtimestamp(int(float(row.bucket_ts)), tz=UTC)
+        ts_str = dt.isoformat()
+
+        temp_val = round(float(row.room_temp), 2) if row.room_temp is not None else None
+        humid_val = round(float(row.room_humid), 2) if row.room_humid is not None else None
+
+        result[rid].points.append(
+            RoomSparklinePoint(
+                timestamp=ts_str,
+                temp=temp_val,
+                humid=humid_val,
+            )
+        )
+
+    return result
 
 
 @router.post("/api/rooms", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)

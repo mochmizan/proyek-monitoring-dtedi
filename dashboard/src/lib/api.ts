@@ -12,6 +12,7 @@ import type {
   DeviceCommand,
   CommandStatusResponse,
   RoomMapResponse,
+  RoomSparklinesResponse,
   AlertListResponse,
   AlertFilterParams,
   DeviceHistoryResponse,
@@ -149,6 +150,16 @@ export async function fetchRoomMap(roomId: string): Promise<RoomMapResponse> {
     credentials: 'same-origin',
   });
   return handleResponse<RoomMapResponse>(res);
+}
+
+export async function fetchRoomSparklines(range = '6h', maxPoints = 24): Promise<RoomSparklinesResponse> {
+  const url = new URL(`${BASE}/api/rooms/sparklines`, window.location.origin);
+  url.searchParams.set('range', range);
+  url.searchParams.set('max_points', String(maxPoints));
+  const res = await fetch(url.toString(), {
+    credentials: 'same-origin',
+  });
+  return handleResponse<RoomSparklinesResponse>(res);
 }
 
 // ----------------------------------------------------

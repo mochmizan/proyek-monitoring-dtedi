@@ -16,6 +16,7 @@ export const queryKeys = {
     list: () => [...queryKeys.rooms.all, 'list'] as const,
     detail: (id: string) => [...queryKeys.rooms.all, 'detail', id] as const,
     map: (id: string) => [...queryKeys.rooms.all, 'map', id] as const,
+    sparklines: (range = '6h', maxPoints = 24) => ['rooms', 'sparklines', range, maxPoints] as const,
   },
   alerts: {
     all: ['alerts'] as const,

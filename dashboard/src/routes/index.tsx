@@ -7,12 +7,14 @@ import {
   HardDrive,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchRooms, fetchDevices, fetchAlerts } from '../lib/api'
+import { fetchRooms, fetchDevices, fetchAlerts, fetchRoomSparklines } from '../lib/api';
 import { POLL_MS, STALE_MS } from '../lib/constants';
 import type { DeviceResponse } from '../types/api';
 import { RoomCard, RoomCardSkeleton } from '../components/RoomCard';
@@ -56,6 +58,15 @@ function DashboardPage() {
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: true,
     placeholderData: keepPreviousData,
+  });
+
+  const [isExpanded, setIsExpanded] = React.useState(false);
+
+  const { data: sparklinesData } = useQuery({
+    queryKey: queryKeys.rooms.sparklines('6h', 24),
+    queryFn: () => fetchRoomSparklines('6h', 24),
+    refetchInterval: 30000,
+    staleTime: 25000,
   });
 
   const { unresolvedAlerts, criticalCount, warningCount } = React.useMemo(() => {
@@ -206,15 +217,24 @@ function DashboardPage() {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {isInitialLoading &&
-            Array.from({ length: 6 }, (_, i) => <RoomCardSkeleton key={`room-skeleton-${i}`} />)}
+            Array.from({ length: 8 }, (_, i) => <RoomCardSkeleton key={`room-skeleton-${i}`} />)}
           {!isInitialLoading &&
-            rooms.map((room, i) => {
+            (isExpanded ? rooms : rooms.slice(0, 8)).map((room, i) => {
               const status = getRoomStatus(room.id);
+              const roomDevs = devices.filter((d) => d.room_id === room.id);
+              const roomAlerts = unresolvedAlerts.filter((a) => a.room_id === room.id);
+              const sparklinePoints = sparklinesData?.[room.id]?.points;
               return (
                 <div key={room.id} className="stagger-item" style={{ animationDelay: `${i * 60}ms` }}>
-                  <RoomCard room={room} status={status} />
+                  <RoomCard
+                    room={room}
+                    status={status}
+                    devices={roomDevs}
+                    alerts={roomAlerts}
+                    sparklinePoints={sparklinePoints}
+                  />
                 </div>
               );
             })}
@@ -224,6 +244,18 @@ function DashboardPage() {
             </div>
           )}
         </div>
+        {rooms.length > 8 && (
+          <div className="flex justify-center mt-3">
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              aria-label={isExpanded ? "Show fewer rooms" : "Show more rooms"}
+              className="p-1 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+            >
+              {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Node Table (Devices) */}
