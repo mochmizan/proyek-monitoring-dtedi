@@ -1,5 +1,4 @@
-# modelsv5.py 
-# Pendefinisian Skema Database HubGate V5
+# modelsv5.py — Database schema definitions for HubGate V5
 
 import uuid
 from datetime import UTC, datetime
@@ -7,26 +6,25 @@ from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Ind
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
-# Import Base dari databasev5 agar terhubung langsung dengan engine & session V5
 from databasev5 import Base
 
-# Helper untuk kompatibilitas SQLite (untuk testing) dan PostgreSQL (production)
+# Column type compatibility helper for SQLite (tests) and PostgreSQL (production)
 JSON_TYPE = JSONB().with_variant(JSON, "sqlite")
 
 
 class hub_table(Base):
     __tablename__ = "hub_table"
 
-    hub_id = Column(String, primary_key=True)                   # Contoh: "RASPI_HUB_01"
-    hub_name = Column(String, nullable=False)                 # Contoh: "Hub Gedung A"
-    hub_key = Column(String, nullable=False)                  # [V5 SECURITY] API Key Rahasia Hub
-    room = Column(String, nullable=True)                      # Lokasi/Ruangan Hub
-    is_active = Column(Boolean, default=True, nullable=False)   # [V5 SECURITY] Status pendaftaran/blokir Hub
+    hub_id = Column(String, primary_key=True)
+    hub_name = Column(String, nullable=False)
+    hub_key = Column(String, nullable=False)
+    room = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    last_seen = Column(DateTime(timezone=True), nullable=True)   # [V5 PRESENCE] Heartbeat terakhir Hub
-    status = Column(String, default="offline", nullable=True)    # [V5 PRESENCE] Status koneksi Hub ('online'/'offline')
+    last_seen = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String, default="offline", nullable=True)
 
-    # Relasi ke dev_table
+    # Relationships
     devices = relationship("dev_table", back_populates="hub")
 
 
@@ -39,7 +37,7 @@ class rooms(Base):
     floor_plan_image_path = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    # Relasi
+    # Relationships
     hub = relationship("hub_table", backref="assigned_rooms")
     devices = relationship("dev_table", back_populates="room")
 
@@ -47,13 +45,12 @@ class rooms(Base):
 class dev_table(Base):
     __tablename__ = "dev_table"
 
-    dev_id = Column(String, primary_key=True)                  # MAC Address Perangkat IoT
+    dev_id = Column(String, primary_key=True)
     dev_name = Column(String)
     dev_type = Column(String)
-    hub_id = Column(String, ForeignKey("hub_table.hub_id"))                                  # Identitas Hub Pengelola
+    hub_id = Column(String, ForeignKey("hub_table.hub_id"))
     
-    # KUNCI UNTUK SYSTEM APPROVAL & WHITELIST
-    # False = Pending (Ditolak oleh Hub), True = Active (Diterima oleh Hub)
+    # False = pending (unapproved), True = active (approved)
     is_active = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     last_seen = Column(DateTime(timezone=True), nullable=True)
@@ -64,7 +61,7 @@ class dev_table(Base):
     marker_x = Column(Float, nullable=True)
     marker_y = Column(Float, nullable=True)
 
-    # Relasi ke hub_table, rooms, data_table, temperature_data, ats_data, dan device_threshold_config
+    # Relationships
     hub = relationship("hub_table", back_populates="devices")
     room = relationship("rooms", back_populates="devices")
     telemetry_data = relationship("data_table", back_populates="device", cascade="all, delete-orphan")
@@ -101,7 +98,7 @@ class data_table(Base):
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     payload = Column(JSON_TYPE)
 
-    # Relasi balik ke dev_table
+    # Relationship to dev_table
     device = relationship("dev_table", back_populates="telemetry_data")
 
     __table_args__ = (
@@ -118,7 +115,6 @@ class event_log(Base):
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     message = Column(String, nullable=True)
 
-    # Kolom Alert Engine (Milestone 1)
     dev_id = Column(String, nullable=True)
     room_id = Column(String, nullable=True)
     metric = Column(String, nullable=True)
@@ -144,7 +140,7 @@ class temperature_data(Base):
     temp = Column(Float, nullable=True)
     humid = Column(Float, nullable=True)
 
-    # Relasi balik ke dev_table
+    # Relationship to dev_table
     device = relationship("dev_table", back_populates="temperature_records")
 
     __table_args__ = (
@@ -169,7 +165,7 @@ class ats_data(Base):
     auto_mode = Column(Boolean, nullable=False)
     emergency = Column(Boolean, nullable=False)
 
-    # Relasi balik ke dev_table
+    # Relationship to dev_table
     device = relationship("dev_table", back_populates="ats_records")
 
     __table_args__ = (
@@ -189,7 +185,7 @@ class pending_commands(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     delivered_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Relasi ke dev_table dan hub_table
+    # Relationships
     device = relationship("dev_table", backref="pending_commands")
     hub = relationship("hub_table", backref="pending_commands")
 
@@ -219,7 +215,7 @@ class UserSession(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
 
-    # Relasi ke User
+    # Relationship to User
     user = relationship("User", backref="sessions")
 
     __table_args__ = (
@@ -230,7 +226,7 @@ class UserSession(Base):
 class LoginAttempt(Base):
     __tablename__ = "login_attempts"
 
-    username = Column(String, primary_key=True, index=True)  # Normalized
+    username = Column(String, primary_key=True, index=True)
     attempts = Column(Integer, default=0, nullable=False)
     last_attempt_at = Column(DateTime(timezone=True), nullable=False)
     locked_until = Column(DateTime(timezone=True), nullable=True)
@@ -251,7 +247,7 @@ class schedules(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
     next_run_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Relasi ke dev_table dan hub_table
+    # Relationships
     device = relationship("dev_table", backref="schedules")
     hub = relationship("hub_table", backref="schedules")
 
@@ -261,9 +257,15 @@ class schedules(Base):
     )
 
 
-# Aliases for consistent naming
+# Standard PascalCase ORM Model Aliases
+Hub = hub_table
 Room = rooms
-DeviceThresholdConfig = device_threshold_config
+Device = dev_table
+TemperatureData = temperature_data
+ATSData = ats_data
+DataTable = data_table
 EventLog = event_log
+PendingCommand = pending_commands
+DeviceThresholdConfig = device_threshold_config
 Schedule = schedules
 

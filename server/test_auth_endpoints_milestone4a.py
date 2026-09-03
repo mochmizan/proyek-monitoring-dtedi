@@ -217,7 +217,7 @@ def test_device_command_guards():
     # Deny Viewer
     res = client.post("/api/devices/DEV_TEST_4A/command", json=normal_payload, cookies={"session_id": viewer_sid})
     assert res.status_code == 403
-    assert res.json()["detail"] == "Action requires admin or operator role"
+    assert res.json()["detail"] == "Operation not permitted"
 
     # Allow Operator
     res = client.post("/api/devices/DEV_TEST_4A/command", json=normal_payload, cookies={"session_id": op_sid})

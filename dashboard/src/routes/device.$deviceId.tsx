@@ -7,7 +7,8 @@ import { Pagination } from '../components/ui/pagination';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchDevice, fetchRooms, fetchAlerts, fetchCurrentUser } from '../lib/api';
-import { POLL_MS } from '../lib/constants';
+import { POLL_MS, STALE_METADATA_MS } from '../lib/constants';
+import { formatWIBDateTime, formatWIBDate } from '../lib/dateUtils';
 import { HistoryChart } from '../components/device/HistoryChart';
 import { DeviceControls } from '../components/device/Controls';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
@@ -36,7 +37,7 @@ function DeviceDetailPage() {
   const { data: device, isLoading: isLoadingDevice, isFetching: isFetchingDevice } = useQuery({
     queryKey: queryKeys.devices.detail(deviceId),
     queryFn: () => fetchDevice(deviceId),
-    staleTime: 60_000,
+    staleTime: STALE_METADATA_MS,
     refetchInterval: false,
     refetchOnWindowFocus: true,
   });
@@ -51,7 +52,7 @@ function DeviceDetailPage() {
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
   const { data: deviceAlertsData, isFetching: isFetchingAlerts } = useQuery({
@@ -67,7 +68,7 @@ function DeviceDetailPage() {
         offset: (alertPage - 1) * DEVICE_ALERT_PAGE_SIZE,
       }),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
   const {
@@ -149,7 +150,7 @@ function DeviceDetailPage() {
 
               {/* Registered Date Chip */}
               <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-400 font-medium">
-                Registered: <strong className="text-zinc-200 font-medium">{device.created_at ? new Date(device.created_at).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }) : '—'}</strong>
+                Registered: <strong className="text-zinc-200 font-medium">{formatWIBDate(device.created_at)}</strong>
               </span>
 
               {/* MAC Copy Button */}
@@ -254,16 +255,7 @@ function DeviceDetailPage() {
                         {formatAlertReading(a)}
                       </td>
                       <td className="px-4 py-3 text-zinc-500">
-                        {new Date(a.timestamp).toLocaleString('id-ID', {
-                          timeZone: 'Asia/Jakarta',
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                          hour12: false,
-                        }) + ' WIB'}
+                        {formatWIBDateTime(a.timestamp)}
                       </td>
                       <td className="px-4 py-3">
                         <span

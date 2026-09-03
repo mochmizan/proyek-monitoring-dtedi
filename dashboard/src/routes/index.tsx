@@ -15,7 +15,8 @@ import { cn } from '../lib/utils';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchRooms, fetchDevices, fetchAlerts, fetchRoomSparklines } from '../lib/api';
-import { POLL_MS, STALE_MS } from '../lib/constants';
+import { POLL_MS, STALE_MS, POLL_SPARKLINES_MS, STALE_SPARKLINES_MS } from '../lib/constants';
+import { formatWIBDateTime } from '../lib/dateUtils';
 import type { DeviceResponse } from '../types/api';
 import { RoomCard, RoomCardSkeleton } from '../components/RoomCard';
 import type { RoomCardStatus } from '../components/RoomCard';
@@ -39,7 +40,7 @@ function DashboardPage() {
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
     staleTime: STALE_MS,
   });
@@ -48,7 +49,7 @@ function DashboardPage() {
     queryKey: queryKeys.devices.list('all'),
     queryFn: () => fetchDevices('all'),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
 
@@ -56,7 +57,7 @@ function DashboardPage() {
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
 
@@ -65,8 +66,8 @@ function DashboardPage() {
   const { data: sparklinesData } = useQuery({
     queryKey: queryKeys.rooms.sparklines('6h', 24),
     queryFn: () => fetchRoomSparklines('6h', 24),
-    refetchInterval: 30000,
-    staleTime: 25000,
+    refetchInterval: POLL_SPARKLINES_MS,
+    staleTime: STALE_SPARKLINES_MS,
   });
 
   const { unresolvedAlerts, criticalCount, warningCount } = React.useMemo(() => {
@@ -335,7 +336,7 @@ function DashboardPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-xs text-zinc-400">
-                        {device.created_at ? new Date(device.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' WIB' : '—'}
+                        {formatWIBDateTime(device.created_at)}
                       </td>
                     </tr>
                   );

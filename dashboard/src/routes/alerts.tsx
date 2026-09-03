@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api';
 import { POLL_MS } from '../lib/constants';
+import { computeStartTimeFromRange, formatWIBDateTime } from '../lib/dateUtils';
 import { formatAlertReading, formatAlertThreshold } from '../lib/formatAlert';
 import { Pagination } from '../components/ui/pagination';
 
@@ -147,19 +148,6 @@ function AlertsPage() {
     queryFn: () => fetchDevices('all'),
   });
 
-  // Calculate start_time filter based on timeRange (bucketed to the minute to maintain queryKey stability)
-  let startTimeIso: string | undefined = undefined;
-  const nowMinuteMs = Math.floor(Date.now() / 60000) * 60000;
-  if (selectedTimeRange === '6h') {
-    startTimeIso = new Date(nowMinuteMs - 6 * 3600 * 1000).toISOString();
-  } else if (selectedTimeRange === '24h') {
-    startTimeIso = new Date(nowMinuteMs - 24 * 3600 * 1000).toISOString();
-  } else if (selectedTimeRange === '7d') {
-    startTimeIso = new Date(nowMinuteMs - 7 * 24 * 3600 * 1000).toISOString();
-  } else if (selectedTimeRange === '30d') {
-    startTimeIso = new Date(nowMinuteMs - 30 * 24 * 3600 * 1000).toISOString();
-  }
-
   const normalizedSeverity = selectedSeverity.toLowerCase() === 'all' ? undefined : selectedSeverity.toLowerCase();
   const normalizedStatus = selectedStatus.toLowerCase() === 'all' ? undefined : selectedStatus.toLowerCase();
 
@@ -171,20 +159,23 @@ function AlertsPage() {
       devices: selectedDevices,
       severity: normalizedSeverity,
       status: normalizedStatus,
-      start_time: startTimeIso,
+      timeRange: selectedTimeRange,
       limit: PAGE_SIZE,
       offset,
       page: searchPage,
     }),
-    queryFn: () => fetchAlerts({
-      rooms: selectedRooms.length > 0 ? selectedRooms : undefined,
-      devices: selectedDevices.length > 0 ? selectedDevices : undefined,
-      severity: normalizedSeverity,
-      status: normalizedStatus,
-      start_time: startTimeIso,
-      limit: PAGE_SIZE,
-      offset,
-    }),
+    queryFn: () => {
+      const startTimeIso = computeStartTimeFromRange(selectedTimeRange);
+      return fetchAlerts({
+        rooms: selectedRooms.length > 0 ? selectedRooms : undefined,
+        devices: selectedDevices.length > 0 ? selectedDevices : undefined,
+        severity: normalizedSeverity,
+        status: normalizedStatus,
+        start_time: startTimeIso,
+        limit: PAGE_SIZE,
+        offset,
+      });
+    },
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
@@ -312,7 +303,7 @@ function AlertsPage() {
               {alerts.map((alert) => (
                 <tr key={alert.event_id} className="hover:bg-zinc-850/50 transition-colors">
                   <td className="px-6 py-4 text-zinc-400 font-mono">
-                    {new Date(alert.timestamp).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' WIB'}
+                    {formatWIBDateTime(alert.timestamp)}
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(

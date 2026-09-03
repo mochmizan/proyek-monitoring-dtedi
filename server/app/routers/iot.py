@@ -188,7 +188,7 @@ def receive_iot(
     hub: hub_table = Depends(verify_hub_identity),
     db: Session = Depends(get_db),
 ):
-    """Single telemetry ingestion handler executing in a single atomic commit transaction (CRIT-01).
+    """Single telemetry ingestion handler executing in a single atomic commit transaction.
     Uses deterministic ID generation and idempotent bulk insert logic."""
     try:
         registered_device = db.get(dev_table, device.DEV_ID)
@@ -253,7 +253,7 @@ def receive_iot(
         payload_dict = device.model_dump(mode="json", by_alias=True)
         evaluate_device_thresholds(db=db, dev=registered_device, payload=payload_dict, timestamp=event_time)
 
-        # Single atomic commit (CRIT-01): Heartbeat + Telemetry + Presence + Alerts
+        # Single atomic commit: Heartbeat + Telemetry + Presence + Alerts
         db.commit()
         return {"status": "received"}
 
@@ -273,7 +273,7 @@ def receive_iot_batch(
     hub: hub_table = Depends(verify_hub_identity),
     db: Session = Depends(get_db),
 ):
-    """[HIGH-04] High-throughput atomic batch telemetry ingestion endpoint.
+    """High-throughput atomic batch telemetry ingestion endpoint.
     Ingests up to 1000 items with ON CONFLICT DO NOTHING idempotency.
     Suppresses alert bursts by evaluating threshold alerts and presence ONLY once per device on its latest reading."""
     if isinstance(payload, IotBatchRequest):

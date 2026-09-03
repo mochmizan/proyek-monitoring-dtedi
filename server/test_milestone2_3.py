@@ -261,24 +261,33 @@ def test_cors_middleware():
 
 def test_ip_resolver():
     logging.info("--- Test 4: X-Forwarded-For & X-Real-IP Resolver ---")
-    # 1. Test X-Real-IP is checked first
+    # 1. Test X-Real-IP is checked first when coming from trusted proxy
     mock_req_real = MagicMock()
+    mock_req_real.client.host = "127.0.0.1"
     mock_req_real.headers = {"X-Real-IP": "198.51.100.42", "X-Forwarded-For": "203.0.113.195, 70.41.3.18"}
     resolved_ip_real = get_forwarded_address(mock_req_real)
     assert resolved_ip_real == "198.51.100.42"
 
-    # 2. Test X-Forwarded-For returns the first IP in the chain (original client)
+    # 2. Test X-Forwarded-For returns the first IP in the chain (original client) from trusted proxy
     mock_req = MagicMock()
+    mock_req.client.host = "127.0.0.1"
     mock_req.headers = {"X-Forwarded-For": "203.0.113.195, 70.41.3.18, 150.172.238.178"}
     resolved_ip = get_forwarded_address(mock_req)
     assert resolved_ip == "203.0.113.195"
-    
-    # 3. Test fallback to get_remote_address
+
+    # 3. Test fallback to direct client.host when no headers present
     mock_req_no_header = MagicMock()
     mock_req_no_header.headers = {}
     mock_req_no_header.client.host = "127.0.0.1"
     resolved_ip_fallback = get_forwarded_address(mock_req_no_header)
     assert resolved_ip_fallback == "127.0.0.1"
+
+    # 4. Untrusted direct client attempting to spoof X-Real-IP / X-Forwarded-For (SEC-01)
+    mock_req_untrusted = MagicMock()
+    mock_req_untrusted.client.host = "203.0.113.50"
+    mock_req_untrusted.headers = {"X-Real-IP": "10.0.0.1", "X-Forwarded-For": "10.0.0.1"}
+    resolved_ip_untrusted = get_forwarded_address(mock_req_untrusted)
+    assert resolved_ip_untrusted == "203.0.113.50"
     logging.info("X-Forwarded-For & X-Real-IP Resolver Tests PASSED!")
 
 def test_edge_daemon_polling():

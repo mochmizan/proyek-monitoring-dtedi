@@ -449,3 +449,7 @@ class CommandStatusResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# Consolidated Auth Schemas
+from schemas_auth import UserLoginPayload, UserResponse  # noqa: E402
+
+

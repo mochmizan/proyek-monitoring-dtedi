@@ -42,7 +42,7 @@ function RoomDetailPage() {
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
 
@@ -50,7 +50,7 @@ function RoomDetailPage() {
     queryKey: queryKeys.rooms.map(roomId),
     queryFn: () => fetchRoomMap(roomId),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
 
@@ -58,7 +58,7 @@ function RoomDetailPage() {
     queryKey: queryKeys.alerts.list({ room: roomId }),
     queryFn: () => fetchAlerts({ room: roomId }),
     refetchInterval: POLL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
   });
 

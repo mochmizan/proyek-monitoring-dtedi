@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from databasev5 import get_db
 from modelsv5 import User, dev_table, hub_table, schedules
 from schemasv5 import ACCommand, ATSCommand
-from auth import get_current_user
+from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
 from app.services.scheduler import (
     CANONICAL_TZ,
@@ -25,7 +25,7 @@ from app.services.scheduler import (
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 
 
-# ---------- Schemas ----------
+# Schemas
 class ScheduleCreate(BaseModel):
     dev_id: str = Field(..., min_length=1, max_length=100)
     hub_id: Optional[str] = Field(None, max_length=100)
@@ -156,7 +156,7 @@ def _to_response(obj: schedules) -> dict:
     }
 
 
-# ---------- Endpoints ----------
+# Endpoints
 
 @router.get("/preview")
 @limiter.limit("30/minute")
@@ -171,7 +171,6 @@ def preview_cron(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     nxt = get_next_runs(cron_expr, tz, 3)
-    # human via helper
     human = human_cron(cron_expr)
     return {"cron_expr": cron_expr, "tz": tz, "human": human, "next_runs": [n.isoformat() for n in nxt], "next_run": nxt[0].isoformat() if nxt else None}
 
@@ -182,17 +181,10 @@ def create_schedule(
     request: Request,
     body: ScheduleCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin")),
 ):
-    # RBAC: admin write; reset payload admin-only (which is already admin-only)
-    if current_user.role not in ("admin", "operator"):
-        raise HTTPException(status_code=403, detail="Operation not permitted")
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admin can create schedules")
     # Validate payload whitelist
     validated_payload = _validate_payload(body.payload)
-    if _is_reset_payload(validated_payload) and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Reset action requires admin role")
 
     # Validate tz via body (already done) but need to re-validate cron with actual tz
     try:
@@ -286,10 +278,8 @@ def update_schedule(
     schedule_id: str,
     body: ScheduleUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin")),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admin can update schedules")
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -298,8 +288,6 @@ def update_schedule(
     # Validate payload if present
     if "payload" in updates and updates["payload"] is not None:
         validated = _validate_payload(updates["payload"])
-        if _is_reset_payload(validated) and current_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Reset action requires admin role")
         obj.payload = validated
     if "cron_expr" in updates and updates["cron_expr"] is not None:
         # validate with tz (new or existing)
@@ -354,10 +342,8 @@ def delete_schedule(
     request: Request,
     schedule_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin")),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admin can delete schedules")
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -376,10 +362,8 @@ def run_schedule_now(
     request: Request,
     schedule_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin")),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admin can trigger schedules")
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")

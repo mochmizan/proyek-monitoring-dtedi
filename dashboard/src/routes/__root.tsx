@@ -16,6 +16,7 @@ import {
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, logoutUser, fetchAlerts } from '../lib/api';
 import { POLL_ALERTS_MS } from '../lib/constants';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 export interface MyRouterContext {
   queryClient: QueryClient;
@@ -283,7 +284,9 @@ function RootLayout() {
 
         {/* Content Outlet */}
         <main className="flex-1 p-6 relative">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

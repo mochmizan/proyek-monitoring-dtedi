@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from databasev5 import get_db
 from modelsv5 import User, dev_table, hub_table, pending_commands
 from schemasv5 import ACCommand, ATSCommand, CommandStatusResponse
-from auth import get_current_user
+from auth import get_current_user, require_role
 from app.dependencies import verify_hub_identity
 from app.core.rate_limit import limiter
 
@@ -24,21 +24,14 @@ def send_device_command(
     dev_id: str,
     body: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("admin", "operator")),
 ):
     is_reset = body.get("reset") is not None
-    if is_reset:
-        if current_user.role != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Reset action requires admin role",
-            )
-    else:
-        if current_user.role not in ["admin", "operator"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Action requires admin or operator role",
-            )
+    if is_reset and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reset action requires admin role",
+        )
 
     device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:

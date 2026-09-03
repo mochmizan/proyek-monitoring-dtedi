@@ -5,6 +5,7 @@ import type { PanelConfig, TimeRange, TimeWindowContext } from './types';
 import { timeToX, getOutages } from './chartMath';
 import { parseToDate, formatTooltipTime, getGapThresholdMs } from '../../../lib/chartUtils';
 import { TelemetryPanel } from './TelemetryPanel';
+import { ErrorBoundary } from '../../ErrorBoundary';
 
 export interface MultiPanelChartContainerProps {
   panels: PanelConfig[];
@@ -143,18 +144,20 @@ export const MultiPanelChartContainer: React.FC<MultiPanelChartContainerProps> =
       )}
 
       {/* Render Stacked Panels */}
-      {panels.map((panel) => (
-        <TelemetryPanel
-          key={panel.id}
-          panel={panel}
-          points={points}
-          timeWindow={timeWindow}
-          hoverIndex={hoverIndex}
-          onHoverIndexChange={setHoverIndex}
-          onToggleSeries={onToggleSeries}
-          formatTick={formatTick}
-        />
-      ))}
+      <ErrorBoundary fallback={<div className="p-6 bg-zinc-900 border border-zinc-800 rounded-lg text-center text-xs text-zinc-400">Failed to render telemetry chart. Please refresh.</div>}>
+        {panels.map((panel) => (
+          <TelemetryPanel
+            key={panel.id}
+            panel={panel}
+            points={points}
+            timeWindow={timeWindow}
+            hoverIndex={hoverIndex}
+            onHoverIndexChange={setHoverIndex}
+            onToggleSeries={onToggleSeries}
+            formatTick={formatTick}
+          />
+        ))}
+      </ErrorBoundary>
     </div>
   );
 };

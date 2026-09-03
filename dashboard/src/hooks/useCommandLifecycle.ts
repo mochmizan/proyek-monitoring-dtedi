@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { sendDeviceCommand, fetchCommandStatus } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
+import { POLL_COMMAND_STATUS_MS, COMMAND_DELIVERY_TIMEOUT_MS, COMMAND_AUTO_DISMISS_MS } from '../lib/constants';
 import type { DeviceCommand } from '../types/api';
 
 export type CommandLifecycleStatus =
@@ -13,9 +14,9 @@ export type CommandLifecycleStatus =
   | 'error';
 
 export interface UseCommandLifecycleOptions {
-  pollIntervalMs?: number; // default 1500ms
-  timeoutMs?: number; // default 12000ms
-  autoDismissMs?: number; // default 8000ms
+  pollIntervalMs?: number; // default POLL_COMMAND_STATUS_MS
+  timeoutMs?: number; // default COMMAND_DELIVERY_TIMEOUT_MS
+  autoDismissMs?: number; // default COMMAND_AUTO_DISMISS_MS
   onSuccess?: (commandId: string) => void;
   onError?: (error: Error) => void;
   onTimeout?: () => void;
@@ -39,9 +40,9 @@ export interface UseCommandLifecycleReturn {
 
 export function useCommandLifecycle(options: UseCommandLifecycleOptions = {}): UseCommandLifecycleReturn {
   const {
-    pollIntervalMs = 1500,
-    timeoutMs = 12000,
-    autoDismissMs = 8000,
+    pollIntervalMs = POLL_COMMAND_STATUS_MS,
+    timeoutMs = COMMAND_DELIVERY_TIMEOUT_MS,
+    autoDismissMs = COMMAND_AUTO_DISMISS_MS,
     onSuccess,
     onError,
     onTimeout,

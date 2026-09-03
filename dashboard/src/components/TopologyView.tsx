@@ -20,6 +20,7 @@ import { StatusDot } from './StatusDot';
 import type { StatusTone } from './StatusDot';
 import { cn } from '../lib/utils';
 import type { HubDeviceSummary, RoomResponse } from '../types/api';
+import { ErrorBoundary } from './ErrorBoundary';
 
 const REDUCED_MOTION =
   typeof window !== 'undefined' &&
@@ -354,32 +355,34 @@ export function TopologyView() {
       className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg min-h-[500px] overflow-hidden"
       onMouseLeave={() => setHoveredNodeId(null)}
     >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodeClick={onNodeClick}
-        onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
-        onNodeMouseLeave={() => setHoveredNodeId(null)}
-        fitView
-        fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
-        minZoom={0.3}
-        maxZoom={1.75}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        proOptions={{ hideAttribution: false }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#27272a" />
-        <Controls showInteractive={false} className="bg-zinc-900 border-zinc-800 [&>button]:bg-zinc-900 [&>button]:border-zinc-800 [&>button]:fill-zinc-400 [&>button:hover]:bg-zinc-800" />
-        <MiniMap
-          pannable
-          zoomable
-          nodeColor="#3f3f46"
-          nodeStrokeWidth={0}
-          maskColor="rgba(9, 9, 11, 0.75)"
-          className="bg-zinc-950 border border-zinc-800 rounded"
-        />
-      </ReactFlow>
+      <ErrorBoundary fallback={<div className="p-6 text-center text-xs text-zinc-400">Failed to render topology diagram. Please refresh.</div>}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodeClick={onNodeClick}
+          onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
+          onNodeMouseLeave={() => setHoveredNodeId(null)}
+          fitView
+          fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
+          minZoom={0.3}
+          maxZoom={1.75}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          proOptions={{ hideAttribution: false }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#27272a" />
+          <Controls showInteractive={false} className="bg-zinc-900 border-zinc-800 [&>button]:bg-zinc-900 [&>button]:border-zinc-800 [&>button]:fill-zinc-400 [&>button:hover]:bg-zinc-800" />
+          <MiniMap
+            pannable
+            zoomable
+            nodeColor="#3f3f46"
+            nodeStrokeWidth={0}
+            maskColor="rgba(9, 9, 11, 0.75)"
+            className="bg-zinc-950 border border-zinc-800 rounded"
+          />
+        </ReactFlow>
+      </ErrorBoundary>
     </div>
   );
 }

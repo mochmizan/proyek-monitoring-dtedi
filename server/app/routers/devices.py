@@ -29,7 +29,7 @@ def approve_device(
 ):
     device = db.query(dev_table).filter(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id)).first()
     if not device:
-        raise HTTPException(status_code=404, detail="Perangkat tidak ditemukan")
+        raise HTTPException(status_code=404, detail="Device not found")
 
     device.is_active = True
     db.commit()

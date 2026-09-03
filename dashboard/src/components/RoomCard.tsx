@@ -6,6 +6,7 @@ import type { RoomResponse, DeviceResponse, AlertResponse, RoomSparklinePoint } 
 import { Sparkline } from './Sparkline';
 import { FreshnessBadge } from './FreshnessBadge';
 import { StatusDot } from './StatusDot';
+import { parseToDate } from '../lib/dateUtils';
 
 export type RoomCardStatus = 'Normal' | 'Warning' | 'Critical' | 'Offline';
 
@@ -27,9 +28,7 @@ export interface RoomCardProps {
 
 function parseTimestampMs(ts?: string | null): number {
   if (!ts) return 0;
-  // If string lacks timezone indicator (Z or +/-offset), treat as UTC by appending Z
-  const normalized = /Z|[+-]\d{2}(?::?\d{2})?$/i.test(ts) ? ts : `${ts}Z`;
-  const ms = new Date(normalized).getTime();
+  const ms = parseToDate(ts).getTime();
   return isNaN(ms) ? 0 : ms;
 }
 
