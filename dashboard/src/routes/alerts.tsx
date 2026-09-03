@@ -200,6 +200,7 @@ function AlertsPage() {
           page,
         };
       },
+      resetScroll: false,
     });
   };
 
