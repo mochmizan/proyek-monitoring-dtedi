@@ -93,7 +93,7 @@ function RootLayout() {
         setTimeout(preloadAll, 1000);
       }
     }
-  }, [isLoginPage, !!currentUser, router]);
+  }, [isLoginPage, currentUser, router]);
 
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),

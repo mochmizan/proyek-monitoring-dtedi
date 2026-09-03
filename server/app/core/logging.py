@@ -1,7 +1,6 @@
 # app/core/logging.py — JSON structured logging via dictConfig
 import logging
 import logging.config
-import json
 import os
 
 LOGGING_CONFIG = {

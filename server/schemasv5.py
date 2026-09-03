@@ -77,10 +77,8 @@ class ATSCommand(BaseModel):
                 )
                 
                 is_manual = False
-                found_record = False
                 
                 if last_ats:
-                    found_record = True
                     if last_ats.auto_mode is False or (last_ats.state and last_ats.state.lower() == "manual"):
                         is_manual = True
                 else:
@@ -92,7 +90,6 @@ class ATSCommand(BaseModel):
                         .first()
                     )
                     if last_legacy and last_legacy.payload:
-                        found_record = True
                         payload = last_legacy.payload
                         auto_mode = payload.get("AUTO_MODE")
                         state = payload.get("STATE")

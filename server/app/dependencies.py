@@ -1,7 +1,6 @@
 # app/dependencies.py — shared FastAPI dependencies
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import logging
 import secrets
 import threading
 import time

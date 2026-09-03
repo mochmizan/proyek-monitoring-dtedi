@@ -8,7 +8,7 @@ from sqlalchemy import Integer, cast, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from databasev5 import get_db
-from modelsv5 import dev_table, hub_table, rooms, device_threshold_config, temperature_data, ats_data, event_log, User
+from modelsv5 import dev_table, hub_table, rooms, device_threshold_config, temperature_data, ats_data, User
 from schemasv5 import DevicePairRequest, DeviceResponse, ThresholdConfigSchema, ThresholdUpdateRequest, TelemetryHistoryPoint, DeviceHistoryResponse
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
@@ -594,9 +594,9 @@ def get_devices(
     # 2. User session authentication path
     override = getattr(request.app, "dependency_overrides", {}).get(get_current_user)
     if override:
-        user = override()
+        _user = override()
     else:
-        user = get_current_user(request, db)
+        _user = get_current_user(request, db)
 
     now_utc = datetime.now(UTC)
     cutoff = now_utc - timedelta(seconds=25)

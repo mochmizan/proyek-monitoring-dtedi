@@ -1,5 +1,5 @@
 # app/services/telemetry.py
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import Any, Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session

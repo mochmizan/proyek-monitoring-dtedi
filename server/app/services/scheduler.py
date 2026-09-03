@@ -51,9 +51,6 @@ def get_next_runs(cron_expr: str, tz: str = CANONICAL_TZ, count: int = 3) -> lis
         trigger = CronTrigger.from_crontab(cron_expr.strip(), timezone=tz)
     except Exception:
         return []
-    # Use trigger.get_next_fire_time to compute sequence
-    from apscheduler.triggers.cron import CronTrigger as CT
-
     # Need to walk forward from now in given tz
     try:
         from zoneinfo import ZoneInfo

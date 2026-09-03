@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status, Query
-from sqlalchemy import desc, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from databasev5 import get_db
-from modelsv5 import User, dev_table, hub_table, rooms, temperature_data, ats_data, data_table
+from modelsv5 import User, dev_table, hub_table, rooms, temperature_data
 from schemasv5 import (
     RoomCreate, RoomUpdate, RoomResponse, RoomMapMarker, RoomMapResponse, FloorPlanUploadResponse,
     RoomSparklinePoint, RoomSparkline, RoomSparklinesResponse

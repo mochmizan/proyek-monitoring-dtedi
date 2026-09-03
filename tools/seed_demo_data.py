@@ -3,10 +3,10 @@ import os
 import uuid
 
 # Add server to sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "server", "v5")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "server")))
 
 from databasev5 import SessionLocal
-from modelsv5 import Room, dev_table, DeviceThresholdConfig, hub_table, User, temperature_data, ats_data
+from modelsv5 import rooms, dev_table, device_threshold_config, hub_table, User, temperature_data, ats_data
 from datetime import datetime, UTC
 
 def seed():
@@ -35,9 +35,9 @@ def seed():
         ]
         
         for r_id, r_name in rooms_data:
-            r = db.query(Room).filter(Room.id == r_id).first()
+            r = db.query(rooms).filter(rooms.id == r_id).first()
             if not r:
-                r = Room(id=r_id, name=r_name, hub_id=hub.hub_id)
+                r = rooms(id=r_id, name=r_name, hub_id=hub.hub_id)
                 db.add(r)
                 db.flush()
                 print(f"Created room: {r_name}")
@@ -68,7 +68,7 @@ def seed():
 
                 # Thresholds
                 is_ats = dtype == "ATS"
-                thresh = DeviceThresholdConfig(
+                thresh = device_threshold_config(
                     dev_id=mac,
                     warning=11.8 if is_ats else 28.0,
                     critical=11.2 if is_ats else 32.0,

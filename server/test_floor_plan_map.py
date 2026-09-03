@@ -30,6 +30,7 @@ api.state.limiter.enabled = False
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_test_environment():
+    initial_files = set(os.listdir(FLOORPLAN_UPLOAD_DIR)) if os.path.exists(FLOORPLAN_UPLOAD_DIR) else set()
     db = SessionLocal()
     try:
         # Clear tables for clean module isolation
@@ -80,6 +81,20 @@ def setup_test_environment():
         db.commit()
     finally:
         db.close()
+
+    yield
+
+    # Clean up uploaded floorplan files created during testing
+    if os.path.exists(FLOORPLAN_UPLOAD_DIR):
+        for fname in os.listdir(FLOORPLAN_UPLOAD_DIR):
+            if fname not in initial_files:
+                fpath = os.path.join(FLOORPLAN_UPLOAD_DIR, fname)
+                try:
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+                except OSError:
+                    pass
+
 
 
 def get_auth_cookies(username: str, password: str) -> dict:

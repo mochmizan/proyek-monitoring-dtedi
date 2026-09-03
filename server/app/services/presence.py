@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 from databasev5 import SessionLocal
-from modelsv5 import dev_table, event_log, hub_table, rooms
+from modelsv5 import dev_table, event_log, rooms
 
 logger = logging.getLogger(__name__)
 

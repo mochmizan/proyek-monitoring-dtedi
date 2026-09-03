@@ -13,11 +13,11 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 
 | Group | Scripts | Purpose |
 |---|---|---|
-| **Pi deploy & services** | `deploy_pi_edge.py`, `install_pi_service.py`, `setup_hubbrain_service.py` | Paramiko/SFTP deploy of HubBrain, systemd unit install/restart |
+| **Pi deploy & services** | `deploy_pi_edge.py`, `install_pi_service.py` | Paramiko/SFTP deploy of HubBrain, systemd unit install/restart |
 | **Pi backup** | `backup_hub.sh`, `run_pi_backup.py` | Mandatory backup gate: tar `/etc` networking + `.env`/certs/WAL, SHA256 verify, offload (see `docs/HUB_BACKUP_GUIDE.md`) |
 | **DB & Credential Admin** | `init_postgres_db.py`, `setup_postgres_wsl.sh`, `reset_sqlite_users.py`, `rotate_credentials.py`, `purge_dummy_data.py` | Schema init + seeding, SQLite user reset, production credential / HUB_KEY rotation CLI, mock-data purge |
 | **Seeding / simulation** | `seed_demo_data.py`, `seed_rich_history.py`, `mock_publishers.py`, `stream_live_telemetry.py`, `seed_benchmark_telemetry.py` | Demo rooms/devices, 30-day synthetic history, MQTT node simulators (`hs109rs/{ts,ats,ac}/data`), live TS streaming, 1M row chunked benchmark seeder with index EXPLAIN verification |
-| **Sniffing / debug** | `sniff_pi.py`, `sniff_pi_mqtt.py`, `send_ac_command.py`, `debug_auth_wsl.py` | Remote MQTT sniff via SSH, AC command injection, auth debugging |
+| **Sniffing / debug** | `sniff_pi.py`, `sniff_pi_mqtt.py`, `send_ac_command.py` | Remote MQTT sniff via SSH, AC command injection, auth debugging |
 | **Verification & Benchmarking** | `verify_production_deployment.py`, `verify_prod_env.py`, `benchmark_concurrency_stress.py` | 7-step production smoke test; `.env` auditor; async high-concurrency stress test evaluating 5 hard invariants (read/write/throughput/zero-lock) with Markdown/JSON report export |
 | **Misc** | `browser_test.mjs`, `generate_mosquitto_passwd.py` | Playwright headless login→dashboard (needs Vite `:5173`); Mosquitto PBKDF2 passwd |
 

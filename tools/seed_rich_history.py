@@ -1,11 +1,11 @@
-﻿import sys
+import sys
 import os
 import uuid
 import math
 import random
 from datetime import datetime, UTC, timedelta
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "server", "v5")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "server")))
 
 from databasev5 import SessionLocal
 from modelsv5 import temperature_data, ats_data, dev_table
