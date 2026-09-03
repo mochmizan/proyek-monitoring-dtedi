@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-deploy-pipeline.md, wiki/entity-hubgate-v5.md, wiki/entity-hubbrain-v5.md, wiki/concept-observability-monitoring.md, wiki/concept-production-readiness.md, wiki/workstream-production-grade-roadmap.md]
-sources: [deploy/nginx_smsb.conf, deploy/smsb-api.service, deploy/hubbrain.service, deploy/setup_push_deploy.sh, deploy/journald.conf.dropin, tools/backup_hub.sh, tools/run_pi_backup.py, tools/rotate_credentials.py, notes/field-ops.md]
-updated: 2026-09-03
+sources: [deploy/nginx_smsb.conf, deploy/smsb-api.service, deploy/hubbrain.service, deploy/setup_push_deploy.sh, deploy/journald.conf.dropin, tools/backup_hub.sh, tools/run_pi_backup.py, tools/rotate_credentials.py, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md, notes/field-ops.md]
+updated: 2026-09-04
 ---
 
 # DevOps & Infrastructure Architecture
@@ -123,12 +123,12 @@ Installed at `/etc/systemd/system/smsb-api.service`:
 - **Execution Command**:
   ```ini
   ExecStart=/opt/smsb/venv/bin/python -m uvicorn app.main:api \
-      --host 127.0.0.1 --port 8000 --workers 2 --limit-concurrency 50 \
+      --host 127.0.0.1 --port 8000 --workers 1 --limit-concurrency 50 \
       --proxy-headers --forwarded-allow-ips=127.0.0.1
   ```
 - **Lifecycle & Resource Ceiling**:
   - `Restart=always`, `RestartSec=5`
-  - `MemoryMax=500M`: Hard kernel cgroup ceiling. A memory leak or runaway worker will be terminated by systemd before depleting the 1 GB host RAM.
+  - `MemoryHigh=650M`, `MemoryMax=800M`: Hard kernel cgroup ceiling. A memory leak or runaway worker will be terminated by systemd before depleting the 1 GB host RAM.
 - **Security Sandboxing Directives**:
   - `NoNewPrivileges=yes`: Disallows setuid/sudo privilege escalation.
   - `ProtectSystem=strict`: Entire filesystem is mounted read-only for the process.
@@ -171,16 +171,18 @@ Deployments to production execute via standard Git transport over SSH (`deploy/s
 ### Execution Pipeline (`post-receive` Hook)
 When a developer runs `git push prod main`:
 1. **Branch Gate**: Non-main refs are ignored.
-2. **Work Tree Sync**: Clears Git environment variables and executes `git fetch origin main && git reset --hard origin/main` in `/opt/smsb`.
+2. **Work Tree Sync & Old Revision Capture**: Captures the current HEAD revision (`oldrev=$(cd "${DEPLOY_WORK_TREE}" && git rev-parse HEAD)`), clears Git environment variables, and executes `git fetch origin main && git reset --hard origin/main` in `/opt/smsb`.
 3. **Python Dependency Sync**: Executes `/opt/smsb/venv/bin/pip install --quiet -r server/requirements.txt`.
-4. **SPA Compilation**: Invokes NVM Node 22 (`npm ci --ignore-engines && npm run build --ignore-engines`) in `/opt/smsb/dashboard`.
-5. **Static Publishing**: Syncs `dashboard/dist/` to `/var/www/gui-app/` using `rsync -a --delete` and sets `chmod -R 755`.
+4. **Pre-Flight Syntax & Import Gating**:
+   - Compiles all Python source files via `python -m compileall -q "${DEPLOY_WORK_TREE}/server"`. On syntax compilation error, the hook immediately reverts the work tree via `git reset --hard "${oldrev}"` and aborts without touching the running service.
+   - Verifies canonical application import via `python -c "from app.main import api"`. On import failure, the hook immediately reverts the work tree via `git reset --hard "${oldrev}"` and aborts without touching the running service.
+5. **Gated SPA Compilation**: Invokes NVM Node 22 (`npm ci --ignore-engines && npm run build --ignore-engines`) in `/opt/smsb/dashboard`. Only syncs assets to `/var/www/gui-app/` if the build exits with 0.
 6. **Daemon Restart**: Invokes `sudo -n systemctl restart smsb-api.service`.
 7. **Post-Deploy Smoke Verification**:
    - Polling check: `https://127.0.0.1/api/auth/me` must return `HTTP 401 Unauthorized`.
    - SPA check: `https://127.0.0.1/` must return HTML containing `<title>`.
    - Unit check: `systemctl is-active --quiet smsb-api` must return 0.
-8. **Failure Handling**: If any smoke check fails, the hook prints actionable rollback instructions pointing to `origin/main~1`.
+8. **Failure Handling**: If any post-restart smoke check fails, the hook prints actionable manual rollback instructions.
 
 ---
 
@@ -192,10 +194,10 @@ Mandatory gate required prior to edge hardware updates or kernel modifications:
 - **Integrity Assertion**: Builds a compressed tarball (`hubbrain_backup_<timestamp>.tar.gz`), validates internal structure via `tar -tzf`, and calculates SHA256 checksums.
 - **Remote Automation (`tools/run_pi_backup.py`)**: Uses Paramiko to stage the backup script over SFTP, execute it with root privileges, download the archive and checksum off-device, and verify SHA256 integrity locally.
 
-### Central Server Disaster Recovery Gap
-In contrast to the edge tier, the Central VPS currently lacks an automated database snapshot or disaster recovery pipeline:
-- **Current State**: Server database persistence (`hubgatev5.db` / `smsb_prod`) is not automatically dumped, snapshotted, or replicated off-host. Recovery relies on manual filesystem copies or ad-hoc operations.
-- **Target Posture**: Automated nightly cron executing `pg_dump` with SHA256 verification and off-site cloud storage replication (`tools/backup_vps.sh`).
+### Central Server Disaster Recovery & Migration Pipeline
+- **SQLite-to-PostgreSQL 16 Streaming Migration (`tools/migrate_sqlite_to_postgres.py`)**: Dedicated low-memory streaming ETL tool migrating historical telemetry, configuration, and relational entities from SQLite 3 WAL to PostgreSQL 16. Validated via `--dry-run` and live parity check reporting.
+- **PostgreSQL Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Comprehensive operational runbook detailing pre-flight checks, T-0 WAL truncation (`PRAGMA wal_checkpoint(TRUNCATE)`), read-only service freeze, streaming migration execution, and verification under a $\le 3\text{ minute}$ maintenance window.
+- **Automated Backup Posture**: Nightly cron executing `pg_dump` with SHA256 verification and off-site cloud storage replication (`tools/backup_vps.sh`).
 
 ### Production Credential Rotation Harness (`tools/rotate_credentials.py`)
 Provides automated, atomic rotation of system secrets:

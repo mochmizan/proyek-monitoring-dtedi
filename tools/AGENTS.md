@@ -15,7 +15,7 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 |---|---|---|
 | **Pi deploy & services** | `deploy_pi_edge.py`, `install_pi_service.py` | Paramiko/SFTP deploy of HubBrain, systemd unit install/restart |
 | **Pi backup** | `backup_hub.sh`, `run_pi_backup.py` | Mandatory backup gate: tar `/etc` networking + `.env`/certs/WAL, SHA256 verify, offload (see `docs/HUB_BACKUP_GUIDE.md`) |
-| **DB & Credential Admin** | `init_postgres_db.py`, `setup_postgres_wsl.sh`, `reset_sqlite_users.py`, `rotate_credentials.py`, `purge_dummy_data.py` | Schema init + seeding, SQLite user reset, production credential / HUB_KEY rotation CLI, mock-data purge |
+| **DB & Credential Admin** | `migrate_sqlite_to_postgres.py`, `init_postgres_db.py`, `setup_postgres_wsl.sh`, `reset_sqlite_users.py`, `rotate_credentials.py`, `purge_dummy_data.py` | Streaming SQLite-to-PostgreSQL 16 migration, schema init + seeding, SQLite user reset, production credential / HUB_KEY rotation CLI, mock-data purge |
 | **Seeding / simulation** | `seed_demo_data.py`, `seed_rich_history.py`, `mock_publishers.py`, `stream_live_telemetry.py`, `seed_benchmark_telemetry.py` | Demo rooms/devices, 30-day synthetic history, MQTT node simulators (`hs109rs/{ts,ats,ac}/data`), live TS streaming, 1M row chunked benchmark seeder with index EXPLAIN verification |
 | **Sniffing / debug** | `sniff_pi.py`, `sniff_pi_mqtt.py`, `send_ac_command.py` | Remote MQTT sniff via SSH, AC command injection, auth debugging |
 | **Verification & Benchmarking** | `verify_production_deployment.py`, `verify_prod_env.py`, `benchmark_concurrency_stress.py` | 7-step production smoke test; `.env` auditor; async high-concurrency stress test evaluating 5 hard invariants (read/write/throughput/zero-lock) with Markdown/JSON report export |
@@ -25,8 +25,20 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 - Pi tooling defaults to `10.33.36.81` / `hubadmin` — override via args where provided
 - `setup_postgres_wsl.sh` opens `pg_hba.conf` to `0.0.0.0/0 md5` — WSL dev bootstrap only, never production
 
-### Benchmark Tooling & Recipes
+### Benchmark & Migration Tooling
 
+- **`tools/migrate_sqlite_to_postgres.py`**:
+  - High-throughput streaming migration tool for production cutover from SQLite 3 WAL (`hubgatev5.db`) to PostgreSQL 16 (`smsb_prod`).
+  - Architecture & Features:
+    - Server-side streaming SQLite cursor using chunked batches (default 20,000 rows), maintaining a bounded < 50MB RAM footprint.
+    - Canonical foreign-key table ordering: `alembic_version`, `users`, `login_attempts`, `hub_table`, `rooms`, `dev_table`, `device_threshold_config`, `sessions`, `schedules`, `pending_commands`, `temperature_data`, `ats_data`, `data_table`, `event_log`.
+    - Strict type sanitization: timestamps normalized to timezone-aware UTC, integer 0/1 to native boolean, and JSON payloads validated and formatted for PostgreSQL JSONB.
+    - Foreign key checks bypassed during insertion (`SET session_replication_role = 'replica'`).
+    - PostgreSQL sequence resynchronization (`setval` for all serial/identity columns).
+    - Table parity verification report comparing source SQLite and target PostgreSQL row counts with mismatch alerts.
+    - Non-destructive dry-run validation mode (`--dry-run`).
+  - CLI: `python tools/migrate_sqlite_to_postgres.py [--sqlite PATH] [--postgres URL] [--chunk-size 20000] [--dry-run] [--tables T1,T2]`
+  - Cutover Runbook: `docs/runbooks/postgres_cutover_runbook.md`
 - **`tools/seed_benchmark_telemetry.py`**:
   - High-performance synthetic telemetry seeder generating and inserting realistic telemetry rows (500k TS, 500k ATS = 1,000,000 rows across 30 days) using chunked SQLAlchemy Core DML in < 15s (SQLite WAL / PostgreSQL). Validates query plans with EXPLAIN.
   - CLI: `python tools/seed_benchmark_telemetry.py [--total-rows 1000000] [--days 30] [--batch-size 25000] [--db-url URL] [--clean] [--verify]`

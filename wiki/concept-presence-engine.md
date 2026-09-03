@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-telemetry-pipeline.md, wiki/concept-alert-engine.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/app/services/presence.py, server/app/routers/devices.py, server/app/services/scheduler.py, server/test_phase5_presence_nplus1.py, commit:8f8f6cd]
-updated: 2026-09-02
+updated: 2026-09-04
 ---
 
 # Presence Engine
@@ -18,11 +18,11 @@ In early revisions of HubGate V5, device presence checks were executed synchrono
 
 Under concurrent workloads (multiple browser tabs polling every 3 seconds while edge hubs streamed telemetry), read-induced write commits generated severe SQLite lock contention (`sqlite3.OperationalError: database is locked`), resulting in HTTP 500 crashes and delayed query responses.
 
-## 2. Decoupled 5-Second Background Sweeper
+## 2. Decoupled 15-Second Background Sweeper
 
 The hardened Presence Engine completely divorces state evaluation from read requests, moving all mutation logic into a periodic background task:
 
-1. **Scheduler Integration**: APScheduler executes `evaluate_device_presence_batch()` (`server/app/services/presence.py`) on a fixed 5-second interval (`PRESENCE_INTERVAL_SECONDS = 5`).
+1. **Scheduler Integration**: APScheduler executes `evaluate_device_presence_batch()` (`server/app/services/presence.py`) on a fixed 15-second interval (`PRESENCE_INTERVAL_SECONDS = 15`), tuned down from 5 seconds to reduce idle CPU cycles and database connection checkouts on the memory-constrained 1GB VPS.
 2. **Session Isolation**: The sweeper executes in an independent, scoped database session (`SessionLocal()`) with explicit rollback handling, ensuring presence evaluation errors never contaminate HTTP request sessions.
 3. **N+1 Query Elimination**:
    - Fetches all active devices in a single query using eager loading: `select(dev_table).options(selectinload(dev_table.room)).where(dev_table.is_active == True)`.
@@ -34,15 +34,15 @@ The hardened Presence Engine completely divorces state evaluation from read requ
 5. **Stale Pending Device Pruning**: Executes a single bulk `delete()` for unapproved devices (`is_active == False` and `room_id IS NULL`) older than 25 seconds.
 6. **Conditional Commit**: The database session only executes `db.commit()` if state changes or prune deletions actually occurred (`has_state_changes`), minimizing disk write I/O.
 
-## 3. Detection Lag SLA: 30 Seconds Maximum
+## 3. Detection Lag SLA: 40 Seconds Maximum
 
 The combination of the offline timeout window and the background sweeper schedule defines the system detection SLA:
 
-$$\text{Detection Lag}_{\max} = \text{DEVICE\_OFFLINE\_WINDOW\_SECONDS} + \text{PRESENCE\_INTERVAL\_SECONDS} = 25\text{s} + 5\text{s} = 30\text{s}$$
+$$\text{Detection Lag}_{\max} = \text{DEVICE\_OFFLINE\_WINDOW\_SECONDS} + \text{PRESENCE\_INTERVAL\_SECONDS} = 25\text{s} + 15\text{s} = 40\text{s}$$
 
 - Best-case detection latency: 25.0 seconds (if hardware drops immediately before sweeper tick).
-- Worst-case detection latency: 30.0 seconds (if hardware drops immediately after sweeper tick).
-- All device disconnects are guaranteed to be flagged as `offline` and alerted within 30 seconds.
+- Worst-case detection latency: 40.0 seconds (if hardware drops immediately after sweeper tick).
+- All device disconnects are guaranteed to be flagged as `offline` and alerted within 40 seconds.
 
 ## 4. Idempotent Read-Only Invariant (`GET /api/devices`)
 
@@ -62,7 +62,7 @@ Read endpoints (`GET /api/devices`, `GET /api/rooms`, `GET /api/rooms/{id}/map`)
 
 ## 5. Telemetry-Driven Fast Recovery
 
-While offline transitions are detected by the 5-second background sweeper, online recovery is instantaneous:
+While offline transitions are detected by the 15-second background sweeper, online recovery is instantaneous:
 - When valid telemetry arrives at `POST /api/iot` or `POST /api/iot/batch`, `resolve_offline_on_telemetry()` marks `device.last_status = "online"`, stamps `last_seen = now_utc`, and auto-resolves any open `DEVICE_OFFLINE` alerts in `event_log`.
 - An informative `DEVICE_ONLINE` alert is recorded to acknowledge connectivity restoration.
 - Recovery occurs within the same atomic commit as the telemetry insertion.

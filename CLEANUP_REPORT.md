@@ -1,8 +1,8 @@
 # Codebase Cleanup & Handoff Report
 
 **Project**: `smsb` (IoT Smart-Building Monitoring System)  
-**Date**: 2026-09-03  
-**Status**: Phases 0, 1, 2, and 3 Completed & Verified (All 341 tests passing)  
+**Date**: 2026-09-04  
+**Status**: Phases 0, 1, 2, 3, and 4 Completed & Verified (All 361 tests passing)  
 **Branch**: `main`  
 **Git Checkpoints**:
 - `b0dd487`: `docs(wiki): compile comprehensive architecture mapping and production roadmap`
@@ -21,7 +21,8 @@ All modifications strictly adhered to the non-negotiable rule: **zero behavior c
 - **Baseline (Phase 0)**: 305 automated tests passing (216 Python, 89 TypeScript).
 - **Phase 1 Checkpoint**: 305 automated tests passing (4,190 lines of dead code deleted).
 - **Phase 2 & 3 Checkpoint**: 329 automated tests passing (220 Python, 109 TypeScript) with 0 errors across all suites and a clean production build (`tsc -b && vite build` in 1.96s).
-- **Post-Cleanup Hardening & Modernization (Points 1, 3A, 3B, 3C)**: **341 automated tests passing** (232 Python [204 server, 13 hub, 15 integration], 109 TypeScript across 12 suites) with 0 errors across all suites.
+- **Post-Cleanup Hardening & Modernization (Points 1, 3A, 3B, 3C)**: 341 automated tests passing (232 Python [204 server, 13 hub, 15 integration], 109 TypeScript across 12 suites).
+- **Phase 4 Hardening & Optimization Checkpoint**: **361 automated tests passing** (245 Python [217 server, 13 hub, 15 integration], 116 TypeScript across 13 suites) with 0 errors across all suites and verified production bundle chunking.
 
 ---
 
@@ -98,11 +99,11 @@ All modifications strictly adhered to the non-negotiable rule: **zero behavior c
 ## 4. Current State of Test Coverage & Gaps the Next Team Should Know About
 
 ### Test Coverage State
-- **Server (`server/`)**: 204 tests passed across 23 test files. Comprehensive coverage of auth, RBAC, telemetry ingestion, batch upsert, presence sweeper, downsampling V2, room map queries, sparklines CTE, schedules regression, `SEC-06` device ownership verification, `SEC-10` session sliding window throttling, and benchmark verification.
+- **Server (`server/`)**: 217 tests passed across 24 test files. Comprehensive coverage of auth, RBAC, telemetry ingestion, batch upsert, presence sweeper (15s interval), downsampling V2, room map queries, sparklines CTE, schedules regression, `SEC-06` device ownership verification, `SEC-10` session sliding window throttling, hourly SQLite WAL checkpoint truncation, and benchmark verification.
 - **Edge Gateway (`hub/`)**: 13 resilience tests covering WAL FIFO queueing, rate pacing, timestamp preservation, and connection failover.
 - **Repo Integration (`tests/`)**: 15 tests verifying end-to-end telemetry pipelines and environment deployment verifiers.
-- **Dashboard (`dashboard/`)**: 109 tests passed across 12 test suites covering chart math, command lifecycle hooks, history hooks, date utilities, error boundaries, controls, badges, and pagination.
-- **Total Verification Suite**: **341 automated tests passing** across all four testing tiers.
+- **Dashboard (`dashboard/`)**: 116 tests passed across 13 test suites covering chart math, command lifecycle hooks, history hooks, date utilities, error boundaries, controls, badges, pagination, and lazy-loaded ScheduleDialog.
+- **Total Verification Suite**: **361 automated tests passing** across all four testing tiers.
 
 ### Gaps for the Next Team:
 1. **Frontend Route Component Unit Tests**:
@@ -129,12 +130,42 @@ The next team should review the compiled project wiki (`wiki/index.md`), particu
 
 ---
 
-## 6. Phase 4 — Optimization Opportunities (For Future Consideration)
+## 6. Phase 4 — System Hardening, Tooling & Optimization (Completed & Verified)
 
-If performance optimization is pursued in future sprints:
-1. **Zero-Downtime Push Deployment**:
-   - Refactor `deploy/setup_push_deploy.sh` to use graceful Uvicorn reloading and pre-flight migration checks (`init_sqlv5.py`) to eliminate the current 2–5s downtime window during `git push prod main`.
-2. **PostgreSQL Connection Pool Sizing**:
-   - Scale PostgreSQL pool size from `pool_size=10, max_overflow=5` to `pool_size=25, max_overflow=15` with a 10s checkout timeout to prevent thread starvation under high AnyIO concurrency.
-3. **Outbound Real-Time Alert Dispatcher**:
-   - Implement an async background task processing unnotified records in `event_log` and dispatching critical notifications to a Telegram channel.
+Phase 4 addressed memory envelope constraints on the 1GB VPS host, streaming migration tooling for the PostgreSQL 16 cutover, frontend bundle chunking, and pre-flight deployment verification gating with automated rollback.
+
+### Phase 4.1: VPS Memory Hardening
+- **Single Uvicorn Worker**: Updated `deploy/smsb-api.service` to launch Uvicorn with `--workers 1` and `--limit-concurrency 50`, eliminating multi-worker memory duplication.
+- **Strict Kernel Cgroups**: Configured systemd unit resource bounds with `MemoryHigh=650M` and `MemoryMax=800M`, ensuring the API process is bounded and protected from OOMing the 1GB host.
+- **Tuned SQLite PRAGMAs**: In `server/databasev5.py`, adjusted connect-time PRAGMAs:
+  * `PRAGMA cache_size = -8000;` (8MB memory page cache, reduced from 64MB).
+  * `PRAGMA mmap_size = 67108864;` (64MB memory-mapped file access, reduced from 256MB).
+- **Scheduled Hourly WAL Checkpoint Truncation**: Registered APScheduler maintenance job `engine-sqlite-wal-checkpoint` in `server/app/services/scheduler.py` executing `checkpoint_sqlite_wal` (`PRAGMA wal_checkpoint(TRUNCATE);`) every hour when running on SQLite, actively preventing unbounded WAL disk growth.
+- **Presence Sweeper Interval Tuning**: Adjusted `PRESENCE_INTERVAL_SECONDS = 15` in `server/app/services/presence.py` (reduced from 5s), reducing background database connection checkouts and CPU wakeups by 66% while maintaining a guaranteed detection lag SLA of $\le 40\text{s}$ ($25\text{s} + 15\text{s}$).
+
+### Phase 4.2: PostgreSQL 16 Migration Tooling & Runbook
+- **Connection Pool Hardening**: Configured `server/databasev5.py` with `pool_size=20, max_overflow=10, pool_timeout=10, pool_recycle=1800, pool_pre_ping=True`, backed by 15s statement timeout (`-c statement_timeout=15000`).
+- **Streaming Migration Engine (`tools/migrate_sqlite_to_postgres.py`)**: Authored high-throughput streaming tool:
+  * Server-side streaming cursor with chunked batching (`fetchmany(20000)`), keeping memory footprint strictly under 50MB RAM.
+  * Strict type sanitization: ISO/epoch timestamps normalized to timezone-aware UTC datetime (`datetime.timezone.utc`), 0/1 integers cast to native booleans, JSON objects validated and formatted for PostgreSQL `JSONB`.
+  * Session replication role bypass (`SET session_replication_role = 'replica'`) during data streaming.
+  * PostgreSQL sequence resynchronization (`setval` for all serial/identity columns).
+  * Automated row parity verification report comparing source SQLite against target PostgreSQL across all 14 canonical tables.
+  * Non-destructive dry-run validation mode (`--dry-run`).
+- **Production Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Complete step-by-step operational runbook establishing a $\le 3\text{ minute}$ maintenance window procedure (pre-flight checks, T-0 WAL truncation, read-only freeze, streaming execution, sequence sync, and smoke testing).
+
+### Phase 4.3: Frontend Asset Splitting & Preload Optimization
+- **Rollup `manualChunks` Partitioning (`dashboard/vite.config.ts`)**: Split vendor code into deterministic chunks:
+  * `vendor-react` (`react`, `react-dom`, `scheduler`)
+  * `vendor-tanstack` (`@tanstack/react-query`, `query-core`, `react-router`, `router-core`)
+  * `vendor-ui` (`@radix-ui/*`, `lucide-react`, `class-variance-authority`, `tailwind-merge`, `clsx`)
+  * `vendor-charts` (`recharts`, `@xyflow/*`)
+- **Lazy-Loaded Modals**: In `dashboard/src/routes/schedules.tsx`, decoupled heavy dialog trees via dynamic `React.lazy(() => import('@/components/schedules/ScheduleDialog'))`, shrinking initial schedules chunk size.
+- **Intent-Based Navigation Preloading**: In `dashboard/src/App.tsx`, configured router with `defaultPreload: 'intent'`, `defaultPreloadDelay: 50`, `defaultPendingMs: 100`, and `defaultPendingMinMs: 200`. Coupled with background idle route warmup in `src/routes/__root.tsx` via `requestIdleCallback`.
+- **Test Suite Expansion**: Authored unit tests for `ScheduleDialog.test.tsx` (7 tests), bringing dashboard Vitest suite to **116 passing tests across 13 suites**.
+
+### Phase 4.4: Zero-Downtime Deployment & Pre-Flight Gating
+- **Work-Tree Revision Tracking**: `deploy/setup_push_deploy.sh` post-receive hook captures `oldrev=$(git rev-parse HEAD)` prior to work-tree updates.
+- **Pre-Flight Syntax Compilation Gate**: Runs `python -m compileall -q /opt/smsb/server`. If any syntax error is detected, the hook immediately reverts the work tree (`git reset --hard "${oldrev}"`) and aborts deployment without restarting the running service.
+- **Pre-Flight Application Import Gate**: Runs `python -c "from app.main import api"`. If application assembly fails due to broken imports or missing dependencies, the hook immediately reverts the work tree (`git reset --hard "${oldrev}"`) and aborts deployment.
+- **Gated SPA Compilation**: Gated asset publishing to `/var/www/gui-app` strictly on `npm run build` exit code 0, preserving live frontend assets on build failure.

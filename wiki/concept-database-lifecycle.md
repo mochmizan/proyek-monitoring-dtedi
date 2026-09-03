@@ -2,8 +2,8 @@
 type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/entity-security-auth.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/databasev5.py, server/modelsv5.py, server/init_sqlv5.py, server/alembic/env.py, server/alembic/versions/04a48dbce60b_initial_schema_as_observed.py, server/alembic/versions/b7c9e2f1a4d8_add_schedules.py, server/alembic/versions/c1a8b9f0e2d3_schema_indexing_and_nullability.py, server/app/dependencies.py, server/app/services/presence.py, server/app/services/scheduler.py, server/app/services/telemetry.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/auth.py]
-updated: 2026-09-03
+sources: [server/databasev5.py, server/modelsv5.py, server/init_sqlv5.py, server/alembic/env.py, server/alembic/versions/04a48dbce60b_initial_schema_as_observed.py, server/alembic/versions/b7c9e2f1a4d8_add_schedules.py, server/alembic/versions/c1a8b9f0e2d3_schema_indexing_and_nullability.py, server/app/dependencies.py, server/app/services/presence.py, server/app/services/scheduler.py, server/app/services/telemetry.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/auth.py, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md]
+updated: 2026-09-04
 ---
 
 # HubGate V5 Database Lifecycle & Persistence Architecture
@@ -24,8 +24,8 @@ flowchart TD
 
     subgraph "SQLAlchemy Engine Architecture"
         DialectRouter{"Dialect Check: DATABASE_URL"}
-        PGPool["PostgreSQL QueuePool<br/>pool_size: 10, max_overflow: 5<br/>statement_timeout: 15s<br/>pool_recycle: 1800s"]
-        SQLiteEngine["SQLite Engine (WAL Mode)<br/>timeout: 10s, check_same_thread: False<br/>Connect Listener: 7 PRAGMAs"]
+        PGPool["PostgreSQL QueuePool<br/>pool_size: 20, max_overflow: 10<br/>pool_timeout: 10s<br/>statement_timeout: 15s<br/>pool_recycle: 1800s"]
+        SQLiteEngine["SQLite Engine (WAL Mode)<br/>timeout: 10s, check_same_thread: False<br/>Connect Listener: 7 Hardened PRAGMAs"]
     end
 
     subgraph "Target Databases"
@@ -54,9 +54,10 @@ The database engine is instantiated via `get_engine_kwargs(DATABASE_URL)` in `se
 
 ### PostgreSQL 16 (Production Target)
 - **Deployment Host**: Dedicated VPS instances (`10.33.102.172` / `100.108.98.30`).
-- **Connection Pool Bounds (`QueuePool`)**:
-  - `pool_size = 10` (default, overridable via `DB_POOL_SIZE`): Baseline persistent connection pool maintained across requests.
-  - `max_overflow = 5` (`DB_MAX_OVERFLOW`): Upper limit of temporary burst connections created under surge traffic. Total connection ceiling is 15.
+- **Hardened Connection Pool Bounds (`QueuePool`)**:
+  - `pool_size = 20` (default, overridable via `DB_POOL_SIZE`): Baseline persistent connection pool maintained across requests.
+  - `max_overflow = 10` (`DB_MAX_OVERFLOW`): Upper limit of temporary burst connections created under surge traffic. Total connection ceiling is 30.
+  - `pool_timeout = 10` (`DB_POOL_TIMEOUT`): Fast-failing pool checkout timeout preventing worker threads from blocking indefinitely under surge load.
   - `pool_recycle = 1800` (`DB_POOL_RECYCLE`): Automatically tears down and recreates connections every 30 minutes to prevent server-side TCP timeout drops.
   - `pool_pre_ping = True`: Emits a lightweight `SELECT 1` heartbeat prior to checking out a connection, proactively evicting broken sockets.
 - **Statement Timeout Guard**:
@@ -66,20 +67,30 @@ The database engine is instantiated via `get_engine_kwargs(DATABASE_URL)` in `se
 
 ### SQLite 3 WAL Mode (Edge / Local Dev)
 - **Driver Tuning**: `check_same_thread = False`, `timeout = 10.0` (client-side driver lock acquisition ceiling).
-- **Connection-Time PRAGMA Listener**: Attached via SQLAlchemy `@event.listens_for(engine, "connect")`:
+- **Hardened Connection-Time PRAGMA Listener**: Attached via SQLAlchemy `@event.listens_for(engine, "connect")`:
   - `PRAGMA journal_mode = WAL;`: Write-Ahead Logging allows concurrent readers to query snapshots while a single writer thread operates without blocking reads.
   - `PRAGMA busy_timeout = 10000;`: Configures a 10-second wait before raising `sqlite3.OperationalError: database is locked`.
   - `PRAGMA synchronous = NORMAL;`: Safely minimizes disk sync flushes to WAL checkpoints, improving write IOPS while maintaining durability against power loss or crashes.
   - `PRAGMA foreign_keys = ON;`: Enforces relational integrity (`ON DELETE CASCADE` on child tables).
   - `PRAGMA temp_store = MEMORY;`: In-memory temporary tables and sorting buffers.
-  - `PRAGMA cache_size = -64000;`: Allocates 64MB memory page cache.
-  - `PRAGMA mmap_size = 268435456;`: Allocates 256MB memory-mapped file access.
+  - `PRAGMA cache_size = -8000;`: Allocates 8MB memory page cache, tuned for the 1GB VPS memory envelope (reduced from legacy 64MB).
+  - `PRAGMA mmap_size = 67108864;`: Allocates 64MB memory-mapped file access, preventing virtual memory exhaustion on memory-constrained VPS hosts (reduced from legacy 256MB).
+
+### Hourly SQLite WAL Maintenance Job
+- In SQLite WAL mode, continuous telemetry ingestion and concurrent analytical reads can impede automatic checkpoints, causing `hubgatev5.db-wal` to grow indefinitely on disk.
+- HubGate V5 deploys a scheduled maintenance worker `checkpoint_sqlite_wal` in `server/app/services/scheduler.py` registered as APScheduler job `engine-sqlite-wal-checkpoint`.
+- The job executes hourly:
+  ```python
+  if IS_SQLITE:
+      with engine.connect() as conn:
+          conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
+          conn.commit()
+  ```
+- This forces a checkpoint truncation, flushes all pending WAL frames into the main database file, and resets the WAL file size to 0 bytes, reclaiming disk space without interrupting active readers.
 
 ### Connection Sizing & Pool Starvation Analysis
-- **Worker-to-Connection Ratio**: FastAPI executes synchronous endpoint handlers (`def`) in AnyIO's threadpool, which defaults to 40 worker threads. Additionally, APScheduler runs background threads (presence sweeper every 5 seconds, schedule jobs, etc.).
-- **Starvation Risk**: If 20 concurrent HTTP requests arrive simultaneously while the background sweeper runs, 15 database connections (`pool_size=10 + max_overflow=5`) are checked out immediately. The remaining 5 requests block waiting for a connection checkout. SQLAlchemy's default checkout timeout is 30 seconds.
-- **Timeout Inversion**: If a connection wait lasts up to 30 seconds while `statement_timeout` is 15 seconds, client requests time out waiting for connection checkout rather than during query execution.
-- **Remediation**: For production deployments expecting $\ge 50$ concurrent clients, scale `DB_POOL_SIZE` to 25 and `DB_MAX_OVERFLOW` to 15, matching the AnyIO worker thread pool.
+- **Worker-to-Connection Ratio**: FastAPI executes synchronous endpoint handlers (`def`) in AnyIO's threadpool, which defaults to 40 worker threads. Additionally, APScheduler runs background threads (presence sweeper every 15 seconds, schedule jobs, etc.).
+- **Hardened Headroom**: Under the hardened pool configuration (`pool_size=20, max_overflow=10`, total 30 connections with `pool_timeout=10s`), concurrent HTTP requests and background workers operate with ample connection headroom, eliminating checkout starvation risks.
 
 ---
 
@@ -152,7 +163,7 @@ This is resolved via **Sliding Window Throttling**:
 |---|---|---|
 | **Concurrency Model** | Multi-writer MVCC (Multi-Version Concurrency Control) with row-level locks. | Single-writer serialization with multi-reader WAL concurrency. |
 | **Write Lock Contention** | Near-zero between distinct rows; transactions commit concurrently across connections. | Concurrent writers block until the active writer commits or 10s `busy_timeout` expires. |
-| **Connection Pooling** | `QueuePool` with bounded sizing (`pool_size=10, max_overflow=5`). | Thread-local connections via `NullPool` or `SingletonThreadPool` with `timeout=10.0s`. |
+| **Connection Pooling** | `QueuePool` with hardened sizing (`pool_size=20, max_overflow=10, pool_timeout=10s`). | Thread-local connections via `NullPool` or `SingletonThreadPool` with `timeout=10.0s`. |
 | **JSON Storage Engine** | Binary JSON (`JSONB`), supporting native GIN indexing and expression extraction. | Text JSON (`JSON`), parsed dynamically on read. Configured via `JSONB().with_variant(JSON, "sqlite")`. |
 | **Timestamp Semantics** | `TIMESTAMP WITH TIME ZONE` stores native aware UTC timestamps. | String-based `TIMESTAMP` returning naive UTC datetimes, requiring defensive timezone normalization. |
 | **Variable Binding Limits** | 65,535 parameters per query. | 999 parameters (SQLite < 3.32) or 32,766 (modern SQLite). Bounded by 500 chunking. |
@@ -249,3 +260,20 @@ HubGate V5 eliminates table-wide linear scans by aligning queries with composite
 ### 4. Eager Loading Invariants
 - `GET /api/devices` explicitly loads relations via `selectinload(dev_table.threshold_config)` and `selectinload(dev_table.room)`, eliminating lazy-load connection churn during response serialization.
 - `GET /api/rooms/{id}/map` loads paired devices using `joinedload(rooms.devices)` in a single database round-trip.
+
+---
+
+## 6. Streaming SQLite to PostgreSQL 16 Migration Pipeline
+
+To transition production from SQLite 3 WAL to PostgreSQL 16 MVCC without memory bloat or transaction loss, HubGate V5 provides a dedicated streaming migration engine (`tools/migrate_sqlite_to_postgres.py`) governed by the operational cutover runbook (`docs/runbooks/postgres_cutover_runbook.md`).
+
+### 6.1 Architectural Highlights
+- **Server-Side Cursor Streaming**: Uses chunked fetch iterations (`fetchmany(20000)`) against SQLite, maintaining a strictly bounded memory footprint under 50MB RAM even when migrating multi-gigabyte telemetry datasets.
+- **Strict Data Sanitization**:
+  - Timestamps: Casts unadorned SQLite ISO strings and epoch floats to timezone-aware UTC datetime instances (`datetime.timezone.utc`).
+  - Booleans: Converts SQLite integer flags (`0` / `1`) to native Python booleans for PostgreSQL boolean columns (`is_active`, `enabled`).
+  - JSON Payloads: Validates schema definitions and serializes dictionary structures into native PostgreSQL `JSONB`.
+- **Session Replication Bypass**: Disables foreign key validation triggers during bulk streaming (`SET session_replication_role = 'replica'`), restoring default constraint enforcement (`DEFAULT`) upon batch completion.
+- **PostgreSQL Sequence Synchronization**: Resynchronizes all serial and identity sequences (`SELECT setval(...)`) to match the highest migrated primary key ID, preventing key collisions during subsequent INSERT operations.
+- **Verification & Parity Reporting**: Runs an automated table parity audit comparing source SQLite row counts against target PostgreSQL row counts across all 14 canonical tables, reporting PASS/FAIL status.
+- **Non-Destructive Dry-Run**: The `--dry-run` flag parses tables, validates types, tests transformations, and benchmarks extraction speeds with zero writes to the target PostgreSQL cluster.

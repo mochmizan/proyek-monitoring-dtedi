@@ -2,8 +2,8 @@
 type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-dashboard-spa.md, wiki/concept-frontend-navigation.md, wiki/concept-frontend-resilience.md, wiki/concept-command-path.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-flexible-scheduling.md]
-sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/dateUtils.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
-updated: 2026-09-03
+sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/dateUtils.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, dashboard/vite.config.ts, dashboard/src/App.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
+updated: 2026-09-04
 ---
 
 # Frontend State Management Architecture
@@ -282,4 +282,42 @@ Frontend data models in `src/types/api.ts` mirror HubGate backend Pydantic schem
 | **`ScheduleResponse.next_run`** | `next_run: Optional[datetime] = None` | `next_run_at?: string \| null` | Naming discrepancy: backend exposes both `next_run` and `next_run_at`. |
 | **`DeviceResponse.status`** | `status: str = "offline"` (computed dynamically as `"pending"` \| `"online"` \| `"offline"`) | `status?: 'online' \| 'offline' \| 'pending'` | Frontend restricts to string union; backend schema defines free string, but router dynamically assigns `'pending' \| 'online' \| 'offline'`. |
 | **`DeviceResponse.threshold_config`** | `ThresholdConfigSchema` (`warning: float`, `critical: float`, `hysteresis: float = 0.5`, `debounce_seconds: int = 60`) | `ThresholdConfig` (`warning: number`, `critical: number`, `hysteresis: number`, `debounce_seconds: number`) | Aligned across JSON serialization. |
-| **`AlertResponse.timestamp`** | `UtcDateTime` (`_ensure_utc` validator enforces ISO 8601 with `Z`) | `timestamp: string` | Compatible; frontend `parseToDate` handles legacy unadorned strings defensively. |
+| **AlertResponse.timestamp** | `UtcDateTime` (`_ensure_utc` validator enforces ISO 8601 with `Z`) | `timestamp: string` | Compatible; frontend `parseToDate` handles legacy unadorned strings defensively. |
+
+---
+
+## 8. Asset Splitting, Chunking & Preloading Architecture
+
+To eliminate bundle bloat, accelerate initial page paint times, and prevent heavy secondary libraries from delaying telemetry rendering, the dashboard build is optimized across three mechanisms:
+
+### 8.1 Rollup `manualChunks` Partitioning (`dashboard/vite.config.ts`)
+The Vite configuration defines deterministic vendor chunk splitting based on dependency boundaries:
+- **`vendor-react`**: Core React runtime (`react`, `react-dom`, `scheduler`).
+- **`vendor-tanstack`**: Client cache and routing engine (`@tanstack/react-query`, `@tanstack/query-core`, `@tanstack/react-router`, `@tanstack/router-core`).
+- **`vendor-ui`**: Design system primitives and icon libraries (`@radix-ui/*`, `lucide-react`, `class-variance-authority`, `tailwind-merge`, `clsx`).
+- **`vendor-charts`**: Data visualization libraries (`recharts`, `@xyflow/*`).
+
+This partitioning ensures that long-lived vendor packages remain immutably cached by client browsers across application code releases, cutting redeployment download sizes.
+
+### 8.2 Lazy-Loaded Route Modals (`ScheduleDialog`)
+Complex interactive dialogs and form trees with secondary dependencies are decoupled from their parent route chunks via dynamic `React.lazy` imports:
+```typescript
+// dashboard/src/routes/schedules.tsx
+const ScheduleDialog = React.lazy(() => import("@/components/schedules/ScheduleDialog"));
+```
+This isolates cron preview calculations, tabbed schedule editors, and dialog markup from the main schedule list bundle, loading them on-demand only when an operator opens the creation or modification modal.
+
+### 8.3 Intent-Based Preloading & Background Route Warmup
+- **Hover Preloading**: `dashboard/src/App.tsx` configures the router with:
+  ```typescript
+  export const router = createRouter({
+    routeTree,
+    context: { queryClient },
+    defaultPreload: 'intent',
+    defaultPreloadDelay: 50,
+    defaultPendingMs: 100,
+    defaultPendingMinMs: 200,
+  });
+  ```
+  When an operator hovers over navigation links for $\ge 50\text{ms}$, TanStack Router speculatively initiates route chunk downloading and query prefetching.
+- **Idle Route Warmup**: Once authenticated, `dashboard/src/routes/__root.tsx` invokes `requestIdleCallback` to preload frequently navigated secondary views (`/hubs`, `/alerts`, `/map`, `/schedules`, `/settings`), guaranteeing instantaneous zero-latency page transitions during active operations.
