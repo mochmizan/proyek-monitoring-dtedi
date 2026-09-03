@@ -123,6 +123,43 @@ describe('RoomCard Component', () => {
       expect(screen.getByText('EMERGENCY_GENSET')).toBeInTheDocument();
       expect(screen.getByText('Aki 11.0V')).toBeInTheDocument();
     });
+
+    it('does not display device connection status ONLINE as ATS power state when latest_reading is missing', () => {
+      const devices: DeviceResponse[] = [
+        {
+          dev_id: 'dev-ats-missing-telemetry',
+          dev_name: 'ATS Unit 2',
+          dev_type: 'ATS',
+          status: 'online',
+          is_active: true,
+          latest_reading: null,
+        },
+      ];
+
+      render(<RoomCard room={baseRoom} devices={devices} />);
+
+      expect(screen.getByText('ATS Power')).toBeInTheDocument();
+      expect(screen.queryByText('ONLINE')).not.toBeInTheDocument();
+      expect(screen.getByText('UNKNOWN')).toBeInTheDocument();
+    });
+
+    it('renders ATS PLN_ON state with emerald PLN badge styling', () => {
+      const devices: DeviceResponse[] = [
+        {
+          dev_id: 'dev-ats-pln-on',
+          dev_name: 'ATS Unit PLN',
+          dev_type: 'ATS',
+          is_active: true,
+          latest_reading: { state: 'PLN_ON', aki: 12.5 },
+        },
+      ];
+
+      render(<RoomCard room={baseRoom} devices={devices} />);
+
+      const badge = screen.getByText('PLN_ON');
+      expect(badge).toBeInTheDocument();
+      expect(badge.className).toContain('text-emerald-400');
+    });
   });
 
   describe('SECTION A + B: Stacked layout', () => {

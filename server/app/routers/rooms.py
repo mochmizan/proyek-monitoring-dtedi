@@ -19,6 +19,7 @@ from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
 from app.core.config import FLOORPLAN_UPLOAD_DIR, STATIC_DIR, ALLOWED_FLOORPLAN_TYPES, ALLOWED_FLOORPLAN_EXTENSIONS, MAX_FLOORPLAN_FILE_SIZE
 from app.routers.devices import _build_epoch_bucket_expr
+from app.services.telemetry import get_latest_readings_for_devices
 
 router = APIRouter(tags=["rooms"])
 
@@ -438,86 +439,10 @@ def get_room_map(
             devices=[],
         )
 
+    readings = get_latest_readings_for_devices(db, devices)
     marker_list = []
     for d in devices:
         status_str = "active" if d.is_active else "inactive"
-        latest_reading = None
-
-        if d.dev_type == "ATS":
-            ats_row = (
-                db.query(ats_data)
-                .filter(ats_data.dev_id == d.dev_id)
-                .order_by(ats_data.timestamp.desc())
-                .first()
-            )
-            if ats_row:
-                ts_dt = ats_row.timestamp
-                latest_reading = {
-                    "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
-                    "state": ats_row.state,
-                    "pln": ats_row.pln,
-                    "genset": ats_row.genset,
-                    "aki": ats_row.aki,
-                    "rem_hour": ats_row.rem_hour,
-                    "rem_min": ats_row.rem_min,
-                    "rem_sec": ats_row.rem_sec,
-                    "auto_mode": ats_row.auto_mode,
-                    "emergency": ats_row.emergency,
-                }
-        elif d.dev_type in ("TS", "AC", "ACC"):
-            ts_row = (
-                db.query(temperature_data)
-                .filter(temperature_data.dev_id == d.dev_id)
-                .order_by(temperature_data.timestamp.desc())
-                .first()
-            )
-            if ts_row:
-                ts_dt = ts_row.timestamp
-                latest_reading = {
-                    "timestamp": ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else (str(ts_dt) if ts_dt else None),
-                    "temp": ts_row.temp,
-                    "humid": ts_row.humid,
-                }
-            if d.dev_type in ("AC", "ACC"):
-                dt_row = (
-                    db.query(data_table)
-                    .filter(data_table.dev_id == d.dev_id)
-                    .order_by(data_table.timestamp.desc())
-                    .first()
-                )
-                if dt_row and dt_row.payload and isinstance(dt_row.payload, dict):
-                    p = dt_row.payload
-                    if latest_reading is None:
-                        latest_reading = {}
-                        ts_dt = dt_row.timestamp
-                        if ts_dt:
-                            latest_reading["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else str(ts_dt)
-                    for k in ("AC1_POWER", "AC1_TEMP", "AC2_POWER", "AC2_TEMP"):
-                        val = p.get(k)
-                        if val is None:
-                            val = p.get(k.lower())
-                        if val is not None:
-                            if "POWER" in k and isinstance(val, str):
-                                val = val.upper()
-                            latest_reading[k] = val
-                            latest_reading[k.lower()] = val
-
-        # If no reading found yet, check data_table
-        if latest_reading is None:
-            dt_row = (
-                db.query(data_table)
-                .filter(data_table.dev_id == d.dev_id)
-                .order_by(data_table.timestamp.desc())
-                .first()
-            )
-            if dt_row:
-                p = dt_row.payload or {}
-                payload_copy = dict(p) if isinstance(p, dict) else {}
-                if "timestamp" not in payload_copy and dt_row.timestamp:
-                    ts_dt = dt_row.timestamp
-                    payload_copy["timestamp"] = ts_dt.isoformat() if hasattr(ts_dt, "isoformat") else str(ts_dt)
-                latest_reading = payload_copy
-
         marker_list.append(
             RoomMapMarker(
                 dev_id=d.dev_id,
@@ -527,7 +452,7 @@ def get_room_map(
                 marker_y=d.marker_y,
                 is_active=d.is_active,
                 status=status_str,
-                latest_reading=latest_reading,
+                latest_reading=readings.get(d.dev_id),
             )
         )
 

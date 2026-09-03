@@ -161,9 +161,9 @@ export function RoomCard({ room, status, devices, alerts, sparklinePoints, class
           <div className="flex flex-wrap gap-2 items-center">
             {atsDevices.map((d) => {
               const state = String(
-                d.latest_reading?.state || d.latest_reading?.STATE || d.status || 'UNKNOWN'
+                d.latest_reading?.state || d.latest_reading?.STATE || 'UNKNOWN'
               ).toUpperCase();
-              const isPln = state === 'PLN';
+              const isPln = state === 'PLN' || state.startsWith('PLN') || state.includes('PLN');
               const isEmergency =
                 state.includes('EMERGENCY') || state.includes('GENSET') || state.includes('ALARM');
               const rawVolt = d.latest_reading?.battery ?? d.latest_reading?.aki ?? d.latest_reading?.AKI;

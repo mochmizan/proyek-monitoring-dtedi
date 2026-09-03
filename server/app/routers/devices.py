@@ -14,6 +14,7 @@ from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
 from app.routers.alerts import parse_datetime_param
 from app.dependencies import hub_auth_cache, stage_hub_heartbeat
+from app.services.telemetry import get_latest_readings_for_devices
 
 router = APIRouter(tags=["devices"])
 
@@ -515,6 +516,9 @@ def get_device(
             debounce_seconds=device.threshold_config.debounce_seconds,
         )
 
+    readings = get_latest_readings_for_devices(db, [device])
+    latest_reading = readings.get(device.dev_id)
+
     return DeviceResponse(
         dev_id=device.dev_id,
         dev_name=device.dev_name,
@@ -528,6 +532,7 @@ def get_device(
         marker_y=device.marker_y,
         created_at=device.created_at,
         threshold_config=thresh_schema,
+        latest_reading=latest_reading,
     )
 
 
@@ -616,6 +621,7 @@ def get_devices(
         )
 
     devices = db.execute(stmt).scalars().all()
+    readings = get_latest_readings_for_devices(db, devices)
     results = []
     for d in devices:
         thresh_schema = None
@@ -649,6 +655,7 @@ def get_devices(
                 marker_y=d.marker_y,
                 created_at=d.created_at,
                 threshold_config=thresh_schema,
+                latest_reading=readings.get(d.dev_id),
             )
         )
     return results

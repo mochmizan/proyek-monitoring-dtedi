@@ -259,6 +259,7 @@ class DeviceResponse(BaseModel):
     marker_y: Optional[float] = None
     created_at: OptionalUtcDateTime = None
     threshold_config: Optional[ThresholdConfigSchema] = None
+    latest_reading: Optional[dict[str, Any]] = None
 
     model_config = {"from_attributes": True}
 
