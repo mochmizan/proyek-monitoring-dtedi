@@ -238,6 +238,20 @@ def remove_job(schedule_id: str) -> None:
         pass
 
 
+def checkpoint_sqlite_wal() -> None:
+    """Hourly maintenance job to truncate SQLite WAL and reclaim disk space."""
+    try:
+        from databasev5 import engine, IS_SQLITE
+        from sqlalchemy import text
+        if IS_SQLITE:
+            with engine.connect() as conn:
+                conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
+                conn.commit()
+            logger.info("SQLite WAL checkpoint (TRUNCATE) executed successfully")
+    except Exception as e:
+        logger.warning(f"SQLite WAL checkpoint failed: {e}")
+
+
 @asynccontextmanager
 async def scheduler_lifespan(app):
     """FastAPI lifespan that starts/stops APScheduler and rehydrates jobs."""
@@ -309,6 +323,18 @@ async def scheduler_lifespan(app):
         coalesce=True,
         max_instances=1,
         misfire_grace_time=15,
+    )
+
+    # Register hourly SQLite WAL checkpoint job
+    scheduler.add_job(
+        checkpoint_sqlite_wal,
+        trigger="interval",
+        hours=1,
+        id="engine-sqlite-wal-checkpoint",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=300,
     )
 
     try:

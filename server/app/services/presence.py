@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 HUB_ONLINE_WINDOW_SECONDS = 25
 DEVICE_OFFLINE_WINDOW_SECONDS = 25
-PRESENCE_INTERVAL_SECONDS = 5
+PRESENCE_INTERVAL_SECONDS = 15
 
 
 def evaluate_device_presence_batch() -> None:

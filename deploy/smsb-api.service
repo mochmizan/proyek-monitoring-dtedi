@@ -34,15 +34,16 @@ EnvironmentFile=/opt/smsb/server/.env
 
 # --- Process launch ------------------------------------------------------------
 # Bound to loopback only. --proxy-headers trusts X-Forwarded-* exclusively from
-# nginx (127.0.0.1). 2 workers + limit-concurrency fits the 1 GB RAM budget.
-ExecStart=/opt/smsb/venv/bin/python -m uvicorn app.main:api --host 127.0.0.1 --port 8000 --workers 2 --limit-concurrency 50 --proxy-headers --forwarded-allow-ips=127.0.0.1
+# nginx (127.0.0.1). 1 worker + limit-concurrency fits the 1 GB RAM budget.
+ExecStart=/opt/smsb/venv/bin/python -m uvicorn app.main:api --host 127.0.0.1 --port 8000 --workers 1 --limit-concurrency 50 --proxy-headers --forwarded-allow-ips=127.0.0.1
 
 # --- Restart policy & resource ceiling -----------------------------------------
 # Always recover from crashes after a 5s cooldown; hard-cap memory so a leak
-# cannot OOM the 1 GB VPS (systemd kills and restarts the unit at 500M).
+# cannot OOM the VPS (systemd kills and restarts the unit at 800M).
 Restart=always
 RestartSec=5
-MemoryMax=500M
+MemoryHigh=650M
+MemoryMax=800M
 
 # --- Sandboxing / hardening ----------------------------------------------------
 # NoNewPrivileges: blocks privilege escalation via setuid/sudo from the service.

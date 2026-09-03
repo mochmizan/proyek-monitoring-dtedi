@@ -553,6 +553,7 @@ def test_scheduler_startup_single_session(clean_db):
             assert sched is not None
             assert sched.running
             assert sched.get_job("engine-device-presence") is not None
+            assert sched.get_job("engine-sqlite-wal-checkpoint") is not None
             assert sched.get_job("schedule-sch-test-1") is not None
             assert sched.get_job("schedule-sch-test-2") is not None
 
@@ -563,3 +564,9 @@ def test_scheduler_startup_single_session(clean_db):
     s1_check = db.get(schedules, "sch-test-1")
     assert s1_check.next_run_at is not None
     db.close()
+
+
+def test_checkpoint_sqlite_wal():
+    """checkpoint_sqlite_wal successfully executes PRAGMA wal_checkpoint(TRUNCATE)."""
+    from app.services.scheduler import checkpoint_sqlite_wal
+    checkpoint_sqlite_wal()
