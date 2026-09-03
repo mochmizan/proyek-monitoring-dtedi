@@ -1,4 +1,4 @@
-﻿# AGENTS.md — openspec
+# AGENTS.md — openspec
 
 ## Purpose
 
@@ -21,7 +21,7 @@ changes/<change-name>/
     └── spec.md             # Requirements: SHALL + WHEN/THEN scenarios
 ```
 
-- `changes/` pruned 2026-08-27 (`8f1e12e`) — prior proposals IMPLEMENTED & VERIFIED, archived in git (`git log --all -- openspec/changes/` / `git show 8f1e12e^:openspec/changes/`); specs retained in `docs/`; active: `changes/ats-flexible-schedule-2026-08-29/` (VPS `schedules` + dashboard `schedules`)
+- `changes/` pruned 2026-08-27 (`8f1e12e`) — prior proposals IMPLEMENTED & VERIFIED, archived in git (`git log --all -- openspec/changes/` / `git show 8f1e12e^:openspec/changes/`); specs retained in `docs/`; retained changes: `changes/ats-flexible-schedule-2026-08-29/` (COMPLETED & live in prod since `b4dcec6`), `changes/dashboard-full-shadcn-redesign-2026-08-29/` (REVERTED in `35e0582`, preserved as reference); active proposals: none
 
 ## Work Guidance
 

@@ -16,7 +16,7 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 - [entity-hubbrain-v5.md](entity-hubbrain-v5.md) — Raspberry Pi edge gateway (hub/): MQTT bridge, WAL cache, command dispatch
 - [entity-dashboard-spa.md](entity-dashboard-spa.md) — React 19 SPA (dashboard/): routes, TanStack Query polling, WIB rendering, multi-panel charts
 - [entity-ats-firmware-chain.md](entity-ats-firmware-chain.md) — Two-MCU ATS controller: PROMINI FSM + WEMOS_ATS bridge, serial framing
-- [entity-deploy-pipeline.md](entity-deploy-pipeline.md) — Push-deploy to VPS via post-receive hook; legacy runtime path compat
+- [entity-deploy-pipeline.md](entity-deploy-pipeline.md) — Push-deploy to VPS via post-receive hook; normalized server runtime path
 - [entity-data-model.md](entity-data-model.md) — HubGate V5 tables, composite indexes, unique constraints, and schema nullability
 
 ## Concepts

@@ -211,7 +211,7 @@ smsb/
 ├── deploy/  nginx_smsb.conf  smsb-api.service  hubbrain.service  setup_push_deploy.sh
 ├── tools/  deploy_pi_edge.py  verifiers  sniffers  seeders
 ├── tests/  test_e2e_pipeline.py  test_verify_*.py
-├── openspec/  AGENTS.md  changes/ats-flexible-schedule-2026-08-29/
+├── openspec/  AGENTS.md  changes/ats-flexible-schedule-2026-08-29/  changes/dashboard-full-shadcn-redesign-2026-08-29/
 ├── mosquitto/  config/mosquitto.conf (passwd gitignored)
 └── graphify-out/ (ignored)
 ```
