@@ -15,7 +15,7 @@ from modelsv5 import (
     rooms, device_threshold_config, temperature_data, ats_data, data_table
 )
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 from test_phase5_presence_nplus1 import QueryCounter
 
 client = TestClient(api)

@@ -28,7 +28,7 @@ from modelsv5 import (
     ats_data, pending_commands, User, UserSession, event_log, rooms
 )
 from schemasv5 import TSData, ACData
-from hubgatev5 import api
+from app.main import api
 
 client = TestClient(api)
 api.state.limiter.enabled = False

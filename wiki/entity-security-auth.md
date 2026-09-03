@@ -221,62 +221,70 @@ When a limit quota is exhausted, SlowAPI raises `RateLimitExceeded`, handled by 
 
 A comprehensive architectural security audit reveals ten critical vulnerabilities and hardening gaps:
 
-### SEC-01: Client IP Spoofing via Forwarded Headers
+### SEC-01: Client IP Spoofing via Forwarded Headers [RESOLVED]
+- **Status**: **RESOLVED**
 - **Location**: `server/app/core/rate_limit.py` (`get_forwarded_address`).
-- **Mechanism**: The helper extracts `X-Real-IP` or the first component of `X-Forwarded-For` without validating that `request.client.host` originates from a trusted reverse proxy (`ForwardedAllowIPS = 127.0.0.1` defined in `config.py`).
-- **Impact**: Any direct client accessing port 8000 can forge arbitrary IP addresses in `X-Real-IP: 1.2.3.4`, completely circumventing SlowAPI rate limits or maliciously causing denial of service against victim IP addresses.
-- **Remediation**: Validate `request.client.host in TRUSTED_PROXIES` before evaluating `X-Real-IP` or `X-Forwarded-For`. Fall back strictly to `request.client.host` if untrusted.
+- **Mechanism**: The helper originally extracted `X-Real-IP` or the first component of `X-Forwarded-For` without validating proxy origin.
+- **Resolution**: Hardened in `server/app/core/rate_limit.py` to validate `request.client.host in TRUSTED_PROXIES` before parsing `X-Real-IP` or `X-Forwarded-For`. If untrusted, it strictly falls back to `request.client.host`, preventing spoofing against SlowAPI rate limits.
 
 ### SEC-02: Missing Explicit CSRF Tokens for Mutating Endpoints
+- **Status**: Open
 - **Location**: `server/app/routers/` (all state-changing `POST`, `PUT`, `PATCH`, `DELETE` routes).
 - **Mechanism**: Protection relies exclusively on cookie `SameSite="lax"`. While this blocks cross-origin subresource requests, top-level window navigations and legacy browser quirks can still transmit cookies.
 - **Impact**: Potential CSRF exposure on state-changing endpoints if the frontend SPA is hosted across divergent subdomain origins.
 - **Remediation**: Implement double-submit CSRF cookie verification or require custom headers (`X-Requested-With` or `X-CSRF-Token`) on all mutating endpoints.
 
-### SEC-03: Inconsistent RBAC Enforcement Mechanisms
-- **Location**: `server/app/routers/schedules.py` (lines 188-191, 291, 359) and `server/app/routers/commands.py` (lines 31-41).
-- **Mechanism**: Handlers inject `get_current_user` and imperatively verify `if current_user.role != "admin": raise HTTPException(403)` rather than declaring `current_user: User = Depends(require_role("admin"))` in route signatures.
-- **Impact**: Architectural inconsistency, elevated risk of missed permission checks during route maintenance, and omission of declarative security requirements from generated OpenAPI documentation.
-- **Remediation**: Refactor all privileged routes to employ the declarative `require_role(...)` dependency factory.
+### SEC-03: Inconsistent RBAC Enforcement Mechanisms [RESOLVED]
+- **Status**: **RESOLVED**
+- **Location**: `server/app/routers/schedules.py` and `server/app/routers/commands.py`.
+- **Mechanism**: Handlers previously injected `get_current_user` and imperatively checked `if current_user.role != "admin"`.
+- **Resolution**: Refactored all privileged schedule and command routes to employ declarative dependency injection via `current_user: User = Depends(require_role("admin"))`, ensuring architectural consistency and OpenAPI schema reflection.
 
 ### SEC-04: Plaintext Storage of Edge Hub API Keys
+- **Status**: Open
 - **Location**: `server/modelsv5.py` (`hub_table.hub_key`).
 - **Mechanism**: Hub keys are stored as plaintext strings in the database to enable lookup into `HubAuthCache`.
 - **Impact**: A database read leak (e.g. SQL injection or database backup compromise) exposes all edge hub API keys, granting attackers the ability to forge telemetry and intercept downlink commands.
 - **Remediation**: Store SHA-256 or Argon2id hashes of `hub_key`. Edge hubs supply plaintext keys in `X-Hub-Key`; HubGate validates against stored hashes using constant-time digest verification.
 
 ### SEC-05: Inadvertent Database Write on Read Endpoints
+- **Status**: Open
 - **Location**: `server/app/routers/devices.py` (lines 576-577) and `server/app/routers/commands.py` (lines 75-76).
 - **Mechanism**: When `GET /api/devices` or `GET /api/hub/commands` is invoked with edge hub credentials, `stage_hub_heartbeat(hub)` mutates the ORM object, followed by `if db.dirty: db.commit()`.
 - **Impact**: Violates the read-only invariant for `GET` requests, creating write lock contention on SQLite edge deployments during periodic hub polling.
 - **Remediation**: Remove `db.commit()` from all `GET` routes. Edge hub heartbeats must strictly commit via ingestion routes (`/api/iot`) or dedicated heartbeat ping routes.
 
-### SEC-06: Missing Device-to-Hub Ownership Validation on Telemetry Ingestion
-- **Location**: `server/app/routers/iot.py` (lines 194-196 in `receive_iot`, lines 298-305 in `receive_iot_batch`).
-- **Mechanism**: Ingestion verifies that the submitting hub is authenticated (`verify_hub_identity`) and that the target device exists and is active (`dev.is_active == True`). However, it never checks whether `dev.hub_id == hub.hub_id`.
-- **Impact**: Any valid edge hub can inject spoofed sensor telemetry for devices belonging to entirely different hubs, facilities, or rooms.
-- **Remediation**: Enforce `if dev.hub_id != hub.hub_id: raise HTTPException(403, "Device does not belong to this hub")` in both single and batch ingestion endpoints.
+### SEC-06: Missing Device-to-Hub Ownership Validation on Telemetry Ingestion [RESOLVED]
+- **Status**: **RESOLVED**
+- **Location**: `server/app/routers/iot.py` (`receive_iot` and `receive_iot_batch`).
+- **Mechanism**: Previously, ingestion verified hub identity and device active status but omitted verifying that the device was paired with the reporting hub.
+- **Resolution**: Enforced explicit ownership assertions in `server/app/routers/iot.py`:
+  - In `receive_iot`: `if registered_device.hub_id != hub.hub_id:` logs a security warning and raises `HTTPException(403, detail="Device does not belong to this hub")`.
+  - In `receive_iot_batch`: `if dev_obj.hub_id != hub.hub_id:` logs a security warning, skips ingestion for that device, and increments `ignored_count`. Cross-hub device spoofing is completely prevented.
 
 ### SEC-07: Unbounded Session Store Accumulation (Missing Stale Session GC)
+- **Status**: Open
 - **Location**: `server/modelsv5.py` (`UserSession`) and `server/auth.py`.
 - **Mechanism**: Session deletion occurs only on explicit logout (`POST /api/auth/logout`) or when an expired session token is presented in an inbound request. If a user closes the browser without logging out, expired session rows persist indefinitely.
 - **Impact**: Continuous table bloat in the `sessions` table, degrading B-tree index performance on `ix_sessions_user_expires`.
 - **Remediation**: Schedule a recurring APScheduler cleanup task (`delete from sessions where expires_at < now()`) to prune expired sessions hourly.
 
 ### SEC-08: Non-Explicit Argon2id Parameter Configuration
+- **Status**: Open
 - **Location**: `server/auth.py` (line 16: `ph = PasswordHasher()`).
 - **Mechanism**: Instantiated with default constructor arguments. While current library defaults align with RFC 9106, upgrading `argon2-cffi` or deploying across divergent platforms can alter memory and iteration costs without warning.
 - **Impact**: Non-deterministic hash parameters across environments and potential performance degradation on resource-constrained nodes.
 - **Remediation**: Explicitly pass production parameters: `PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16)`.
 
 ### SEC-09: Unstructured Exception Payloads & Information Disclosure
+- **Status**: Open
 - **Location**: Across all routers (`server/app/routers/`).
 - **Mechanism**: Errors are raised via ad-hoc strings in `HTTPException(detail="...")`, frequently mixing Indonesian and English messages. Furthermore, uncaught exceptions bubble to FastAPI's default handler without standardized error schemas or correlation IDs.
 - **Impact**: Client applications cannot reliably parse error conditions programmatically, and internal database error messages can leak schema details.
 - **Remediation**: Implement a centralized `ErrorResponse` schema (`code`, `message`, `correlation_id`, `details`) and register global exception handlers for `SQLAlchemyError`, `RequestValidationError`, and generic `Exception`.
 
-### SEC-10: Write Amplification from Session Sliding Window on Read Routes
-- **Location**: `server/auth.py` (`verify_session`, lines 126-127).
-- **Mechanism**: Every request authenticated via session cookie triggers `db_session.expires_at = min(now + 2h, absolute_expiry)` followed by `db.commit()`.
-- **Impact**: Every authenticated `GET` request issues an `UPDATE sessions` query and commits a write transaction. On SQLite WAL, this forces serialized write locks for concurrent read traffic; on PostgreSQL, it generates intense UPDATE churn and VACUUM pressure.
-- **Remediation**: Throttle session sliding updates: only execute the `UPDATE` and `db.commit()` if `expires_at - now < 90 minutes` (half of the sliding window).
+### SEC-10: Write Amplification from Session Sliding Window on Read Routes [RESOLVED]
+- **Status**: **RESOLVED**
+- **Location**: `server/auth.py` (`verify_session`).
+- **Mechanism**: Every request authenticated via session cookie previously executed `db_session.expires_at = min(now + 2h, absolute_expiry)` followed by `db.commit()`, forcing write transactions and exclusive locks on `GET` requests.
+- **Resolution**: Implemented sliding window throttling in `server/auth.py`. An `UPDATE sessions` write transaction and `db.commit()` are executed only when remaining validity is `< 90 minutes` (`remaining_validity < timedelta(minutes=90)`). Requests with fresh sessions (remaining validity $\ge 90\text{m}$) bypass database writes completely, eliminating write-on-read lock serialization and PostgreSQL update churn.

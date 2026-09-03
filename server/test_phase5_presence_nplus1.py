@@ -24,7 +24,7 @@ from modelsv5 import (
     event_log, schedules
 )
 from auth import get_current_user, hash_password
-from hubgatev5 import api
+from app.main import api
 from app.services.presence import (
     evaluate_device_presence_batch,
     PRESENCE_INTERVAL_SECONDS,

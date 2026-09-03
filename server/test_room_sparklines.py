@@ -22,7 +22,7 @@ from modelsv5 import (
     rooms, temperature_data, ats_data, data_table
 )
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 from app.routers.devices import _build_epoch_bucket_expr
 
 client = TestClient(api)

@@ -21,7 +21,7 @@ init_sqlv5.init_db()
 
 from auth import hash_password
 from databasev5 import Base, SessionLocal, engine
-from hubgatev5 import api
+from app.main import api
 from modelsv5 import (
     User,
     UserSession,

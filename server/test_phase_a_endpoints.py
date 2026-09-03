@@ -26,7 +26,7 @@ from modelsv5 import (
     rooms, device_threshold_config, pending_commands
 )
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 
 from contextlib import contextmanager
 from sqlalchemy import text
@@ -302,3 +302,47 @@ def test_get_command_orphaned_device_not_found():
     client.cookies.update(cookies)
     resp = client.get("/api/commands/cmd-orphan-999")
     assert resp.status_code == 404
+
+
+def test_structured_logging_and_x_request_id():
+    """Verify structured JSON request logging middleware attaches X-Request-ID and logs valid JSON."""
+    import json
+    import logging
+    from app.core.logging import access_logger
+
+    captured_records: list[str] = []
+
+    class MemoryHandler(logging.Handler):
+        def emit(self, record):
+            captured_records.append(self.format(record))
+
+    handler = MemoryHandler()
+    access_logger.addHandler(handler)
+    try:
+        # 1. Request without X-Request-ID (generates UUID4)
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        req_id = resp.headers.get("X-Request-ID")
+        assert req_id is not None and len(req_id) > 10
+
+        assert len(captured_records) >= 1
+        last_log = json.loads(captured_records[-1])
+        assert last_log["request_id"] == req_id
+        assert last_log["method"] == "GET"
+        assert last_log["path"] == "/health"
+        assert last_log["status_code"] == 200
+        assert isinstance(last_log["latency_ms"], (int, float))
+        assert "timestamp" in last_log
+        assert "client_ip" in last_log
+
+        # 2. Request with explicit X-Request-ID
+        custom_id = "custom-trace-id-abc-123"
+        resp2 = client.get("/health", headers={"X-Request-ID": custom_id})
+        assert resp2.status_code == 200
+        assert resp2.headers.get("X-Request-ID") == custom_id
+
+        last_log2 = json.loads(captured_records[-1])
+        assert last_log2["request_id"] == custom_id
+        assert last_log2["status_code"] == 200
+    finally:
+        access_logger.removeHandler(handler)

@@ -236,10 +236,51 @@ def test_fastapi_dependencies():
     finally:
         db.close()
 
+def test_session_sliding_window_throttling():
+    """Verify SEC-10: session sliding window updates expires_at only if remaining validity < 90m."""
+    db = SessionLocal()
+    try:
+        user_id = str(uuid.uuid4())
+        user = User(
+            id=user_id,
+            username="throttle_user",
+            password_hash=hash_password("pw123"),
+            display_name="Throttle User",
+            role="viewer"
+        )
+        db.add(user)
+        db.commit()
+
+        # 1. Fresh session with ~120m remaining -> verify_session skips DB write
+        sess = create_session(db, user_id)
+        original_expires = sess.expires_at
+        verified_user = verify_session(db, sess.session_id)
+        assert verified_user.id == user_id
+        db.refresh(sess)
+        assert sess.expires_at == original_expires
+
+        # 2. Age session so remaining validity is 85m (< 90m) -> verify_session updates expires_at
+        now = datetime.datetime.now(UTC)
+        sess.expires_at = now + timedelta(minutes=85)
+        db.commit()
+        db.refresh(sess)
+        aged_expires = sess.expires_at
+
+        verified_user = verify_session(db, sess.session_id)
+        assert verified_user.id == user_id
+        db.refresh(sess)
+        # Should now be extended to ~2 hours from now (> 85m)
+        assert sess.expires_at > aged_expires
+        remaining = sess.expires_at.replace(tzinfo=UTC) - datetime.datetime.now(UTC) if sess.expires_at.tzinfo is None else sess.expires_at - datetime.datetime.now(UTC)
+        assert remaining > timedelta(minutes=110)
+    finally:
+        db.close()
+
 if __name__ == "__main__":
     test_password_hashing()
     test_create_admin_user_cli_and_db()
     test_session_management()
+    test_session_sliding_window_throttling()
     test_lockout_rate_limiting()
     test_fastapi_dependencies()
     print("=== ALL AUTH WORKER TESTS PASSED SUCCESSFULLY! ===")

@@ -22,7 +22,7 @@ from modelsv5 import (
     pending_commands, schedules, device_threshold_config
 )
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 
 client = TestClient(api)
 api.state.limiter.enabled = False

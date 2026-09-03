@@ -122,7 +122,7 @@ Installed at `/etc/systemd/system/smsb-api.service`:
   - `EnvironmentFile=/opt/smsb/server/.env`
 - **Execution Command**:
   ```ini
-  ExecStart=/opt/smsb/venv/bin/python -m uvicorn hubgatev5:api \
+  ExecStart=/opt/smsb/venv/bin/python -m uvicorn app.main:api \
       --host 127.0.0.1 --port 8000 --workers 2 --limit-concurrency 50 \
       --proxy-headers --forwarded-allow-ips=127.0.0.1
   ```

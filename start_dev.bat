@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 title SMSB IoT Monitoring Platform Launcher
 color 0A
 
@@ -25,7 +25,7 @@ if %errorlevel% neq 0 (
 
 :: 3. Launch Backend HubGate V5
 echo [1/3] Starting HubGate V5 Central Server on port 8000...
-start "HubGate V5 API (Port 8000)" cmd /k "cd /d %~dp0server && python -m uvicorn hubgatev5:api --host 0.0.0.0 --port 8000"
+start "HubGate V5 API (Port 8000)" cmd /k "cd /d %~dp0server && python -m uvicorn app.main:api --host 0.0.0.0 --port 8000"
 
 :: 4. Launch Frontend React SPA
 echo [2/3] Starting Frontend SPA Dev Server on port 5173...

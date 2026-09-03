@@ -121,10 +121,14 @@ def verify_session(db: Session, session_id: str) -> User | None:
         db.commit()
         raise SessionExpired()
 
-    # C. Perbarui Waktu Kedaluwarsa (sliding capped pada 12 jam absolut)
-    sliding_window = timedelta(hours=2)
-    db_session.expires_at = min(now + sliding_window, absolute_expiry)
-    db.commit()
+    # C. Perbarui Waktu Kedaluwarsa (sliding capped pada 12 jam absolut) dengan throttling
+    # SEC-10: Hanya eksekusi UPDATE jika sisa validitas < 90 menit.
+    # Request dengan session segar (remaining >= 90 menit) melompati write DB sepenuhnya.
+    remaining_validity = expires_at - now
+    if remaining_validity < timedelta(minutes=90):
+        sliding_window = timedelta(hours=2)
+        db_session.expires_at = min(now + sliding_window, absolute_expiry)
+        db.commit()
 
     # Ambil data user
     user = db.query(User).filter(User.id == db_session.user_id).first()

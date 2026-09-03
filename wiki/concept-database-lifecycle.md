@@ -128,16 +128,21 @@ In earlier iterations, helper dependencies or secondary services performed inter
 1. **Dependency Staging**: Dependencies only mutate ORM entity state in memory (`stage_hub_heartbeat`).
 2. **Atomic Ingestion Commit**: In `POST /api/iot` and `POST /api/iot/batch`, hub heartbeat update, telemetry record insertion (`bulk_insert_or_ignore`), presence state update (`resolve_offline_on_telemetry`), and alert evaluation (`evaluate_device_thresholds`) commit in a single, unified `db.commit()` call.
 3. **Idempotent Bulk Upsert**: `bulk_insert_or_ignore` inserts records in chunks of 500 (`chunk_size=500` to remain safely below SQLite variable binding limits) using `ON CONFLICT (dev_id, timestamp) DO NOTHING` on PostgreSQL and SQLite, ensuring WAL replays cause no duplicates or rollbacks.
+4. **Device Ownership Enforcement (`SEC-06`)**: Prior to staging or inserting records, `receive_iot` and `receive_iot_batch` verify that `device.hub_id == hub.hub_id`. Telemetry from an unassociated device is rejected (HTTP 403 in single ingest, or skipped with incremented `ignored_count` in batch ingest) with security warning logging, executing zero database write operations for unauthorized payloads.
 
 ### Background Worker Session Discipline
 Background tasks run in independent, isolated database sessions to prevent cross-thread session bleeding:
 - **Presence Sweeper (`evaluate_device_presence_batch`)**: Scheduled every 5 seconds. Opens `db = SessionLocal()`, executes batch scans, prunes stale pending nodes with a bulk `delete()`, commits state transitions, and guarantees `finally: db.close()`.
 - **APScheduler Execution (`fire_schedule`)**: Triggered by cron triggers. Opens a fresh `SessionLocal()`, inserts `pending_commands`, updates `schedules.next_run_at`, commits, and closes the session.
 
-### Identified Write-on-Read Lock Leaks
-While the ingestion pipeline enforces atomic commits, two architectural write-on-read flaws exist:
-1. **Session Sliding Window Churn**: Every request authenticated via session cookie triggers `verify_session` in `server/auth.py`, executing `UPDATE sessions SET expires_at = ...` and `db.commit()`. On SQLite WAL, this forces an EXCLUSIVE write lock on every GET request, transforming concurrent read traffic into a serialized write bottleneck.
-2. **Residual Commits in Hub Read Routes**: In `server/app/routers/devices.py` (lines 576-577) and `server/app/routers/commands.py` (lines 75-76), `GET /api/devices` and `GET /api/hub/commands` execute `stage_hub_heartbeat(hub)` followed by `if db.dirty: db.commit()`.
+### Session Sliding Window Throttling (`SEC-10`) & Write-on-Read Elimination
+Previously, every request authenticated via session cookie in `server/auth.py` executed `UPDATE sessions SET expires_at = ...` and `db.commit()`. On SQLite WAL, this forced an EXCLUSIVE write lock on every GET request, transforming concurrent read traffic into a serialized write bottleneck.
+
+This is resolved via **Sliding Window Throttling**:
+- `verify_session` inspects `remaining_validity = expires_at - now`.
+- A database write transaction and `db.commit()` are executed **only** if `remaining_validity < timedelta(minutes=90)`.
+- Inbound requests with fresh sessions ($\ge 90$ minutes remaining) skip the database write completely.
+- This eliminates the write-on-read lock in SQLite WAL and dramatically reduces UPDATE churn and VACUUM pressure in PostgreSQL.
 
 ---
 

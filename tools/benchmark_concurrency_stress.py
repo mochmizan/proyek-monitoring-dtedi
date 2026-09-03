@@ -202,7 +202,7 @@ class BenchmarkRunner:
 
         # Setup client transport
         if self.in_process:
-            from hubgatev5 import api
+            from app.main import api
             api.state.limiter.enabled = False
 
             # Ensure prerequisite seed data exists

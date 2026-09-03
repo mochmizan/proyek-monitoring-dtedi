@@ -12,33 +12,35 @@ The smsb dashboard SPA (`dashboard/`) operates as a real-time operational interf
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Current Error Boundary Tree                        │
+│                          Active Error Boundary Tree                         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  <App>                                                                      │
 │    └── <RouterProvider>                                                    │
 │          └── RootRoute (errorComponent: RootError)                          │
 │                ├── <RootLayout>                                             │
-│                │     ├── Sidebar (Static Links)                             │
-│                │     ├── Header (Live Gateway Connected Indicator)          │
-│                │     └── <Outlet> (Child Route Component)                   │
-│                │           ├── RoomCard Grid                                │
-│                │           ├── MultiPanelChartContainer (Custom SVG)        │
-│                │           └── Connected Nodes Table                        │
-│                │                                                            │
-│                │   [UNMOUNTED: ErrorBoundary.tsx not rendered anywhere]     │
-│                └── RootError (Fallback on unhandled crash: Full Page Blank) │
+│                │     ├── Sidebar (Static Links - preserved during route crash)│
+│                │     ├── Header (Live Gateway Indicator - preserved)        │
+│                │     └── <ErrorBoundary> (Route Content Containment)        │
+│                │           └── <Outlet> (Child Route Component)             │
+│                │                 ├── RoomCard Grid                          │
+│                │                 ├── <ErrorBoundary> (SVG Chart Containment)│
+│                │                 │     └── MultiPanelChartContainer         │
+│                │                 ├── <ErrorBoundary> (Canvas Containment)   │
+│                │                 │     └── TopologyView                     │
+│                │                 └── Connected Nodes Table                  │
+│                └── RootError (Fallback on fatal router boot crash)          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 1. Error Boundary Hierarchy & Isolation Gaps
+## 1. Error Boundary Hierarchy & Active Containment Architecture
 
-React component rendering exceptions must be isolated to prevent a localized formatting error from crashing the entire operational interface.
+React component rendering exceptions are defensively isolated across multiple containment layers to prevent localized formatting or SVG calculation crashes from bringing down the operational shell.
 
 ### 1.1 Root Router Error Component (`src/routes/__root.tsx`)
 
-TanStack Router catches uncaught loader and render exceptions via `RootError`:
+TanStack Router catches uncaught route loader and root-level exceptions via `RootError`:
 
 ```typescript
 function RootError({ error }: { error: Error }) {
@@ -57,9 +59,9 @@ function RootError({ error }: { error: Error }) {
 }
 ```
 
-### 1.2 Unmounted `<ErrorBoundary>` Component (`src/components/ErrorBoundary.tsx`)
+### 1.2 Active `<ErrorBoundary>` Mounting Hierarchy (`src/components/ErrorBoundary.tsx`)
 
-The codebase includes a dedicated class-based `ErrorBoundary` component implementing `componentDidCatch`, `getDerivedStateFromError`, and custom `fallback` rendering:
+The application mounts a standardized, class-based `ErrorBoundary` across three critical containment boundaries:
 
 ```typescript
 export class ErrorBoundary extends Component<Props, State> {
@@ -94,10 +96,11 @@ export class ErrorBoundary extends Component<Props, State> {
 }
 ```
 
-**Implementation Status & Gap**:
-- `<ErrorBoundary>` is **never imported or rendered** in any component or route in the application.
-- If an uncaught error occurs during SVG path generation in `MultiPanelChartContainer`, React Flow graph rendering in `TopologyView`, or data formatting in `RoomCard`, the error bubbles uncontained to `RootError`.
-- This wipes out the entire application shell, destroying sidebar navigation and requiring a hard browser page reload.
+**Active Mounting Locations**:
+1. **Route Level (`src/routes/__root.tsx`)**: Wraps `<Outlet />` within `<RootLayout>`. If any route component fails to render, the error is trapped inside the main content area. The sidebar navigation, top header, and gateway connection status indicators remain interactive, allowing the operator to navigate away to other views without a full browser reload.
+2. **Chart Level (`src/components/device/chart/MultiPanelChartContainer.tsx`)**: Wraps the SVG canvas. Malformed telemetry or invalid coordinate math renders a scoped retry widget instead of crashing the device detail page.
+3. **Canvas Level (`src/components/map/TopologyView.tsx`)**: Wraps the topology interactive canvas, ensuring network graph layout failures do not disrupt facility map navigation.
+- Unit verified via `dashboard/src/components/__tests__/ErrorBoundary.test.tsx` (4 test cases).
 
 ---
 

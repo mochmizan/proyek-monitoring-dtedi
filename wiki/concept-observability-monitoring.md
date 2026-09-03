@@ -12,54 +12,55 @@ Observability across the SMSB platform encompasses log aggregation, metrics coll
 
 ---
 
-## 1. Logging Architecture & Runtime Deficits
+## 1. Logging Architecture & Structured JSON Tracing
 
-The logging subsystem provides transaction visibility, authentication audits, and failure tracing.
+The logging subsystem provides transaction visibility, authentication audits, and distributed failure tracing.
 
-### Current Implementation (`server/app/core/logging.py`)
-HubGate V5 defines a structured logging configuration using standard library `logging.config.dictConfig`:
+### Structured JSON Logging Middleware (`server/app/core/logging.py`)
+
+HubGate V5 implements `StructuredLoggingMiddleware` mounted in `server/app/main.py`. The middleware leverages standard-library `json` serialization on a dedicated logger (`smsb.access`), completely eliminating external dependencies on `python-json-logger`.
+
 ```python
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "json": {
-            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
-        },
-        "standard": {
-            "format": "%(asctime)s %(levelname)s %(message)s",
-        },
-    },
-    "handlers": {
-        "default": {
-            "level": "INFO",
-            "class": "logging.StreamHandler",
-            "formatter": "standard",
-        },
-    },
-    "root": {
-        "level": "INFO",
-        "handlers": ["default"],
-    },
-}
+class StructuredLoggingMiddleware(BaseHTTPMiddleware):
+    """Structured JSON request logging middleware.
+    Outputs single-line JSON with timestamp, request_id, method, path, status_code, latency_ms, client_ip.
+    Attaches X-Request-ID to response headers."""
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        start_time = time.perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        except Exception:
+            status_code = 500
+            raise
+        finally:
+            latency_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
+            client_ip = get_forwarded_address(request)
+            log_record = {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": status_code,
+                "latency_ms": latency_ms,
+                "client_ip": client_ip,
+            }
+            access_logger.info(json.dumps(log_record))
 ```
 
-### The Structured Logging Dependency Gap
-Inspection of runtime dependencies reveals a critical discrepancy:
-- `server/app/core/logging.py` attempts to import `pythonjsonlogger` when `LOG_FORMAT=json`.
-- However, `python-json-logger` is **omitted from `server/requirements.txt`**.
-- As a consequence, on production deployments, `use_json` evaluates to `False`, silently falling back to unstructured plain text:
+### Key Capabilities & Invariants
+- **Request Tracing via `X-Request-ID`**: Propagates `X-Request-ID` across inbound request headers or provisions a fresh UUIDv4. Attaches `X-Request-ID` to the HTTP response headers, allowing client SPAs and edge gateways to correlate front-to-back request lifecycles.
+- **Single-Line Machine-Parseable JSON**: Emitted as single-line JSON strings to stdout/journald:
+  ```json
+  {"timestamp": "2026-09-03T17:15:22.104000+00:00", "request_id": "c7a8b1e4-9d52-4f16-8345-d361b7e42d71", "method": "POST", "path": "/api/iot/batch", "status_code": 200, "latency_ms": 14.85, "client_ip": "127.0.0.1"}
   ```
-  2026-09-03 14:15:22,104 INFO uvicorn.access: 127.0.0.1:48292 - "POST /api/iot/batch HTTP/1.0" 200
-  ```
-- **Consequence**: Log aggregators (Grafana Loki, Elasticsearch) cannot index fields natively without fragile runtime regex parsing.
-
-### Missing Contextual Correlation Metadata
-Application log messages lack request-scoped correlation metadata:
-- **No Correlation IDs**: No `request_id` or `trace_id` propagated through HTTP middleware. Log lines emitted across multiple threads or async tasks cannot be reconstructed into a single transaction trace.
-- **No Identity Enrichment**: Ingestion logs do not automatically record `hub_id`, client IP (`X-Forwarded-For`), batch cardinality, or execution time in structured fields.
-- **Retention Bottleneck**: Host logging is bounded by `deploy/journald.conf.dropin` (`SystemMaxUse=100M`). Under high ingestion frequency or burst replay conditions, journald rotates historical logs within hours, destroying diagnostic audit trails.
+- **Zero-Dependency Architecture**: Employs standard Python `json.dumps()` with a dedicated `StreamHandler(Formatter("%(message)s"))` configured in `configure_logging()`, avoiding third-party formatting package incompatibilities.
+- **Security-Aware IP Extraction**: Uses `get_forwarded_address(request)` to accurately resolve client IP through trusted proxies (`TRUSTED_PROXIES = ["127.0.0.1"]`).
+- **CORS Header Exposure**: `X-Request-ID` is explicitly declared in `expose_headers` in `server/app/main.py` CORSMiddleware, allowing the dashboard web application to read transaction IDs for diagnostic display.
 
 ### Edge Gateway Logging Architecture (`hub/main.py`)
 At the edge gateway tier:

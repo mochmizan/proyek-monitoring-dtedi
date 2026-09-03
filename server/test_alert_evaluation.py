@@ -23,7 +23,7 @@ from modelsv5 import (
     event_log
 )
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 
 client = TestClient(api)
 api.state.limiter.enabled = False

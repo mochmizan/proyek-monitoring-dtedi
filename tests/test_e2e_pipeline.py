@@ -1,4 +1,4 @@
-﻿# test_e2e_pipeline.py
+# test_e2e_pipeline.py
 # Automated End-to-End Pipeline Integration Tests for Milestone 8 (Tasks 8.1 - 8.5)
 # Tests Mock Publisher -> HubBrain Edge Gateway -> HubGate API Server -> PostgreSQL/SQLite Database
 
@@ -14,8 +14,8 @@ from pydantic import TypeAdapter
 
 # Ensure server, hub, and tools are on python path
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-server_v5_path = os.path.join(repo_root, "server", "v5")
-hub_v5_path = os.path.join(repo_root, "hub", "V5")
+server_v5_path = os.path.join(repo_root, "server")
+hub_v5_path = os.path.join(repo_root, "hub")
 tools_path = os.path.join(repo_root, "tools")
 
 for p in (server_v5_path, hub_v5_path, tools_path):
@@ -42,7 +42,7 @@ from modelsv5 import (
     event_log, pending_commands
 )
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 from schemasv5 import IotPayload, TSData, ATSData, ACData
 import main as hub_brain
 from mock_publishers import build_ts_payload, build_ats_payload, build_ac_payload

@@ -20,7 +20,7 @@ from modelsv5 import (
     rooms, pending_commands, schedules
 )
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 import app.services.scheduler as scheduler_service
 from app.services.scheduler import (
     CANONICAL_TZ,

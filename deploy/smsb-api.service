@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # smsb-api.service â€” HubGate V5 central API systemd unit (Work Package F)
 #
 # Install (VPS 'genset', as root):
@@ -26,16 +26,16 @@ User=smsb
 Group=smsb
 
 # --- Working directory & environment ------------------------------------------
-# App imports resolve relative to server (hubgatev5:api); SQLite DB also
+# App imports resolve relative to server (app.main:api); SQLite DB also
 # lives in this directory, hence the ReadWritePaths allowance below.
 WorkingDirectory=/opt/smsb/server
-# Secrets are injected from the gitignored .env file â€” never hardcode here.
+# Secrets are injected from the gitignored .env file — never hardcode here.
 EnvironmentFile=/opt/smsb/server/.env
 
 # --- Process launch ------------------------------------------------------------
 # Bound to loopback only. --proxy-headers trusts X-Forwarded-* exclusively from
 # nginx (127.0.0.1). 2 workers + limit-concurrency fits the 1 GB RAM budget.
-ExecStart=/opt/smsb/venv/bin/python -m uvicorn hubgatev5:api --host 127.0.0.1 --port 8000 --workers 2 --limit-concurrency 50 --proxy-headers --forwarded-allow-ips=127.0.0.1
+ExecStart=/opt/smsb/venv/bin/python -m uvicorn app.main:api --host 127.0.0.1 --port 8000 --workers 2 --limit-concurrency 50 --proxy-headers --forwarded-allow-ips=127.0.0.1
 
 # --- Restart policy & resource ceiling -----------------------------------------
 # Always recover from crashes after a 5s cooldown; hard-cap memory so a leak

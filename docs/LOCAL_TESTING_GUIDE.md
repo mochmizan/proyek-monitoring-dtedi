@@ -1,4 +1,4 @@
-﻿# HubGate V5 Local Testing & Development Guide
+# HubGate V5 Local Testing & Development Guide
 
 Comprehensive guide for running and testing the complete **HubGate V5 / HubBrain V5 IoT Platform** locally using Docker Compose, FastAPI backend, Vite React frontend, and mock telemetry publishers.
 
@@ -119,7 +119,7 @@ python server/create_admin_user.py --username admin --password adminpassword123 
 From `server/` (or repository root):
 ```bash
 cd server
-uvicorn hubgatev5:api --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:api --host 0.0.0.0 --port 8000 --reload
 ```
 API Documentation is accessible at [http://localhost:8000/docs](http://localhost:8000/docs).
 

@@ -2,7 +2,7 @@
 type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-dashboard-spa.md, wiki/concept-frontend-navigation.md, wiki/concept-frontend-resilience.md, wiki/concept-command-path.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-flexible-scheduling.md]
-sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/store/appStore.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
+sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/dateUtils.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
 updated: 2026-09-03
 ---
 
@@ -97,34 +97,37 @@ This tiered naming enables precise scoped invalidation (e.g., `queryClient.inval
 Telemetry monitoring requires continuous real-time data sync without WebSocket infrastructure. The SPA executes periodic HTTP polling bounded by route lifecycle and application state:
 
 | Surface | Query Key | Interval | Background Tab (`refetchIntervalInBackground`) | Stale Time | Invalidation / Guard |
+| Surface | Query Key | Interval | Background Tab (`refetchIntervalInBackground`) | Stale Time | Invalidation / Guard |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Root Bell Badge** | `alerts.list({ limit: 100 })` | `5,000ms` (`POLL_ALERTS_MS`) | `false` | `10s` | `enabled: !isLoginPage && !!currentUser` |
-| **Dashboard Overview** | `rooms.list()`, `devices.list('all')`, `alerts.list(...)` | `3,000ms` (`POLL_MS`) | `true` (unthrottled) | `10s` | Active route `/` |
-| **Dashboard Sparklines** | `rooms.sparklines('6h', 24)` | `30,000ms` | `false` (default) | `25s` | Single-pass batch query |
-| **Room Detail** | `rooms.list()`, `rooms.map(roomId)`, `alerts.list(...)` | `3,000ms` (`POLL_MS`) | `true` (unthrottled) | `10s` | Active route `/room/$roomId` |
+| **Root Bell Badge** | `alerts.list({ limit: 100 })` | `5,000ms` (`POLL_ALERTS_BADGE_MS`) | `false` | `10s` | `enabled: !isLoginPage && !!currentUser` |
+| **Dashboard Overview** | `rooms.list()`, `devices.list('all')`, `alerts.list(...)` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/` |
+| **Dashboard Sparklines** | `rooms.sparklines('6h', 24)` | `30,000ms` (`POLL_SPARKLINES_MS`) | `false` (suspended) | `25s` | Single-pass batch query |
+| **Room Detail** | `rooms.list()`, `rooms.map(roomId)`, `alerts.list(...)` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/room/$roomId` |
 | **Device Detail** | `devices.detail(id)` | `false` (manual) | N/A | `60s` | Protected by `isEditingRef` & `isDirty` |
-| **Device Telemetry** | `devices.history(id, range)` | `15,000ms` (`6h`/`24h`) or `false` (`7d`/`30d`) | `true` (unthrottled) | `10s` | Range-adaptive via `useDeviceHistory` |
-| **Alerts Audit Table** | `alerts.list(filterHash)` | `3,000ms` (`POLL_MS`) | `false` | `10s` | Active route `/alerts` |
-| **Hubs Management** | `hubs.list()` | `3,000ms` (`POLL_MS`) | `false` (default) | `10s` | Active route `/hubs` |
-| **Hardware Command** | `GET /api/commands/{id}` | `1,500ms` | Managed via `setInterval` | N/A | `useCommandLifecycle` active state |
+| **Device Telemetry** | `devices.history(id, range)` | `15,000ms` (`6h`/`24h`) or `false` (`7d`/`30d`) | `false` (suspended) | `10s` | Range-adaptive via `useDeviceHistory` |
+| **Alerts Audit Table** | `alerts.list(filterHash)` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/alerts` |
+| **Hubs Management** | `hubs.list()` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/hubs` |
+| **Hardware Command** | `GET /api/commands/{id}` | `1,500ms` (`POLL_COMMAND_STATUS_MS`) | Managed via `setInterval` | N/A | `useCommandLifecycle` active state |
 
-### 2.1 Background Tab Throttling Discrepancy
+### 2.1 Background Tab Polling Suspension Contract (`refetchIntervalInBackground: false`)
 
-A divergent polling policy exists across routes regarding background tab execution:
-- `__root.tsx`, `alerts.tsx`, and `map.tsx` explicitly set `refetchIntervalInBackground: false`. When an operator minimizes the browser or navigates to another application tab, polling suspends cleanly.
-- In contrast, `index.tsx`, `room.$roomId.tsx`, `device.$deviceId.tsx`, and `useDeviceHistory.ts` explicitly configure `refetchIntervalInBackground: true`.
-- **Operational Impact**: An unattended browser tab left open on `/`, `/room/1`, or `/device/dev-ats` continues firing network requests every 3 to 15 seconds indefinitely. This places continuous egress load on the client network and keeps database worker connections engaged on HubGate.
+To prevent battery drain, client network saturation, and backend connection starvation, all live queries across the SPA enforce an active contract of `refetchIntervalInBackground: false`:
+- Unified across `index.tsx`, `room.$roomId.tsx`, `device.$deviceId.tsx`, `useDeviceHistory.ts`, `alerts.tsx`, `hubs.tsx`, and `__root.tsx`.
+- Whenever an operator minimizes the browser or switches to another tab, all periodic background network requests are halted immediately.
+- Upon returning to the tab, TanStack Query's `refetchOnWindowFocus: true` automatically triggers a fresh synchronization fetch, ensuring zero staleness with zero idle resource waste.
 
-### 2.2 Query Key Cardinality Churn in Alerts
+### 2.2 Query Key Stability & Cardinality Protection Contract
 
-In `dashboard/src/routes/alerts.tsx`, the `start_time` query parameter is computed dynamically:
-```typescript
-const nowMinuteMs = Math.floor(Date.now() / 60000) * 60000;
-if (selectedTimeRange === '6h') {
-  startTimeIso = new Date(nowMinuteMs - 6 * 3600 * 1000).toISOString();
-}
-```
-Because `startTimeIso` is embedded directly into the query key (`queryKeys.alerts.list({ ..., start_time: startTimeIso })`), every 60 seconds the query key string changes. TanStack Query instantiates a brand new cache entry every minute. While unused entries are purged after `gcTime: 5m`, combining this rolling key with filter permutations (room selections, device filters, severity, and pagination) multiplies active cache entries in browser memory.
+In earlier iterations, dynamic minute-bucketed ISO timestamps were embedded into query keys (e.g. `start_time: startTimeIso`), generating a new cache key every 60 seconds and causing memory bloat.
+
+In the current active contract:
+- Dynamic time calculation is decoupled from the query key.
+- Query keys use a static `timeRange` descriptor (`'6h' | '24h' | '7d' | '30d'`), ensuring that the query key remains stable:
+  ```typescript
+  queryKeys.alerts.list({ rooms, devices, severity, status, timeRange, page })
+  ```
+- Precise UTC boundary resolution (`startTimeIso = computeStartTimeFromRange(timeRange)`) is deferred strictly to the execution of `queryFn` via `dateUtils.ts`.
+- Cache entry cardinality is strictly bounded by active user filter combinations, completely eliminating rolling-minute cache fragmentation.
 
 ### 2.3 Observer Unmount Cleanup
 

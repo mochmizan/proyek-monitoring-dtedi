@@ -20,7 +20,7 @@ init_sqlv5.init_db()
 from app.dependencies import hub_auth_cache, stage_hub_heartbeat, verify_hub_identity
 from auth import hash_password
 from databasev5 import SessionLocal, engine
-from hubgatev5 import api
+from app.main import api
 from modelsv5 import (
     User,
     UserSession,
@@ -151,7 +151,16 @@ def setup_phase4_environment():
             is_active=False,
             last_status="offline",
         )
-        db.add_all([dev_ts, dev_ats, dev_ac, dev_unapproved])
+        dev_revoke = dev_table(
+            dev_id="DEV_REVOKE_01",
+            dev_name="Revoke Sensor",
+            dev_type="TS",
+            hub_id="HUB_P4_REVOKE",
+            room_id="room-p4-01",
+            is_active=True,
+            last_status="offline",
+        )
+        db.add_all([dev_ts, dev_ats, dev_ac, dev_unapproved, dev_revoke])
 
         # Threshold config for alert storm test
         thresh = device_threshold_config(
@@ -244,8 +253,8 @@ def test_hub_auth_cache_invalidation_on_revoke():
     }
     payload = {
         "HUB_NAME": "HUB_P4_REVOKE",
-        "DEV_ID": "DEV_TS_01",
-        "DEV_NAME": "Temperature Sensor 1",
+        "DEV_ID": "DEV_REVOKE_01",
+        "DEV_NAME": "Revoke Sensor",
         "DEV_TYPE": "TS",
         "TEMP": 23.0,
         "HUMID": 48.0,
@@ -808,4 +817,104 @@ def test_migrate_indexes_creates_unique_indexes_and_deduplicates():
     inspector = inspect(engine)
     indexes = {idx["name"]: idx for idx in inspector.get_indexes("ats_data")}
     assert "uq_ats_dev_timestamp" in indexes or any("uq_ats" in name for name in indexes)
+
+
+def test_cross_hub_device_spoofing_rejected():
+    """Verify SEC-06: Cross-hub device spoofing is rejected.
+    - Single ingestion rejects mismatched device with HTTP 403 'Device does not belong to this hub'.
+    - Batch ingestion logs security warning, increments ignored_count, and skips mismatched items."""
+    db = SessionLocal()
+    try:
+        # Create Hub 2 and a device owned by Hub 2
+        hub2 = db.get(hub_table, "HUB_P4_02")
+        if not hub2:
+            hub2 = hub_table(
+                hub_id="HUB_P4_02",
+                hub_name="Hub Phase 4 Second Gateway",
+                hub_key="secret_key_p4_hub2",
+                is_active=True,
+                status="online",
+            )
+            db.add(hub2)
+        dev_h2 = db.get(dev_table, "DEV_HUB2_TS_01")
+        if not dev_h2:
+            dev_h2 = dev_table(
+                dev_id="DEV_HUB2_TS_01",
+                dev_name="Hub 2 Sensor",
+                dev_type="TS",
+                hub_id="HUB_P4_02",
+                room_id="room-p4-01",
+                is_active=True,
+                last_status="offline",
+            )
+            db.add(dev_h2)
+        db.commit()
+    finally:
+        db.close()
+
+    hub2_headers = {
+        "X-Hub-ID": "HUB_P4_02",
+        "X-Hub-Key": "secret_key_p4_hub2",
+    }
+
+    # 1. Single ingestion: Hub 2 attempts to ingest for DEV_TS_01 (owned by HUB_P4_01)
+    spoofed_single = {
+        "HUB_NAME": "HUB_P4_02",
+        "DEV_ID": "DEV_TS_01",
+        "DEV_NAME": "Spoofed Temperature Sensor",
+        "DEV_TYPE": "TS",
+        "TEMP": 99.9,
+        "HUMID": 10.0,
+        "HUB_TS": time.time(),
+    }
+    resp = client.post("/api/iot", json=spoofed_single, headers=hub2_headers)
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Device does not belong to this hub"
+
+    # 2. Batch ingestion: Hub 2 submits batch with 1 legitimate device and 1 spoofed device
+    batch_items = [
+        # Legitimate device owned by HUB_P4_02
+        {
+            "HUB_NAME": "HUB_P4_02",
+            "DEV_ID": "DEV_HUB2_TS_01",
+            "DEV_NAME": "Hub 2 Sensor",
+            "DEV_TYPE": "TS",
+            "TEMP": 22.0,
+            "HUMID": 50.0,
+            "HUB_TS": time.time(),
+        },
+        # Spoofed device owned by HUB_P4_01
+        {
+            "HUB_NAME": "HUB_P4_02",
+            "DEV_ID": "DEV_TS_01",
+            "DEV_NAME": "Spoofed Sensor",
+            "DEV_TYPE": "TS",
+            "TEMP": 99.9,
+            "HUMID": 10.0,
+            "HUB_TS": time.time() + 1,
+        },
+    ]
+    batch_resp = client.post("/api/iot/batch", json={"items": batch_items}, headers=hub2_headers)
+    assert batch_resp.status_code == 200
+    body = batch_resp.json()
+    assert body["processed_count"] == 2
+    assert body["ingested_count"] == 1
+    assert body["ignored_count"] == 1
+
+    # Verify in DB that DEV_TS_01 was NOT updated with spoofed temp 99.9
+    db = SessionLocal()
+    try:
+        spoofed_row = db.query(temperature_data).filter(
+            temperature_data.dev_id == "DEV_TS_01",
+            temperature_data.temp == 99.9
+        ).first()
+        assert spoofed_row is None, "Spoofed telemetry row was ingested into DB!"
+
+        valid_row = db.query(temperature_data).filter(
+            temperature_data.dev_id == "DEV_HUB2_TS_01",
+            temperature_data.temp == 22.0
+        ).first()
+        assert valid_row is not None, "Valid telemetry row was not ingested!"
+    finally:
+        db.close()
 

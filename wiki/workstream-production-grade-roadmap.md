@@ -16,20 +16,20 @@ Tasks are structured into **P0 Blockers** (mandatory pre-launch gates), **P1 Har
 
 ## 1. Roadmap Master Execution Matrix
 
-| Priority | Identifier | Workstream Item | Target Component | Core Risk Addressed |
-|---|---|---|---|---|
-| **P0** | `P0-1` | Credential & Secret Rotation | Auth / VPS / Pi / Firmware | Default `admin/admin123` vulnerability |
-| **P0** | `P0-2` | Production PostgreSQL 16 Cutover | Database / Server / Systemd | SQLite single-writer lock bottlenecks |
-| **P0** | `P0-3` | ATS Physical Wiring & Node Reflash | Electrical / Firmware / Edge | 55V floating reading & reset race conditions |
-| **P0** | `P0-4` | Perimeter Firewall & Fail2ban | VPS Host / Nginx / SSH | Exposed ports and brute-force attacks |
-| **P1** | `P1-1` | Structured JSON Logging Pipeline | Server Core / Dependencies | Invisible unstructured logs & lost traces |
-| **P1** | `P1-2` | External Critical Alert Dispatcher | Alert Engine / Background Task | Zero notifications during power outages |
-| **P1** | `P1-3` | Zero-Downtime Push Deploy & Rollback | Deploy Pipeline / Git Hook | 502 Bad Gateway downtime & broken builds |
-| **P1** | `P1-4` | Automated VPS Disaster Recovery Cron | Ops Tooling / Storage | Unbacked database on VPS |
-| **P2** | `P2-1` | Prometheus Metrics & Grafana APM | Server / Monitoring / Node Exporter | Blindness to latencies, RPS, and memory |
-| **P2** | `P2-2` | Hardware Watchdog & OverlayFS | Edge Hardware / OS / Storage | SD card corruption & kernel freezes |
-| **P2** | `P2-3` | Public Let's Encrypt TLS & HSTS | Nginx / Ingress / DNS | Self-signed browser security warnings |
-| **P2** | `P2-4` | Over-The-Air (OTA) Firmware Updates | Firmware / Wi-Fi Network | Need for physical FTDI flashing on-site |
+| Priority | Identifier | Workstream Item | Target Component | Core Risk Addressed | Status |
+|---|---|---|---|---|---|
+| **P0** | `P0-1` | Credential & Secret Rotation | Auth / VPS / Pi / Firmware | Default `admin/admin123` vulnerability | Open |
+| **P0** | `P0-2` | Production PostgreSQL 16 Cutover | Database / Server / Systemd | SQLite single-writer lock bottlenecks | Open |
+| **P0** | `P0-3` | ATS Physical Wiring & Node Reflash | Electrical / Firmware / Edge | 55V floating reading & reset race conditions | Open |
+| **P0** | `P0-4` | Perimeter Firewall & Fail2ban | VPS Host / Nginx / SSH | Exposed ports and brute-force attacks | Open |
+| **P1** | `P1-1` | Structured JSON Logging Pipeline | Server Core / Middleware | Invisible unstructured logs & lost traces | **Completed** |
+| **P1** | `P1-2` | External Critical Alert Dispatcher | Alert Engine / Background Task | Zero notifications during power outages | Open |
+| **P1** | `P1-3` | Zero-Downtime Push Deploy & Rollback | Deploy Pipeline / Git Hook | 502 Bad Gateway downtime & broken builds | Open |
+| **P1** | `P1-4` | Automated VPS Disaster Recovery Cron | Ops Tooling / Storage | Unbacked database on VPS | Open |
+| **P2** | `P2-1` | Prometheus Metrics & Grafana APM | Server / Monitoring / Node Exporter | Blindness to latencies, RPS, and memory | Open |
+| **P2** | `P2-2` | Hardware Watchdog & OverlayFS | Edge Hardware / OS / Storage | SD card corruption & kernel freezes | Open |
+| **P2** | `P2-3` | Public Let's Encrypt TLS & HSTS | Nginx / Ingress / DNS | Self-signed browser security warnings | Open |
+| **P2** | `P2-4` | Over-The-Air (OTA) Firmware Updates | Firmware / Wi-Fi Network | Need for physical FTDI flashing on-site | Open |
 
 ---
 
@@ -120,16 +120,14 @@ These items must be completed before any operational handover or production data
 
 These items establish system stability, fault detection, and deployment safety.
 
-### Task P1-1: Structured JSON Logging Pipeline
-- **Context & Risk**: Production logs currently emit flat unstructured text, preventing automated log indexing and transaction tracking.
-- **Action Plan**:
-  1. Add `python-json-logger==3.2.1` to `server/requirements.txt`.
-  2. Update `server/app/core/logging.py` to inject context variables: `request_id`, `client_ip`, `hub_id`, `route`, `status_code`, and `duration_ms`.
-  3. Add request ID middleware in `server/app/main.py` that reads or generates `X-Request-ID` and injects it into logging context.
-  4. Configure production environment with `LOG_FORMAT=json`.
-- **Acceptance Criteria**:
-  - `journalctl -u smsb-api -n 20 -o cat` outputs valid single-line JSON parseable by `jq`.
-  - Every API access record contains `request_id`, `status_code`, and `duration_ms`.
+### Task P1-1: Structured JSON Logging Pipeline [COMPLETED]
+- **Status**: **Completed**
+- **Context & Risk**: Production logs previously emitted flat unstructured text, preventing automated log indexing and transaction tracking.
+- **Resolution**:
+  1. Implemented `StructuredLoggingMiddleware` in `server/app/core/logging.py` mounted in `server/app/main.py`.
+  2. Leverages standard-library `json.dumps()` with a dedicated `smsb.access` logger, completely eliminating external dependencies on `python-json-logger`.
+  3. Attaches `X-Request-ID` to response headers, calculates `latency_ms` via `time.perf_counter()`, resolves client IP via `get_forwarded_address()`, and exposes `X-Request-ID` in CORS headers.
+  4. Emits single-line JSON records (`timestamp`, `request_id`, `method`, `path`, `status_code`, `latency_ms`, `client_ip`) parseable by log aggregators.
 
 ### Task P1-2: External Real-Time Alert Notification Dispatcher
 - **Context & Risk**: Critical electrical failures (mains loss, generator failure, thermal runaway) are logged passively in the database with zero external alert dispatching.

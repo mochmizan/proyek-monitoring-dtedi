@@ -22,7 +22,9 @@ from modelsv5 import (
     rooms, device_threshold_config, temperature_data, ats_data, data_table
 )
 from auth import hash_password
-from hubgatev5 import api, resolve_static_disk_path, FLOORPLAN_UPLOAD_DIR
+from app.main import api
+from app.routers.rooms import resolve_static_disk_path
+from app.core.config import FLOORPLAN_UPLOAD_DIR
 
 client = TestClient(api)
 api.state.limiter.enabled = False

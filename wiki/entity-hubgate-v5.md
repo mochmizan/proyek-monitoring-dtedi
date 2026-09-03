@@ -8,7 +8,7 @@ updated: 2026-09-03
 
 # HubGate V5 (server/)
 
-HubGate V5 is the centralized FastAPI gateway and persistence subsystem of the smsb stack, located in `server/`. It terminates telemetry ingestion from edge hardware hubs, provides the REST API consumed by the web dashboard SPA, handles user authentication and session management, manages hardware downlink commands, executes scheduled automations, and maintains relational and time-series persistence.
+HubGate V5 is the centralized FastAPI gateway and persistence subsystem of the smsb stack, located in `server/`. The canonical application entrypoint is `app.main:api`, with `hubgatev5.py` retained as a 20-line backward-compatibility stub re-exporting `api`. It terminates telemetry ingestion from edge hardware hubs, provides the REST API consumed by the web dashboard SPA, handles user authentication and throttled session management, emits structured single-line JSON logs with `X-Request-ID` tracing, manages hardware downlink commands, executes scheduled automations, and maintains relational and time-series persistence.
 
 ```mermaid
 flowchart TD
@@ -20,12 +20,13 @@ flowchart TD
 
     subgraph "Perimeter & Network Middleware"
         Nginx["Reverse Proxy (Nginx / SSL Termination)"]
-        CORS["FastAPI CORSMiddleware"]
+        CORS["FastAPI CORSMiddleware (expose: X-Request-ID)"]
+        StructuredLog["StructuredLoggingMiddleware (JSON + X-Request-ID)"]
         SlowAPI["SlowAPI Limiter (get_forwarded_address)"]
     end
 
     subgraph "HubGate V5 Core Subsystem (server/app/)"
-        Main["FastAPI Assembly (app/main.py)<br/>Lifespan: scheduler_lifespan"]
+        Main["FastAPI Assembly (app/main.py:api)<br/>Lifespan: scheduler_lifespan"]
         
         subgraph "Domain Routers (app/routers/)"
             R_Auth["auth.py"]
@@ -146,8 +147,8 @@ sequenceDiagram
 ```
 
 ### Telemetry Ingestion Contract
-- **Single Ingest (`POST /api/iot`)**: Ingests discriminated payloads (`TSData`, `ATSData`, or generic `IotPayload`) with rate limiting (`120/minute`). Resolves device presence, inserts records via dialect-agnostic upsert, and evaluates thresholds in a single atomic database commit.
-- **Batch Ingest (`POST /api/iot/batch`)**: Accepts up to 1000 records per invocation (`60/minute` rate limit). Resolves active devices in a single `IN (...)` lookup, partitions items into typed collections, and executes bulk inserts in 500-record chunks.
+- **Single Ingest (`POST /api/iot`)**: Ingests discriminated payloads (`TSData`, `ATSData`, or generic `IotPayload`) with rate limiting (`120/minute`). Enforces `SEC-06` device ownership verification (`registered_device.hub_id == hub.hub_id`), raising HTTP 403 on mismatch. Resolves device presence, inserts records via dialect-agnostic upsert, and evaluates thresholds in a single atomic database commit.
+- **Batch Ingest (`POST /api/iot/batch`)**: Accepts up to 1000 records per invocation (`60/minute` rate limit). Enforces `SEC-06` device ownership verification (`dev_obj.hub_id == hub.hub_id`), logging security warnings, skipping unauthorized telemetry, and incrementing `ignored_count`. Resolves active devices in a single `IN (...)` lookup, partitions items into typed collections, and executes bulk inserts in 500-record chunks.
 - **Replay Idempotency**: All records are assigned deterministic identifiers `data_id = uuid5(NAMESPACE_OID, f"{dev_id}:{event_time.isoformat()}")`. Duplicate payloads from network retries or edge WAL replay trigger `ON CONFLICT DO NOTHING` on PostgreSQL and SQLite, eliminating duplicate rows without raising integrity errors.
 - **Alert Burst Suppression**: In batch mode, alert rules and presence updates are evaluated exclusively once per device on its latest reading within the batch, neutralizing alert storms during edge reconnection replays.
 
@@ -199,7 +200,7 @@ A deep architectural review of the `server/` subsystem reveals the following gap
 - **Gap 2.3 (Health Check Failure Cascades)**: `/health` and `/api/health` execute synchronous `SELECT 1` queries via `SessionLocal()`. Under pool exhaustion, health check requests hang or fail, causing external orchestrators (Kubernetes / systemd) to erroneously restart healthy gateway processes.
 
 ### Pillar 3: Concurrency & Write-on-Read Lock Contention
-- **Gap 3.1 (Session Sliding Window Churn)**: `verify_session` in `server/auth.py` executes `UPDATE sessions SET expires_at = ...` and `db.commit()` on every authenticated request. Every `GET` request performed by an authenticated user executes a write transaction, causing severe write lock contention on SQLite edge deployments and heavy vacuum overhead on PostgreSQL.
+- **Gap 3.1 (Session Sliding Window Churn [RESOLVED])**: `verify_session` in `server/auth.py` previously executed `UPDATE sessions SET expires_at = ...` and `db.commit()` on every authenticated request. Resolved via `SEC-10`: sliding window throttling skips the DB write when remaining validity is $\ge 90\text{m}$, eliminating write-on-read lock contention.
 - **Gap 3.2 (Residual Commits in Hub Read Endpoints)**: `GET /api/devices` (lines 576-577) and `GET /api/hub/commands` (lines 75-76) execute `stage_hub_heartbeat(hub)` followed by `if db.dirty: db.commit()`, violating the read-only invariant for `GET` routes.
 - **Gap 3.3 (Unbounded Session Table Bloat)**: No background worker or cron task purges expired session records from `sessions`. The table grows unboundedly, degrading `ix_sessions_user_expires` index performance.
 
@@ -210,11 +211,11 @@ A deep architectural review of the `server/` subsystem reveals the following gap
 - **Gap 4.4 (Asymmetric Deduplication MIG-03)**: Startup index creation deduplicates using SQLite's `rowid`, lacking a PostgreSQL fallback (`ctid`).
 
 ### Pillar 5: Security Architecture & Attack Surface
-- **Gap 5.1 (Client IP Spoofing SEC-01)**: `get_forwarded_address` trusts `X-Real-IP` and `X-Forwarded-For` unconditionally without validating that `request.client.host` matches trusted proxy `127.0.0.1`.
+- **Gap 5.1 (Client IP Spoofing SEC-01 [RESOLVED])**: Resolved. `get_forwarded_address` validates `request.client.host in TRUSTED_PROXIES` before parsing `X-Real-IP` and `X-Forwarded-For`, falling back to client host if untrusted.
 - **Gap 5.2 (Missing CSRF Tokens SEC-02)**: Mutating state endpoints rely solely on `SameSite=Lax` cookies without explicit anti-CSRF tokens.
-- **Gap 5.3 (Inconsistent RBAC Declarations SEC-03)**: Privileged endpoints in `schedules.py` and `commands.py` execute imperative `if current_user.role != "admin"` checks instead of using `Depends(require_role("admin"))`.
+- **Gap 5.3 (Inconsistent RBAC Declarations SEC-03 [RESOLVED])**: Resolved. Privileged endpoints in `schedules.py` and `commands.py` now use declarative `current_user: User = Depends(require_role("admin"))`.
 - **Gap 5.4 (Plaintext Hub Keys SEC-04)**: `hub_table.hub_key` is stored as plaintext in the database.
-- **Gap 5.5 (Missing Ingestion Hub-Device Ownership SEC-06)**: Telemetry ingestion does not verify that `device.hub_id == hub.hub_id`, permitting cross-hub telemetry injection.
+- **Gap 5.5 (Missing Ingestion Hub-Device Ownership SEC-06 [RESOLVED])**: Resolved. Telemetry ingestion in `receive_iot` and `receive_iot_batch` strictly verifies `device.hub_id == hub.hub_id`, preventing cross-hub telemetry injection.
 - **Gap 5.6 (Unpinned Argon2id Configuration SEC-08)**: Hasher relies on library defaults rather than explicit configuration parameters.
 
 ### Pillar 6: Async Event Loop & Sync Blocking Calls
@@ -231,17 +232,17 @@ A deep architectural review of the `server/` subsystem reveals the following gap
 
 ## 5. Prioritized Production Hardening Recommendations
 
-| Priority | Identifier | Action Item | Target File(s) |
-|---|---|---|---|
-| **P0** | SEC-01 | Validate `request.client.host in TRUSTED_PROXIES` before parsing forwarded headers. | `server/app/core/rate_limit.py` |
-| **P0** | PERF-01 | Eliminate write-on-read: throttle session sliding updates (update only if $>90\text{m}$ elapsed) and remove `db.commit()` from `GET /api/devices` and `GET /api/hub/commands`. | `server/auth.py`, `server/app/routers/devices.py`, `server/app/routers/commands.py` |
-| **P0** | MIG-04 | Add missing unique constraints (`uq_temp_dev_timestamp`, `uq_ats_dev_timestamp`, `uq_data_dev_timestamp`) to a new Alembic migration revision. | `server/alembic/versions/` |
-| **P1** | POOL-01 | Scale PostgreSQL connection pool (`DB_POOL_SIZE=25, DB_MAX_OVERFLOW=15`) and tune checkout timeout to 10s. | `server/databasev5.py` |
-| **P1** | SEC-06 | Enforce device-to-hub ownership check (`device.hub_id == hub.hub_id`) in `receive_iot` and `receive_iot_batch`. | `server/app/routers/iot.py` |
-| **P1** | HEALTH-01 | Separate liveness (`/health/live` returning 200 without DB query) from readiness (`/health/ready` verifying DB connection). | `server/app/main.py` |
-| **P2** | ERR-01 | Introduce standardized `ErrorResponse` schema and global exception handlers for `SQLAlchemyError`, `RequestValidationError`, and `Exception`. | `server/schemasv5.py`, `server/app/main.py` |
-| **P2** | SEC-03 | Refactor privileged routes in `schedules.py` and `commands.py` to use `Depends(require_role("admin"))`. | `server/app/routers/schedules.py`, `server/app/routers/commands.py` |
-| **P2** | GC-01 | Register recurring APScheduler job to purge expired sessions from `sessions` table hourly. | `server/app/services/scheduler.py` |
-| **P2** | SEC-04 | Hash edge hub keys (SHA-256 / Argon2id) instead of persisting plaintext strings. | `server/modelsv5.py`, `server/app/dependencies.py` |
-| **P3** | TEST-01 | Establish Dockerized PostgreSQL integration test suite in CI. | `server/pyproject.toml`, CI workflow |
-| **P3** | MIG-01 | Convert Alembic revision `04a48dbce60b` from dynamic `create_all()` to explicit static DDL. | `server/alembic/versions/04a48dbce60b_initial_schema_as_observed.py` |
+| Priority | Identifier | Status | Action Item | Target File(s) |
+|---|---|---|---|---|
+| **P0** | SEC-01 | **Completed** | Validate `request.client.host in TRUSTED_PROXIES` before parsing forwarded headers. | `server/app/core/rate_limit.py` |
+| **P0** | PERF-01 / SEC-10 | **Completed** | Eliminate write-on-read: throttle session sliding updates (update only if $<90\text{m}$ validity remains). | `server/auth.py` |
+| **P0** | MIG-04 | Open | Add missing unique constraints (`uq_temp_dev_timestamp`, `uq_ats_dev_timestamp`, `uq_data_dev_timestamp`) to a new Alembic migration revision. | `server/alembic/versions/` |
+| **P1** | SEC-06 | **Completed** | Enforce device-to-hub ownership check (`device.hub_id == hub.hub_id`) in `receive_iot` and `receive_iot_batch`. | `server/app/routers/iot.py` |
+| **P1** | POOL-01 | Open | Scale PostgreSQL connection pool (`DB_POOL_SIZE=25, DB_MAX_OVERFLOW=15`) and tune checkout timeout to 10s. | `server/databasev5.py` |
+| **P1** | HEALTH-01 | Open | Separate liveness (`/health/live` returning 200 without DB query) from readiness (`/health/ready` verifying DB connection). | `server/app/main.py` |
+| **P2** | SEC-03 | **Completed** | Refactor privileged routes in `schedules.py` and `commands.py` to use `Depends(require_role("admin"))`. | `server/app/routers/schedules.py`, `server/app/routers/commands.py` |
+| **P2** | ERR-01 | Open | Introduce standardized `ErrorResponse` schema and global exception handlers for `SQLAlchemyError`, `RequestValidationError`, and `Exception`. | `server/schemasv5.py`, `server/app/main.py` |
+| **P2** | GC-01 | Open | Register recurring APScheduler job to purge expired sessions from `sessions` table hourly. | `server/app/services/scheduler.py` |
+| **P2** | SEC-04 | Open | Hash edge hub keys (SHA-256 / Argon2id) instead of persisting plaintext strings. | `server/modelsv5.py`, `server/app/dependencies.py` |
+| **P3** | TEST-01 | Open | Establish Dockerized PostgreSQL integration test suite in CI. | `server/pyproject.toml`, CI workflow |
+| **P3** | MIG-01 | Open | Convert Alembic revision `04a48dbce60b` from dynamic `create_all()` to explicit static DDL. | `server/alembic/versions/04a48dbce60b_initial_schema_as_observed.py` |

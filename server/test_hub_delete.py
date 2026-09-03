@@ -14,7 +14,7 @@ init_sqlv5.init_db()
 from databasev5 import SessionLocal
 from modelsv5 import User, UserSession, LoginAttempt, hub_table, dev_table, rooms
 from auth import hash_password
-from hubgatev5 import api
+from app.main import api
 
 client = TestClient(api)
 api.state.limiter.enabled = False

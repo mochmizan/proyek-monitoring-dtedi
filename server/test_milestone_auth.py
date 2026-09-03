@@ -30,7 +30,7 @@ init_sqlv5.init_db()
 from databasev5 import SessionLocal, engine
 from modelsv5 import User, UserSession, LoginAttempt, dev_table, hub_table
 from auth import hash_password, verify_password_safe, ph, SessionExpired
-from hubgatev5 import api
+from app.main import api
 
 import pytest
 

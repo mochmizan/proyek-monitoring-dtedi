@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -euo pipefail
 
 # Warna Terminal
@@ -143,5 +143,5 @@ PORT="8000"
 WORKERS=4
 
 echo -e "${GREEN}[SERVER] HubGate V5 aktif di https://$SERVER_IP via Nginx Same-Origin Proxy${NC}"
-uvicorn hubgatev5:api --host "$HOST" --port "$PORT" --workers "$WORKERS"
+uvicorn app.main:api --host "$HOST" --port "$PORT" --workers "$WORKERS"
 

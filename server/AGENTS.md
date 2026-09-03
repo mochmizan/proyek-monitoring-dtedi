@@ -24,12 +24,13 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
   - `PRAGMA temp_store = MEMORY;` (in-memory temporary tables)
   - `PRAGMA cache_size = -64000;` (64MB memory page cache)
   - `PRAGMA mmap_size = 268435456;` (256MB memory-mapped I/O)
-- **Session Management (`get_db`)**: FastAPI dependency generator in `databasev5.py` providing request-scoped sessions with automatic `db.rollback()` on exceptions and guaranteed `db.close()` in `finally`.
+- **Session Management (`get_db` & `verify_session`)**: FastAPI dependency generator in `databasev5.py` providing request-scoped sessions with automatic `db.rollback()` on exceptions and guaranteed `db.close()` in `finally`. `verify_session` in `server/auth.py` enforces `SEC-10` session window throttling: only executes an `UPDATE sessions` write transaction if remaining validity is `< 90 minutes` (`remaining_validity < timedelta(minutes=90)`). Fresh sessions skip DB writes completely, eliminating write-on-read lock serialization.
 
 ### Entry & Architecture
 
-- Entry: `hubgatev5.py` shim re-exports `api` from `app/main.py`; run via `uvicorn hubgatev5:api --host 127.0.0.1 --port 8000` (prod behind Nginx 443). Canonical assembly at `app/main.py` (CORS, rate limiter, scheduler `lifespan`, presence worker lifespan, `GET /health` + `/api/health` unauthenticated DB `SELECT 1` check, static mount).
-- Routers: `app/routers/` — `auth`, `hubs`, `rooms` (single SQL outerjoin list; indexed room map with AC operational state merging), `devices` (downsampling v2 history; idempotent read-only single/list detail with `selectinload`), `alerts`, `iot` (single & batch ingestion with deterministic UUIDs, auth double-commit elimination, lock-free auth cache, and dialect-specific ON CONFLICT DO NOTHING), `commands` (`GET /api/commands/{command_id}` delivery status check), `schedules`.
+- Entry: `app.main:api` is the canonical entrypoint; run via `uvicorn app.main:api --host 127.0.0.1 --port 8000` (prod behind Nginx 443). `hubgatev5.py` is a 20-line backward-compatibility stub re-exporting `api` from `app.main`. Canonical assembly at `app/main.py` (CORS with exposed `X-Request-ID`, rate limiter, scheduler `lifespan`, presence worker lifespan, `GET /health` + `/api/health` unauthenticated DB `SELECT 1` check, static mount).
+- Observability: `StructuredLoggingMiddleware` in `app/core/logging.py` mounted in `app/main.py` emits single-line JSON request logs (`timestamp`, `request_id`, `method`, `path`, `status_code`, `latency_ms`, `client_ip`) via dedicated `smsb.access` logger, attaching `X-Request-ID` tracing header to all HTTP responses.
+- Routers: `app/routers/` — `auth`, `hubs`, `rooms` (single SQL outerjoin list; indexed room map with AC operational state merging), `devices` (downsampling v2 history; idempotent read-only single/list detail with `selectinload`), `alerts`, `iot` (single & batch ingestion with deterministic UUIDs, auth double-commit elimination, lock-free auth cache, SEC-06 device ownership verification, and dialect-specific ON CONFLICT DO NOTHING), `commands` (`GET /api/commands/{command_id}` delivery status check), `schedules`.
 - Core: `app/core/config`, `app/core/rate_limit`, `app/core/logging`.
 - Services: `app/services/alert_engine`, `app/services/presence` (5s background presence worker `evaluate_device_presence_batch`), `app/services/scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` cron → `pending_commands`).
 - DB: `app/modelsv5.py`; Alembic at `alembic/`; `init_sqlv5.py` is idempotent additive migration for fallback.
@@ -59,6 +60,7 @@ Composite SARGable performance indexes:
 ### Batch Ingestion Pipeline Contract
 
 - Endpoints: `POST /api/iot` (single point) and `POST /api/iot/batch` (up to 1000 points/batch via `IotBatchRequest` or list).
+- SEC-06 Device Ownership Enforcement: `receive_iot` and `receive_iot_batch` verify that `registered_device.hub_id == hub.hub_id`. Single ingestion raises HTTP 403 ("Device does not belong to this hub") on mismatch; batch ingestion logs a security warning, ignores mismatched items, and increments `ignored_count`, preventing cross-hub telemetry spoofing.
 - Auth Double-Commit Elimination: `verify_hub_identity` stages heartbeats (`stage_hub_heartbeat`) without committing to the DB session; telemetry and heartbeat commit atomically in endpoint handlers.
 - Lock-Free `HubAuthCache` (30s Throttle): Thread-safe fast path reads without acquiring mutex; acquires lock only on cache miss, timestamp update, or invalidation; throttles heartbeat DB persistence to once per 30s per hub.
 - Deterministic ID Generation: `data_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{dev_id}:{ts.isoformat()}"))` to guarantee replay idempotency across edge retries.
@@ -82,11 +84,11 @@ Composite SARGable performance indexes:
 - New device types: extend discriminated union in `schemasv5.py` (`DEV_TYPE` literal + new model), keep `model_validator` + `ValidationInfo` pattern for DB-aware validation.
 - New endpoints: add SlowAPI `limiter` decorator + auth dependency (`require_role` or hub header).
 - Keep `JSONB().with_variant(JSON, "sqlite")` for Postgres/SQLite compat.
-- Keep tests green: all 186 tests run cleanly via `pytest server/ -q`.
+- Keep tests green: all 204 tests run cleanly via `pytest server/ -q`.
 
 ## Verification
 
-- `pytest server/ -q` — runs all 186 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, and benchmark verification.
+- `pytest server/ -q` — runs all 204 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC, SEC-06 device ownership, SEC-10 session window throttling, and benchmark verification.
 - `python tools/seed_benchmark_telemetry.py --total-rows 1000000 --days 30 --clean --verify` — seeds 1,000,000 synthetic rows in ~60s and verifies composite index query plans.
 - `python tools/benchmark_concurrency_stress.py` — executes 15s multi-worker stress test validating all read, write, throughput, and zero-lock SLAs.
 

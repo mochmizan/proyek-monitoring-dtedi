@@ -36,7 +36,7 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
   - CLI: `python tools/rotate_credentials.py [--dry-run] [--keep-dev-logins] [--target-db PATH_OR_URL] [--update-env PATH] [--hub-id ID]`
   - Runbook documentation: `docs/CREDENTIAL_ROTATION_GUIDE.md`
 - **`tools/benchmark_concurrency_stress.py`**:
-  - Async multi-worker concurrency stress benchmark executing concurrent write batches (`POST /api/iot/batch`), dashboard polling reads (`GET /api/devices`, `/api/rooms`), and heavy downsampling queries (`GET /api/devices/{id}/history?range=30d`) against HubGate V5 to validate 5 SLAs (read latency P95 < 300ms, batch write latency P95 < 350ms, zero DB locked errors, throughput > 500 pts/sec, bounded room map <= 4 queries). Exports Markdown and JSON reports.
+  - Async multi-worker concurrency stress benchmark executing concurrent write batches (`POST /api/iot/batch`), dashboard polling reads (`GET /api/devices`, `/api/rooms`), and heavy downsampling queries (`GET /api/devices/{id}/history?range=30d`) against HubGate V5 to validate 5 SLAs (read latency P95 < 300ms, batch write latency P95 < 350ms, zero DB locked errors, throughput > 500 pts/sec, bounded room map <= 4 queries). In-process client transport imports canonical `from app.main import api`. Exports Markdown and JSON reports.
   - CLI: `python tools/benchmark_concurrency_stress.py [--duration 15] [--writers 2] [--readers 3] [--downsample-workers 1] [--batch-size 75] [--base-url URL] [--output-json PATH] [--output-markdown PATH]`
   - Recipe: `just benchmark [duration]` (default: `15`)
 
@@ -44,6 +44,7 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 
 - New credential handling must read from env/args with no hardcoded defaults
 - Destructive scripts (`purge_dummy_data.py`, `reset_sqlite_users.py`) must print scope before executing
+- Entrypoint imports: all ops and benchmark scripts importing the FastAPI app instance must import canonical `from app.main import api`
 - Keep scripts stdlib-first (paramiko allowed for SSH/SFTP); match existing `argparse` style
 - Mirror payload-shape changes in `mock_publishers.py` and `tests/test_e2e_pipeline.py`
 

@@ -205,7 +205,7 @@ smsb/
 ├── AGENTS.md  README.md  .gitignore  LICENSE  justfile
 ├── docs/  2026-*-design.md  FIRMWARE_*.md  LOCAL_TESTING*.md  PRODUCTION_*.md  HUB_BACKUP*.md  SESSION_HANDOVER.md  researcher_notes.md
 ├── dashboard/  index.html  vite.config.ts  package.json  src/  e2e/  public/  components.json
-├── server/  hubgatev5.py (shim)  app/  alembic/  requirements.txt  pyproject.toml  Dockerfile
+├── server/  app/main.py (canonical entrypoint: api)  hubgatev5.py (compat stub)  app/  alembic/  requirements.txt  pyproject.toml  Dockerfile
 ├── hub/  main.py  requirements.txt  Dockerfile
 ├── firmware/  WEMOS_*/*.ino  fixed_*/  PROMINI/  archive/fsm_*-2026-08-31/  bench/HARDWARE_OLED_TEST/  common/secrets.h.example
 ├── deploy/  nginx_smsb.conf  smsb-api.service  hubbrain.service  setup_push_deploy.sh
@@ -256,9 +256,11 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 
 - `npm run lint` (oxlint) in `dashboard/` — 0 errors, 21 fast-refresh warns
 - `npm run build` in `dashboard/` — `tsc -b && vite build` (hidden sourcemap)
-- `npm run test -- --run` (vitest 89 tests across 10 suites) + `npx playwright test --list` in `dashboard/`
-- `pytest server/ -q` — 179 tests covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, and benchmark verification
+- `npm run test -- --run` (vitest 109 tests across 12 suites) + `npx playwright test --list` in `dashboard/`
+- `pytest server/ -q` — 204 server tests covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, sparklines, schedules regression, auth/RBAC, SEC-06 device ownership, SEC-10 session window throttling, and benchmark verification
 - `python -m pytest hub/test_edge_resilience.py -q` — 13 tests covering edge WAL and resilience
+- `python -m pytest tests/ -q` — 15 integration tests covering E2E telemetry pipeline and deployment verifiers
+- Total automated tests: 341 passing tests across all test suites (204 server, 13 hub, 15 integration, 109 Vitest)
 - `just seed-benchmark` — seeds 1,000,000 synthetic rows in ~60s
 - `just benchmark` — executes 15s concurrency stress test validating read/write SLAs and zero locks
 - `docker compose config` binds `127.0.0.1:5432/1883` (not `0.0.0.0`)

@@ -30,7 +30,8 @@ init_sqlv5.init_db()
 
 # Now import FastAPI test tools and models
 from fastapi.testclient import TestClient
-from hubgatev5 import api, get_forwarded_address
+from app.main import api
+from app.core.rate_limit import get_forwarded_address
 from databasev5 import SessionLocal
 from modelsv5 import hub_table, dev_table, data_table, temperature_data, ats_data, pending_commands
 

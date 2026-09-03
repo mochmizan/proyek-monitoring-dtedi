@@ -195,6 +195,13 @@ def receive_iot(
         if not registered_device or not registered_device.is_active:
             raise HTTPException(status_code=403, detail="Device not authorized")
 
+        if registered_device.hub_id != hub.hub_id:
+            logging.warning(
+                f"Security warning: Hub '{hub.hub_id}' attempted to ingest telemetry for device '{device.DEV_ID}' "
+                f"belonging to hub '{registered_device.hub_id}'"
+            )
+            raise HTTPException(status_code=403, detail="Device does not belong to this hub")
+
         now_utc = datetime.now(UTC)
         event_time = _parse_event_time(device, now_utc)
         data_id = _generate_deterministic_id(device.DEV_ID, event_time)
@@ -322,6 +329,14 @@ def receive_iot_batch(
                 continue
 
             dev_obj = device_map[item.DEV_ID]
+            if dev_obj.hub_id != hub.hub_id:
+                logging.warning(
+                    f"Security warning: Hub '{hub.hub_id}' attempted to ingest batch telemetry for device '{item.DEV_ID}' "
+                    f"belonging to hub '{dev_obj.hub_id}'"
+                )
+                ignored_count += 1
+                continue
+
             event_time = _parse_event_time(item, now_utc)
             data_id = _generate_deterministic_id(item.DEV_ID, event_time)
 

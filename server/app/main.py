@@ -9,7 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 
 from auth import SessionExpired, session_expired_handler
 from app.core.config import CORS_ALLOWED_ORIGINS, STATIC_DIR, FLOORPLAN_UPLOAD_DIR
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, StructuredLoggingMiddleware
 from app.core.rate_limit import limiter
 from app.routers import auth as auth_router
 from app.routers import hubs as hubs_router
@@ -36,6 +36,9 @@ api.state.limiter = limiter
 api.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 api.add_exception_handler(SessionExpired, session_expired_handler)
 
+# Structured JSON request logging middleware
+api.add_middleware(StructuredLoggingMiddleware)
+
 # CORS
 cors_origins_str = CORS_ALLOWED_ORIGINS.strip()
 if cors_origins_str:
@@ -49,6 +52,7 @@ if cors_origins_str:
         allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
     )
 
 # Health check — no auth, no rate limit
