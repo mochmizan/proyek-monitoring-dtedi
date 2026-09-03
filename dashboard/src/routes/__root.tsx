@@ -1,6 +1,5 @@
 import { createRootRouteWithContext, Link, Outlet, redirect, useLocation, useRouter, useRouterState, isRedirect } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import { 
   LayoutDashboard, 
@@ -80,21 +79,7 @@ function RootLayout() {
     staleTime: 60000,
   });
 
-  useEffect(() => {
-    if (!isLoginPage && currentUser) {
-      const routes = ['/hubs', '/alerts', '/map', '/schedules', '/settings'];
-      const preloadAll = () => {
-        routes.forEach((to) => {
-          router.preloadRoute({ to: to as any }).catch(() => {});
-        });
-      };
-      if ('requestIdleCallback' in window) {
-        (window as any).requestIdleCallback(preloadAll);
-      } else {
-        setTimeout(preloadAll, 1000);
-      }
-    }
-  }, [isLoginPage, currentUser, router]);
+
 
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),

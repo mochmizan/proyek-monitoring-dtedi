@@ -21,6 +21,47 @@ export default defineConfig({
   },
   build: {
     sourcemap: 'hidden',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/');
+          if (!normalizedId.includes('/node_modules/')) {
+            return;
+          }
+          if (
+            normalizedId.includes('/node_modules/react/') ||
+            normalizedId.includes('/node_modules/react-dom/') ||
+            normalizedId.includes('/node_modules/scheduler/')
+          ) {
+            return 'vendor-react';
+          }
+          if (
+            normalizedId.includes('/node_modules/@tanstack/react-query') ||
+            normalizedId.includes('/node_modules/@tanstack/query-core') ||
+            normalizedId.includes('/node_modules/@tanstack/react-router') ||
+            normalizedId.includes('/node_modules/@tanstack/router-core')
+          ) {
+            return 'vendor-tanstack';
+          }
+          if (
+            normalizedId.includes('/node_modules/@radix-ui/') ||
+            normalizedId.includes('/node_modules/radix-ui/') ||
+            normalizedId.includes('/node_modules/lucide-react/') ||
+            normalizedId.includes('/node_modules/class-variance-authority/') ||
+            normalizedId.includes('/node_modules/tailwind-merge/') ||
+            normalizedId.includes('/node_modules/clsx/')
+          ) {
+            return 'vendor-ui';
+          }
+          if (
+            normalizedId.includes('/node_modules/recharts/') ||
+            normalizedId.includes('/node_modules/@xyflow/')
+          ) {
+            return 'vendor-charts';
+          }
+        },
+      },
+    },
   },
   server: {
     port: 5173,
