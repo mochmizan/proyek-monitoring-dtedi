@@ -2,13 +2,13 @@
 type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-dashboard-spa.md, wiki/concept-frontend-navigation.md, wiki/concept-frontend-resilience.md, wiki/concept-command-path.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-flexible-scheduling.md]
-sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/dateUtils.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, dashboard/vite.config.ts, dashboard/src/App.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
+sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/dateUtils.ts, dashboard/src/lib/api.ts, dashboard/src/lib/sidebarStore.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, dashboard/vite.config.ts, dashboard/src/App.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
 updated: 2026-09-04
 ---
 
 # Frontend State Management Architecture
 
-The smsb dashboard SPA (`dashboard/`) structures client state across three operational layers: server state managed by TanStack Query v5, navigational and filter state encoded into URL search parameters via TanStack Router with Zod validation, and local ephemeral UI state in React components. Client-global store state is defined in Zustand but remains isolated from active views.
+The smsb dashboard SPA (`dashboard/`) structures client state across three operational layers: server state managed by TanStack Query v5, navigational and filter state encoded into URL search parameters via TanStack Router with Zod validation, and local ephemeral UI state in React components alongside persistent layout preferences in Zustand (`sidebarStore`).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -21,8 +21,8 @@ The smsb dashboard SPA (`dashboard/`) structures client state across three opera
 │ • Devices & Pairing           │ • Severity & status filters   │ • Dirty flag │
 │ • Multi-panel Telemetry       │ • Active time range (6h/24h)  │ • Dialog open│
 │ • Alerts & Thresholds         │ • Pagination (page 1..N)      │ • Command FSM│
-│ • Hubs & Approvals            │ • Settings active tab         │ • Zustand UI │
-│ • Flexible ATS Schedules      │ • Map view mode (plan/topo)   │   (orphaned) │
+│ • Hubs & Approvals            │ • Settings active tab         │ • Persistent │
+│ • Flexible ATS Schedules      │ • Map view mode (plan/topo)   │  sidebarStore│
 └───────────────────────────────┴───────────────────────────────┴──────────────┘
 ```
 
@@ -163,31 +163,52 @@ Clicking tabs alters local state without invoking `router.navigate({ search: { t
 - Browser back/forward navigation between tabs fails.
 - Hard page refreshing reverts the view back to the initial URL query or `'rooms'`.
 
-### 3.3 Orphaned Zustand Store (`src/store/appStore.ts`)
+### 3.3 Persistent UI Layout State (`src/lib/sidebarStore.ts`)
 
-The project contains a standalone Zustand store definition:
+UI layout preferences are managed by a centralized Zustand store configured with persistence middleware:
+
 ```typescript
-import { create } from 'zustand';
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
-interface AppUiState {
-  sidebarOpen: boolean;
-  selectedRoomId: string | null;
-  setSidebarOpen: (open: boolean) => void;
-  setSelectedRoomId: (id: string | null) => void;
+export interface SidebarState {
+  isCollapsed: boolean
+  isMobileOpen: boolean
+  toggleCollapsed: () => void
+  setCollapsed: (collapsed: boolean) => void
+  toggleMobile: () => void
+  setMobileOpen: (open: boolean) => void
+  closeMobile: () => void
 }
 
-export const useAppStore = create<AppUiState>((set) => ({
-  sidebarOpen: true,
-  selectedRoomId: null,
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  setSelectedRoomId: (id) => set({ selectedRoomId: id }),
-}));
+export const useSidebarStore = create<SidebarState>()(
+  persist(
+    (set) => ({
+      isCollapsed: false,
+      isMobileOpen: false,
+      toggleCollapsed: () => set((s) => ({ isCollapsed: !s.isCollapsed })),
+      setCollapsed: (isCollapsed) => set({ isCollapsed }),
+      toggleMobile: () => set((s) => ({ isMobileOpen: !s.isMobileOpen })),
+      setMobileOpen: (isMobileOpen) => set({ isMobileOpen }),
+      closeMobile: () => set({ isMobileOpen: false }),
+    }),
+    {
+      name: 'smsb-sidebar-pref',
+      partialize: (state) => ({ isCollapsed: state.isCollapsed }),
+    }
+  )
+)
 ```
 
-**Implementation Status**:
-- `useAppStore` has zero imports across `dashboard/src/`.
-- The sidebar in `src/routes/__root.tsx` is fixed (`w-64`) with no toggle control.
-- Room selection is governed by path navigation (`/room/$roomId`), rendering `selectedRoomId` unreferenced.
+**Implementation Architecture & State Partitioning**:
+- **Persistence Boundary**: The `partialize` filter ensures that only `isCollapsed` is persisted to `localStorage` under key `'smsb-sidebar-pref'`, preserving the user's desktop sidebar dimension across page reloads and browser sessions.
+- **Ephemeral State**: Mobile drawer open state (`isMobileOpen`) is intentionally excluded from persistence, guaranteeing the drawer initializes closed on fresh loads.
+- **Consumers & Integrations**:
+  - `AppSidebar.tsx`: Reads `isCollapsed` to dynamically toggle between `w-[260px]` and `w-[68px]`, and binds `isMobileOpen` to Radix UI `DialogPrimitive`.
+  - `SidebarNav.tsx`: Switches navigation item rendering to compact glyph-only mode with Radix UI tooltips when collapsed.
+  - `SidebarTrigger.tsx`: Provides the header collapse toggle button.
+  - `useSidebarKeyboard.ts`: Global keyboard hook listening for `Cmd+B` / `Ctrl+B` shortcut, with automatic suppression when focused within inputs or textareas.
+- **Test Verification**: Unit verified with full coverage in `dashboard/src/lib/__tests__/sidebarStore.test.ts` (state toggling, direct setters, localStorage persistence roundtrips). The previously orphaned `appStore.ts` has been completely deleted from the codebase.
 
 ---
 

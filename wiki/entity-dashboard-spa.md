@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/concept-frontend-navigation.md, wiki/concept-state-management.md, wiki/concept-frontend-resilience.md, wiki/concept-downsampling-v2.md, wiki/concept-telemetry-pipeline.md, wiki/concept-time-conventions.md, wiki/concept-command-path.md, wiki/workstream-flexible-scheduling.md, wiki/workstream-shadcn-revert.md]
-sources: [dashboard/src/App.tsx, dashboard/src/routes/__root.tsx, dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/HistoryChart.tsx, dashboard/src/components/device/Controls.tsx, dashboard/src/components/device/chart/MultiPanelChartContainer.tsx, dashboard/src/components/ui/pagination.tsx, dashboard/src/routes/, dashboard/package.json, dashboard/AGENTS.md, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py, commit:b290e3c, commit:35e0582]
-updated: 2026-09-03
+sources: [dashboard/src/App.tsx, dashboard/src/routes/__root.tsx, dashboard/src/components/sidebar/AppSidebar.tsx, dashboard/src/components/ui/tooltip.tsx, dashboard/src/lib/sidebarStore.ts, dashboard/src/hooks/useSidebarKeyboard.ts, dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/HistoryChart.tsx, dashboard/src/components/device/Controls.tsx, dashboard/src/components/device/chart/MultiPanelChartContainer.tsx, dashboard/src/components/ui/pagination.tsx, dashboard/src/routes/, dashboard/package.json, dashboard/AGENTS.md, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py, commit:b290e3c, commit:35e0582]
+updated: 2026-09-04
 ---
 
 # Dashboard SPA (dashboard/)
@@ -20,8 +20,8 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
 | **Language & Tooling** | TypeScript ~6.0.2, Vite 8.1.3, oxlint 1.71 | `erasableSyntaxOnly: true`, `verbatimModuleSyntax: true` |
 | **Routing** | TanStack Router 1.170.17 | File-based routes (`src/routes/`), auto-generated `routeTree.gen.ts` |
 | **Server State** | TanStack Query 5.101.2 | Hierarchical query keys, polling lifecycle, cache-first defaults |
-| **Client UI State** | URL Search Params (Zod 4.4.3), Zustand 5.0.14 | Sort/filter/pagination in URL; `appStore.ts` isolated |
-| **UI Primitives** | shadcn/ui (`new-york` style), Radix UI 1.6.7 | Dark theme (`#09090b`), Tailwind CSS 4.3.2 (`@tailwindcss/vite`) |
+| **Client UI State** | URL Search Params (Zod 4.4.3), Zustand 5.0.14 | Sort/filter/pagination in URL; `sidebarStore` (persistent layout preference) |
+| **UI Primitives** | shadcn/ui (`new-york` style), Radix UI 1.6.7 | Dark theme (`#09090b`), Tailwind CSS 4.3.2 (`@tailwindcss/vite`), Radix Dialog & Tooltip |
 | **Telemetry Charts** | Bespoke Multi-Panel SVG Engine (`src/components/device/chart/*`) | Recharts evaluated & reverted (commit `35e0582`) |
 | **Topology & Map** | `@xyflow/react` 12.11.3 | Lazy-loaded code split (~182 kB) in `TopologyView.tsx` |
 | **Timezone** | Indonesian Western Time (`Asia/Jakarta` / `WIB`) | `id-ID` / `en-GB` locale, wall-clock WIB suffix, UTC `Z` defensive parsing |
@@ -38,69 +38,74 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
             ├── RootError [Fallback error view on unhandled route crash]
             └── RootLayout
                 ├── Viewport-Top Progress Bar ({isNavigating})
-                ├── Aside (Sidebar Navigation w-64)
-                │   ├── Logo & Brand Header (Cpu icon + "Proyek Monitoring")
-                │   ├── Nav Links (<Link to="..." preload="intent">)
-                │   │   ├── Dashboard (/)
-                │   │   ├── Floor Map (/map)
-                │   │   ├── Alert History (/alerts) [Active Badge Counter]
-                │   │   ├── Hubs (/hubs)
-                │   │   ├── Schedules (/schedules) [Admin/Operator Guarded]
-                │   │   └── Settings (/settings) [Admin Guarded]
-                │   └── User Profile Footer (<LogOut> button)
-                ├── Header (Sticky h-16)
-                │   ├── Route Breadcrumb / Title
-                │   ├── Static Live Gateway Indicator ("Live Gateway Connected")
-                │   └── Alert Bell (<Link to="/alerts"> with badge counter)
-                └── Main Content (<Outlet />)
-                    ├── Route: / (src/routes/index.tsx)
-                    │   ├── Overview Stats Bar (Rooms, Devices, Warning, Critical)
-                    │   ├── Rooms Section
-                    │   │   ├── RoomCard Grid (Pure presentation)
-                    │   │   │   ├── Sparkline (Custom SVG 6h room temp/humid)
-                    │   │   │   └── ATS Power State & Battery Badges
-                    │   │   └── Expand/Collapse Control (> 8 rooms)
-                    │   └── Connected Nodes Table
-                    │       ├── Sortable Headers (ArrowUp / ArrowDown)
-                    │       └── Clickable Rows -> /device/$deviceId
-                    ├── Route: /alerts (src/routes/alerts.tsx)
-                    │   ├── Filter Bar (MultiSelect Rooms, Devices, Severity, Status, Range)
-                    │   ├── Audit Log Table (Severity Badges, Timestamp WIB, Reading/Threshold)
-                    │   └── Pagination (<Pagination> 15/page, resetScroll: false)
-                    ├── Route: /device/$deviceId (src/routes/device.$deviceId.tsx)
-                    │   ├── Header (Device metadata, status badge, copy MAC button)
-                    │   ├── HistoryChart (src/components/device/HistoryChart.tsx)
-                    │   │   └── MultiPanelChartContainer (src/components/device/chart/)
-                    │   │       ├── TelemetryPanel (PLN Grid AC)
-                    │   │       ├── TelemetryPanel (Genset AC)
-                    │   │       ├── TelemetryPanel (Starter Battery DC + 11.8V/11.2V Guides)
-                    │   │       ├── PanelOutages (Diagonal hatch gap fills)
-                    │   │       ├── PanelCrosshair & Floating Synchronized Tooltip
-                    │   │       └── Auto-Scale vs Preset Scale Toggles
-                    │   ├── DeviceControls (src/components/device/Controls.tsx)
-                    │   │   ├── Threshold Form (Protected by isEditingRef & isDirty)
-                    │   │   ├── ATS Hardware Dispatch (Auto/Manual, Start/Stop Genset)
-                    │   │   └── CommandStatusBadge (Elapsed counter, FSM progress)
-                    │   └── Device Alert History Table (<Pagination> 10/page)
-                    ├── Route: /room/$roomId (src/routes/room.$roomId.tsx)
-                    │   ├── Room Telemetry Cards (TS, ATS, AC nodes)
-                    │   ├── Command Dispatch Dialog (ATS generator controls)
-                    │   └── Room Alerts Table
-                    ├── Route: /map (src/routes/map.tsx)
-                    │   ├── View Switcher (Floor Plan vs Topology)
-                    │   ├── Floor Plan View (Spatial markers, hover tooltips)
-                    │   └── Topology View (React.lazy -> @xyflow/react node graph)
-                    ├── Route: /hubs (src/routes/hubs.tsx)
-                    │   └── HubCard Grid (Approval/Revoke actions, connected device lists)
-                    ├── Route: /schedules (src/routes/schedules.tsx)
-                    │   ├── Schedule List & Status Toggles (Flexible ATS cron)
-                    │   └── Schedule Modal Dialog (Preset selector, cron validator, JSON editor)
-                    ├── Route: /settings (src/routes/settings.tsx)
-                    │   ├── RoomsTab (Create/Delete rooms, floor plan image upload)
-                    │   ├── DevicesTab (Unpaired nodes pairing, coordinate assignment)
-                    │   └── HubsTab (Global device threshold presets)
-                    └── Route: /login (src/routes/login.tsx)
-                        └── Login Card (Username/password, role quick-login buttons)
+                ├── <TooltipProvider>
+                │   ├── <AppSidebar> (Floating Desktop Aside w-[260px] <-> w-[68px] & Mobile Drawer)
+                │   │   ├── <SidebarHeader> (Logo & Brand Header, Collapse Button, Mobile Close)
+                │   │   ├── <SidebarNav> (Preloaded Links, Alert Count Badge, Collapsed Tooltips)
+                │   │   │   ├── Dashboard (/)
+                │   │   │   ├── Floor Map (/map)
+                │   │   │   ├── Alert History (/alerts) [Active Badge Counter]
+                │   │   │   ├── Hubs (/hubs)
+                │   │   │   ├── Schedules (/schedules) [Admin/Operator Guarded]
+                │   │   │   └── Settings (/settings) [Admin Guarded]
+                │   │   ├── <SidebarFooter> (User Profile, Role, Logout Button with Tooltip)
+                │   │   └── Mobile Drawer (<DialogPrimitive.Root> slide-over w-[280px])
+                │   └── Inset Canvas Card (flex-1 rounded-2xl bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80)
+                │       ├── Sticky Inset Header (h-14 sm:h-16)
+                │       │   ├── <SidebarTrigger> (Toggle Button + Tooltip + Shortcut Hint)
+                │       │   ├── Route Breadcrumb / Title
+                │       │   ├── Live Gateway Connection Indicator
+                │       │   └── Alert Bell (<Link to="/alerts"> with badge counter)
+                │       └── Main Content Area (<Outlet />)
+                │           └── <ErrorBoundary>
+                │               ├── Route: / (src/routes/index.tsx)
+                │               │   ├── Overview Stats Bar (Rooms, Devices, Warning, Critical)
+                │               │   ├── Rooms Section
+                │               │   │   ├── RoomCard Grid (Pure presentation)
+                │               │   │   ├── Sparkline (Custom SVG 6h room temp/humid)
+                │               │   │   └── ATS Power State & Battery Badges
+                │               │   └── Expand/Collapse Control (> 8 rooms)
+                │               │   └── Connected Nodes Table
+                │               │       ├── Sortable Headers (ArrowUp / ArrowDown)
+                │               │       └── Clickable Rows -> /device/$deviceId
+                │               ├── Route: /alerts (src/routes/alerts.tsx)
+                │               │   ├── Filter Bar (MultiSelect Rooms, Devices, Severity, Status, Range)
+                │               │   ├── Audit Log Table (Severity Badges, Timestamp WIB, Reading/Threshold)
+                │               │   └── Pagination (<Pagination> 15/page, resetScroll: false)
+                │               ├── Route: /device/$deviceId (src/routes/device.$deviceId.tsx)
+                │               │   ├── Header (Device metadata, status badge, copy MAC button)
+                │               │   ├── HistoryChart (src/components/device/HistoryChart.tsx)
+                │               │   │   └── MultiPanelChartContainer (src/components/device/chart/)
+                │               │   │       ├── TelemetryPanel (PLN Grid AC)
+                │               │   │       ├── TelemetryPanel (Genset AC)
+                │               │   │       ├── TelemetryPanel (Starter Battery DC + 11.8V/11.2V Guides)
+                │               │   │       ├── PanelOutages (Diagonal hatch gap fills)
+                │               │   │       ├── PanelCrosshair & Floating Synchronized Tooltip
+                │               │   │       └── Auto-Scale vs Preset Scale Toggles
+                │               │   ├── DeviceControls (src/components/device/Controls.tsx)
+                │               │   │   ├── Threshold Form (Protected by isEditingRef & isDirty)
+                │               │   │   ├── ATS Hardware Dispatch (Auto/Manual, Start/Stop Genset)
+                │               │   │   └── CommandStatusBadge (Elapsed counter, FSM progress)
+                │               │   └── Device Alert History Table (<Pagination> 10/page)
+                │               ├── Route: /room/$roomId (src/routes/room.$roomId.tsx)
+                │               │   ├── Room Telemetry Cards (TS, ATS, AC nodes)
+                │               │   ├── Command Dispatch Dialog (ATS generator controls)
+                │               │   └── Room Alerts Table
+                │               ├── Route: /map (src/routes/map.tsx)
+                │               │   ├── View Switcher (Floor Plan vs Topology)
+                │               │   ├── Floor Plan View (Spatial markers, hover tooltips)
+                │               │   └── Topology View (React.lazy -> @xyflow/react node graph)
+                │               ├── Route: /hubs (src/routes/hubs.tsx)
+                │               │   └── HubCard Grid (Approval/Revoke actions, connected device lists)
+                │               ├── Route: /schedules (src/routes/schedules.tsx)
+                │               │   ├── Schedule List & Status Toggles (Flexible ATS cron)
+                │               │   └── Schedule Modal Dialog (Preset selector, cron validator, JSON editor)
+                │               ├── Route: /settings (src/routes/settings.tsx)
+                │               │   ├── RoomsTab (Create/Delete rooms, floor plan image upload)
+                │               │   ├── DevicesTab (Unpaired nodes pairing, coordinate assignment)
+                │               │   └── HubsTab (Global device threshold presets)
+                │               └── Route: /login (src/routes/login.tsx)
+                │                   └── Login Card (Username/password, role quick-login buttons)
 ```
 
 ---
@@ -173,7 +178,7 @@ In late August 2026, an experimental migration to shadcn Recharts components was
 - **Native Browser `alert()` in Workflows**: `src/routes/schedules.tsx` uses blocking native `alert()` dialogs for error reporting and execution confirmations, stalling the JavaScript main thread.
 
 ### 5.3 State Architecture & Type Contract Synchronization
-- **Orphaned Zustand Store**: `src/store/appStore.ts` (`sidebarOpen`, `selectedRoomId`) is completely unconsumed across the application (0 imports).
+- **Persistent Layout State**: `sidebarStore.ts` manages desktop sidebar collapse state (`isCollapsed`) persisted to localStorage under `smsb-sidebar-pref`, alongside ephemeral mobile drawer open/close state (`isMobileOpen`). Handled smoothly by `useSidebarKeyboard` (`Cmd+B` / `Ctrl+B`) and `SidebarTrigger`. The previous orphaned `appStore.ts` has been fully retired.
 - **Unsynchronized Settings Navigation**: `src/routes/settings.tsx` initializes active tab state from search parameters on mount, but tab clicks update local `useState` without updating the URL, breaking deep linking and browser back/forward buttons.
 - **Pydantic Model Discrepancies**:
   - `ScheduleResponse`: Backend returns `next_run: Optional[datetime]` and `next_runs: list[datetime]`, both of which are omitted from frontend `ScheduleResponse` in `src/types/api.ts`.
@@ -187,6 +192,6 @@ In late August 2026, an experimental migration to shadcn Recharts components was
   - Alerts multi-select dropdown lacks ARIA combobox/listbox attributes, keyboard arrow navigation, and escape-to-close handling.
 
 ### 5.5 Test Coverage Disparity
-- **Vitest Unit Coverage**: 89 tests across 10 test suites, with solid math and component coverage for `chartMath`, `Controls`, `HistoryChart`, `RoomCard`, and `useCommandLifecycle`.
-  - **Zero coverage** for router routes (`__root`, `index`, `alerts`, `hubs`, `schedules`, `settings`, `map`, `login`), API client error handlers, and settings tabs.
+- **Vitest Unit Coverage**: 142 tests across 19 test suites, covering math logic (`chartMath`), device controls (`Controls`, `CommandStatusBadge`), charting (`HistoryChart`), presentation cards (`RoomCard`), schedules modal (`ScheduleDialog`), sidebar navigation (`AppSidebar`, `SidebarNav`, `SidebarTrigger`, `useSidebarKeyboard`, `sidebarStore`), UI primitives (`tooltip`, `pagination`), error boundaries, and utility dates/formatting.
+  - **Remaining gaps** for router routes (`__root`, `index`, `alerts`, `hubs`, `schedules`, `settings`, `map`, `login`), API client error handlers, and settings tabs.
 - **Playwright E2E Coverage**: Contains only **1 single test** (`login.spec.ts: login page loads`). Zero E2E coverage for operational flows: dashboard live updates, alert filtering, floor map interactions, device control dispatches, or schedule creation.

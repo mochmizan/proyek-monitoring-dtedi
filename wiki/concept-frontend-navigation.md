@@ -2,8 +2,8 @@
 type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-dashboard-spa.md, wiki/entity-hubgate-v5.md, wiki/concept-telemetry-pipeline.md]
-sources: [dashboard/src/App.tsx, dashboard/src/routes/__root.tsx, dashboard/src/lib/api.ts, dashboard/src/lib/queryClient.ts, dashboard/src/routes/hubs.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/settings.tsx, commit:b290e3c]
-updated: 2026-09-02
+sources: [dashboard/src/App.tsx, dashboard/src/routes/__root.tsx, dashboard/src/components/sidebar/AppSidebar.tsx, dashboard/src/components/ui/tooltip.tsx, dashboard/src/hooks/useSidebarKeyboard.ts, dashboard/src/lib/sidebarStore.ts, dashboard/src/lib/api.ts, dashboard/src/lib/queryClient.ts, dashboard/src/routes/hubs.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/settings.tsx, commit:b290e3c]
+updated: 2026-09-04
 ---
 
 # Frontend Navigation Architecture
@@ -100,3 +100,32 @@ Prior iterations suffered from redundant authentication roundtrips and redirect 
    ```
 4. **Child Route De-duplication**:
    Child routes (`/hubs`, `/schedules`) do not define redundant `beforeLoad` auth checks. Privileged routes (`/settings`) simply verify the cached user from `context.user` or `queryClient.getQueryData`, avoiding duplicate network roundtrips.
+
+## 5. Responsive Floating Sidebar & Inset Canvas Navigation
+
+The application navigation shell adopts a Flex-Sibling Inset Canvas architecture in `src/routes/__root.tsx`:
+
+### 5.1 Desktop Floating Aside (`AppSidebar.tsx`)
+- **Expanded vs Collapsed Dimensions**: Desktop aside defaults to `w-[260px]` and collapses to `w-[68px]` with smooth width transitions (`transition-[width] duration-300 ease-[var(--ease-out)]`).
+- **Floating Island Styling**: Rendered with rounded corners (`rounded-2xl`), semi-transparent backdrop blur (`bg-zinc-900/80 backdrop-blur-xl`), border (`border-zinc-800/80`), and elevation shadow (`shadow-2xl`), floating adjacent to the main inset canvas.
+- **Decomposed Modular Hierarchy**:
+  - `SidebarHeader.tsx`: Displays the brand identity ("Proyek Monitoring"), CPU status glyph, collapse toggle button on desktop, and close button on mobile.
+  - `SidebarNav.tsx`: Renders the navigation links (`/`, `/map`, `/alerts`, `/hubs`, `/schedules`, `/settings`) with active route styling, RBAC permission gating (`role`, `isAdmin`), and dynamic alert count badge.
+  - `SidebarFooter.tsx`: Displays the current user profile, role badge, and sign-out action with a loading spinner during logout mutations.
+
+### 5.2 Radix UI Tooltip Primitive (`src/components/ui/tooltip.tsx`)
+When the desktop sidebar collapses to `w-[68px]`, link labels and user names are hidden to save horizontal real estate. Navigation usability is preserved through Radix UI tooltips:
+- Built atop `radix-ui` Tooltip primitive (`TooltipProvider`, `Tooltip`, `TooltipTrigger`, `TooltipContent`).
+- Root level wraps the application shell in `<TooltipProvider>`.
+- In collapsed mode (`isCollapsed = true`), each navigation item and the footer logout button wraps in a `<Tooltip>` rendering a floating side tooltip (`side="right" sideOffset={12}`) with smooth animations (`fade-in`, `zoom-in-95`). In expanded mode, tooltips are bypassed.
+
+### 5.3 Mobile Slide-Over Drawer (`DialogPrimitive`)
+On mobile devices (`< 768px` / `md:hidden`), the desktop aside is hidden. Navigation transitions to a slide-over modal drawer powered by Radix UI `DialogPrimitive`:
+- Portal-mounted with backdrop dimming (`bg-black/60 backdrop-blur-sm`).
+- Accessible drawer sheet (`w-[280px]`, `rounded-2xl`, slide-in from left with `var(--ease-drawer)` timing).
+- Automatically closes upon navigation item selection (`onItemClick={closeMobile}`).
+
+### 5.4 Persistent Layout Preference & Keyboard Shortcuts
+- **Zustand Persistence**: Collapsed state is managed via `useSidebarStore` (`src/lib/sidebarStore.ts`) using Zustand's `persist` middleware, persisting `isCollapsed` in browser `localStorage` under key `smsb-sidebar-pref`.
+- **Keyboard Shortcut (`Cmd+B` / `Ctrl+B`)**: Managed via `useSidebarKeyboard` hook (`src/hooks/useSidebarKeyboard.ts`). Pressing `Cmd+B` (macOS) or `Ctrl+B` (Windows/Linux) toggles sidebar collapse, automatically ignoring events triggered inside `<input>`, `<textarea>`, `<select>`, or `contenteditable` elements.
+- **Sticky Inset Trigger**: Header `<SidebarTrigger>` provides an accessible icon button (`PanelLeft` / `PanelLeftClose`) with tooltip and keyboard shortcut badge.

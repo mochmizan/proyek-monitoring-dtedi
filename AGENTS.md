@@ -254,13 +254,13 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 
 ## Verification
 
-- `npm run lint` (oxlint) in `dashboard/` — 0 errors, 21 fast-refresh warns
+- `npm run lint` (oxlint) in `dashboard/` — 0 errors, 20 fast-refresh warns
 - `npm run build` in `dashboard/` — `tsc -b && vite build` (hidden sourcemap)
-- `npm run test -- --run` (vitest 116 tests across 13 suites) + `npx playwright test --list` in `dashboard/`
+- `npm run test -- --run` (vitest 142 tests across 19 suites) + `npx playwright test --list` in `dashboard/`
 - `pytest server/ -q` — 217 server tests covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, sparklines, schedules regression, auth/RBAC, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification
 - `python -m pytest hub/test_edge_resilience.py -q` — 13 tests covering edge WAL and resilience
 - `python -m pytest tests/ -q` — 15 integration tests covering E2E telemetry pipeline and deployment verifiers
-- Total automated tests: 361 passing tests across all test suites (217 server, 13 hub, 15 integration, 116 Vitest across 13 suites)
+- Total automated tests: 387 passing tests across all test suites (217 server, 13 hub, 15 integration, 142 Vitest across 19 suites)
 - `just seed-benchmark` — seeds 1,000,000 synthetic rows in ~60s
 - `just benchmark` — executes 15s concurrency stress test validating read/write SLAs and zero locks
 - `docker compose config` binds `127.0.0.1:5432/1883` (not `0.0.0.0`)

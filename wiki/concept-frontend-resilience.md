@@ -18,9 +18,9 @@ The smsb dashboard SPA (`dashboard/`) operates as a real-time operational interf
 │    └── <RouterProvider>                                                    │
 │          └── RootRoute (errorComponent: RootError)                          │
 │                ├── <RootLayout>                                             │
-│                │     ├── Sidebar (Static Links - preserved during route crash)│
-│                │     ├── Header (Live Gateway Indicator - preserved)        │
-│                │     └── <ErrorBoundary> (Route Content Containment)        │
+│                │     ├── <AppSidebar> (Floating Aside & Drawer - preserved) │
+│                │     ├── Sticky Inset Header (SidebarTrigger & Gateway Indicator)│
+│                │     └── Inset Canvas <ErrorBoundary> (Route Content Containment)│
 │                │           └── <Outlet> (Child Route Component)             │
 │                │                 ├── RoomCard Grid                          │
 │                │                 ├── <ErrorBoundary> (SVG Chart Containment)│
@@ -97,7 +97,7 @@ export class ErrorBoundary extends Component<Props, State> {
 ```
 
 **Active Mounting Locations**:
-1. **Route Level (`src/routes/__root.tsx`)**: Wraps `<Outlet />` within `<RootLayout>`. If any route component fails to render, the error is trapped inside the main content area. The sidebar navigation, top header, and gateway connection status indicators remain interactive, allowing the operator to navigate away to other views without a full browser reload.
+1. **Route Level (`src/routes/__root.tsx`)**: Wraps `<Outlet />` within the inset canvas container in `<RootLayout>`. If any route component fails to render, the error is trapped inside the main content canvas. The `<AppSidebar>` navigation, sticky header with `<SidebarTrigger>`, and gateway connection status indicators remain interactive, allowing the operator to navigate away to other views without a full browser reload.
 2. **Chart Level (`src/components/device/chart/MultiPanelChartContainer.tsx`)**: Wraps the SVG canvas. Malformed telemetry or invalid coordinate math renders a scoped retry widget instead of crashing the device detail page.
 3. **Canvas Level (`src/components/map/TopologyView.tsx`)**: Wraps the topology interactive canvas, ensuring network graph layout failures do not disrupt facility map navigation.
 - Unit verified via `dashboard/src/components/__tests__/ErrorBoundary.test.tsx` (4 test cases).

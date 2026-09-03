@@ -14,7 +14,7 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 
 - [entity-hubgate-v5.md](entity-hubgate-v5.md) — FastAPI cloud gateway (server/): canonical `app.main:api` entrypoint, auth/RBAC, DB engine hardening, batch ingestion, presence sweeper
 - [entity-hubbrain-v5.md](entity-hubbrain-v5.md) — Raspberry Pi edge gateway (hub/): MQTT bridge, WAL cache, command dispatch
-- [entity-dashboard-spa.md](entity-dashboard-spa.md) — React 19 SPA (dashboard/): routes, TanStack Query polling, WIB rendering, custom SVG charts
+- [entity-dashboard-spa.md](entity-dashboard-spa.md) — React 19 SPA (dashboard/): routes, flex-sibling inset canvas, floating AppSidebar, TanStack Query polling, WIB rendering, custom SVG charts
 - [entity-ats-firmware-chain.md](entity-ats-firmware-chain.md) — Two-MCU ATS controller: PROMINI FSM + WEMOS_ATS bridge, serial framing
 - [entity-firmware-fleet.md](entity-firmware-fleet.md) — Fleet node specifications: WEMOS_TS, WEMOS_AC, WEMOS_ATS, PROMINI pinouts, I2C addresses, EEPROM layouts
 - [entity-security-auth.md](entity-security-auth.md) — Authentication & authorization model: RBAC matrix, Argon2id, session cookies, SlowAPI rate limiting, security remediations (SEC-01, SEC-03, SEC-06, SEC-10)
@@ -27,9 +27,9 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 - [concept-telemetry-pipeline.md](concept-telemetry-pipeline.md) — End-to-end data flow: ESP → MQTT → hub WAL → HTTPS → single-transaction DB ingest → dashboard
 - [concept-downsampling-v2.md](concept-downsampling-v2.md) — Single-pass SQL epoch bucketing, min/max envelopes, and sub-second 30d SLAs
 - [concept-presence-engine.md](concept-presence-engine.md) — Decoupled 15s background presence sweeper, detection lag SLA (<= 40s), and read-only query invariant
-- [concept-frontend-navigation.md](concept-frontend-navigation.md) — TanStack Router intent preloading, background idle route warmup, progress bar, and 401 unauth handling
+- [concept-frontend-navigation.md](concept-frontend-navigation.md) — TanStack Router intent preloading, background idle route warmup, floating sidebar & drawer navigation, and 401 unauth handling
 - [concept-frontend-resilience.md](concept-frontend-resilience.md) — Active ErrorBoundary mounting hierarchy, query retry policies, 401 redirect interceptors, offline/reconnecting UX, scroll restoration
-- [concept-state-management.md](concept-state-management.md) — TanStack Query server cache, constants.ts, background tab polling suspension contract, Rollup manualChunks, lazy dialogs, intent preloading
+- [concept-state-management.md](concept-state-management.md) — TanStack Query server cache, constants.ts, persistent sidebarStore, background tab polling suspension contract, Rollup manualChunks, lazy dialogs
 - [concept-database-lifecycle.md](concept-database-lifecycle.md) — Hardened connection pool sizing (20/10), transaction atomicity, SQLite WAL vs PostgreSQL 16 MVCC, hourly WAL checkpoint truncation, streaming migration tool
 - [concept-edge-resilience.md](concept-edge-resilience.md) — MQTT bridge durability, offline WAL FIFO queueing, rate pacing, timestamp preservation, failure modes
 - [concept-command-path.md](concept-command-path.md) — Downlink: web command → pending_commands → hub poll → MQTT → serial frame
