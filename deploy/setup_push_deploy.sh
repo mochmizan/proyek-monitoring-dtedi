@@ -126,7 +126,7 @@ run "chmod 755 '${WWW_DIR}'"
 # ------------------------------------------------------------------------------
 SUDOERS_PATH="/etc/sudoers.d/smsb-deploy"
 log "Installing sudoers rule: ${DEPLOY_USER} may restart ${SERVICE_NAME}"
-run "echo '${DEPLOY_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart ${SERVICE_NAME}.service' > '${SUDOERS_PATH}'"
+run "echo '${DEPLOY_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart ${SERVICE_NAME}.service, /bin/systemctl restart ${SERVICE_NAME}.service' > '${SUDOERS_PATH}'"
 run "chmod 440 '${SUDOERS_PATH}'"
 run "visudo -c"
 
@@ -150,7 +150,7 @@ SPA_DIR="${DEPLOY_WORK_TREE}/dashboard"
 WWW_DIR="/var/www/gui-app"
 SERVICE_NAME="smsb-api"
 
-while read -r _old _new ref; do
+while read -r oldrev newrev ref; do
     branch="${ref#refs/heads/}"
     # Only deploy pushes to main
     if [[ "${branch}" != "main" ]]; then
@@ -161,6 +161,9 @@ while read -r _old _new ref; do
     echo "[post-receive] deploying '${branch}' -> ${DEPLOY_WORK_TREE}"
     fail=0
 
+    # Capture work-tree revision before update to enable rollback on pre-flight failure
+    oldrev=$( cd "${DEPLOY_WORK_TREE}" && git rev-parse HEAD 2>/dev/null || echo "${oldrev}" )
+
     if ! ( cd "${DEPLOY_WORK_TREE}" && unset GIT_DIR GIT_WORK_TREE && git fetch origin "${branch}" && git reset --hard "origin/${branch}" ); then
         echo "[post-receive] ERROR: work-tree sync failed"
         exit 1
@@ -169,60 +172,125 @@ while read -r _old _new ref; do
     # Python deps (only if venv was provisioned already)
     if [[ -x "${VENV_DIR}/bin/pip" ]]; then
         echo "[post-receive] pip install into ${VENV_DIR}"
-        "${VENV_DIR}/bin/pip" install --quiet \
-            -r "${DEPLOY_WORK_TREE}/server/requirements.txt" || fail=1
+        if ! "${VENV_DIR}/bin/pip" install --quiet \
+            -r "${DEPLOY_WORK_TREE}/server/requirements.txt"; then
+            echo "[post-receive] FATAL: pip install failed. Aborting deployment before service restart."
+            exit 1
+        fi
     else
         echo "[post-receive] NOTE: no venv at ${VENV_DIR}, skipping pip install"
     fi
 
+    # Pre-flight Python verification before service restart:
+    # Compile sources and verify app.main:api can be imported cleanly.
+    # If this fails, revert the work tree and abort deployment without touching the running service!
+    if [[ -x "${VENV_DIR}/bin/python" ]]; then
+        echo "[post-receive] pre-flight: compiling python sources..."
+        if ! "${VENV_DIR}/bin/python" -m compileall -q "${DEPLOY_WORK_TREE}/server"; then
+            echo "[post-receive] FATAL: Python syntax compilation error. Reverting work tree to ${oldrev}..."
+            ( cd "${DEPLOY_WORK_TREE}" && git reset --hard "${oldrev}" )
+            echo "[post-receive] Aborting deployment without modifying running service."
+            exit 1
+        fi
+
+        echo "[post-receive] pre-flight: verifying application import (app.main:api)..."
+        if ! ( cd "${DEPLOY_WORK_TREE}/server" && "${VENV_DIR}/bin/python" -c "from app.main import api; print('[post-receive] App import verified (app.main:api).')" ); then
+            echo "[post-receive] FATAL: Application import verification failed (app.main:api). Reverting work tree to ${oldrev}..."
+            ( cd "${DEPLOY_WORK_TREE}" && git reset --hard "${oldrev}" )
+            echo "[post-receive] Aborting deployment without modifying running service."
+            exit 1
+        fi
+    else
+        echo "[post-receive] NOTE: no python at ${VENV_DIR}/bin/python, skipping python pre-flight"
+    fi
+
     # SPA build + publish (only if node/npm available on the VPS)
+    # Strictly gate asset sync: only replace ${WWW_DIR} if npm run build succeeds with exit code 0.
     if command -v npm >/dev/null 2>&1; then
-        echo "[post-receive] building SPA in ${SPA_DIR}"
+        echo "[post-receive] building SPA in ${SPA_DIR}..."
         # Use nvm Node 22 if available (Vite 8 requires Node 20.19+/22), else fallback to system npm with engine-strict false
         if [ -s "$HOME/.nvm/nvm.sh" ]; then \. "$HOME/.nvm/nvm.sh" && nvm use 22 >/dev/null 2>&1 || true; fi
         npm config set engine-strict false >/dev/null 2>&1 || true
-        ( cd "${SPA_DIR}" && npm ci --ignore-engines && npm run build --ignore-engines ) || fail=1
-        if [[ ${fail} -eq 0 && -d "${SPA_DIR}/dist" ]]; then
+
+        spa_build_ok=0
+        if ( cd "${SPA_DIR}" && npm ci --ignore-engines && npm run build --ignore-engines ); then
+            spa_build_ok=1
+        fi
+
+        if [[ ${spa_build_ok} -eq 1 && -d "${SPA_DIR}/dist" ]]; then
+            echo "[post-receive] SPA build succeeded. Syncing assets to ${WWW_DIR}..."
             mkdir -p "${WWW_DIR}"
-            rsync -a --delete "${SPA_DIR}/dist/" "${WWW_DIR}/" || fail=1
-            chmod -R 755 "${WWW_DIR}" || fail=1
+            rsync -a --delete "${SPA_DIR}/dist/" "${WWW_DIR}/" || {
+                echo "[post-receive] ERROR: Failed to rsync SPA assets to ${WWW_DIR}"
+                fail=1
+            }
+            chmod -R 755 "${WWW_DIR}" || true
+        else
+            echo "[post-receive] ERROR: SPA build failed with non-zero exit code. Skipping asset sync to ${WWW_DIR} to preserve live frontend."
+            fail=1
         fi
     else
         echo "[post-receive] NOTE: npm not found, skipping SPA build (serving existing ${WWW_DIR})"
     fi
 
-    # Restart API service (hook runs as the unprivileged deploy user;
-    # sudoers rule authorizes exactly "systemctl restart <unit>.service")
+    # Restart the service directly (standalone uvicorn does not handle SIGHUP reload)
+    echo "[post-receive] restarting service (${SERVICE_NAME}.service)..."
     sudo -n systemctl restart "${SERVICE_NAME}.service" || fail=1
     sleep 2
 
     # ---- Post-deploy smoke checks -------------------------------------------
     echo "[post-receive] running smoke checks..."
 
-    # Check 1: unauthenticated /api/auth/me must return 401.
-    # Uvicorn can take several seconds to bind on the 1 GB VPS â€” poll for it.
-    me_code="000"
+    # Check 1: API health probe (/api/health)
+    # Poll for up to 20 seconds to allow uvicorn worker bind
+    health_ok=0
+    health_status="000"
+    health_body=""
     for _ in $(seq 1 20); do
-        me_code="$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/api/auth/me || echo 000)"
-        [[ "${me_code}" == "401" ]] && break
+        health_resp=$(curl -sk -w "\nHTTP_STATUS:%{http_code}" https://127.0.0.1/api/health 2>&1 || true)
+        health_status=$(echo "${health_resp}" | grep "HTTP_STATUS:" | cut -d':' -f2 || echo "000")
+        health_body=$(echo "${health_resp}" | grep -v "HTTP_STATUS:" || true)
+        if [[ "${health_status}" == "200" ]] && echo "${health_body}" | grep -q '"status":"ok"'; then
+            health_ok=1
+            break
+        fi
         sleep 1
     done
-    if [[ "${me_code}" == "401" ]]; then
-        echo "[post-receive] PASS: /api/auth/me returned 401"
+
+    if [[ ${health_ok} -eq 1 ]]; then
+        echo "[post-receive] PASS: /api/health returned 200 OK (${health_body})"
     else
-        echo "[post-receive] FAIL: /api/auth/me expected 401, got ${me_code}"
+        echo "[post-receive] FAIL: /api/health check failed after 20 attempts"
+        echo "[post-receive]   Last HTTP status: ${health_status:-none}"
+        echo "[post-receive]   Response body / error: ${health_body:-empty}"
         fail=1
     fi
 
-    # Check 2: SPA index served and contains <title>
-    if curl -sk https://127.0.0.1/ | grep -qi '<title'; then
+    # Check 2: unauthenticated /api/auth/me must return 401
+    me_resp=$(curl -sk -w "\nHTTP_STATUS:%{http_code}" https://127.0.0.1/api/auth/me 2>&1 || true)
+    me_status=$(echo "${me_resp}" | grep "HTTP_STATUS:" | cut -d':' -f2 || echo "000")
+    me_body=$(echo "${me_resp}" | grep -v "HTTP_STATUS:" || true)
+    if [[ "${me_status}" == "401" ]]; then
+        echo "[post-receive] PASS: /api/auth/me returned 401 Unauthorized"
+    else
+        echo "[post-receive] FAIL: /api/auth/me expected 401, got ${me_status:-000}"
+        echo "[post-receive]   Response body / error: ${me_body:-empty}"
+        fail=1
+    fi
+
+    # Check 3: SPA index served and contains <title>
+    spa_resp=$(curl -sk -w "\nHTTP_STATUS:%{http_code}" https://127.0.0.1/ 2>&1 || true)
+    spa_status=$(echo "${spa_resp}" | grep "HTTP_STATUS:" | cut -d':' -f2 || echo "000")
+    spa_body=$(echo "${spa_resp}" | grep -v "HTTP_STATUS:" || true)
+    if echo "${spa_body}" | grep -qi '<title'; then
         echo "[post-receive] PASS: SPA index.html contains <title>"
     else
-        echo "[post-receive] FAIL: SPA index.html missing <title>"
+        echo "[post-receive] FAIL: SPA index.html missing <title> (HTTP ${spa_status:-000})"
+        echo "[post-receive]   Response head: $(echo "${spa_body}" | head -n 5)"
         fail=1
     fi
 
-    # Check 3: service active
+    # Check 4: service active
     if systemctl is-active --quiet "${SERVICE_NAME}"; then
         echo "[post-receive] PASS: ${SERVICE_NAME} is active"
     else
@@ -231,20 +299,24 @@ while read -r _old _new ref; do
     fi
 
     if [[ ${fail} -ne 0 ]]; then
-        cat <<EOF
-
-============================================================
-[post-receive] DEPLOYMENT CHECKS FAILED.
-Rollback hint (run as root on this VPS):
-  # Find the last known-good commit:
-  git --git-dir=/opt/smsb.git log --oneline -5
-  # Re-sync the work tree clone to the previous commit:
-  cd /opt/smsb && git fetch origin && git reset --hard origin/main~1
-  # Rebuild/reinstall as needed, then:
-  systemctl restart ${SERVICE_NAME}
-  journalctl -u ${SERVICE_NAME} -n 50 --no-pager
-============================================================
-EOF
+        echo ""
+        echo "============================================================"
+        echo "[post-receive] DEPLOYMENT CHECKS FAILED."
+        echo "[post-receive] Diagnostic Information:"
+        echo "--- systemctl status ${SERVICE_NAME} ---"
+        systemctl status "${SERVICE_NAME}.service" --no-pager -l 2>&1 || true
+        echo "--- journalctl -u ${SERVICE_NAME} (last 30 lines) ---"
+        journalctl -u "${SERVICE_NAME}.service" -n 30 --no-pager 2>&1 || true
+        echo "------------------------------------------------------------"
+        echo "Rollback hint (run as root on this VPS):"
+        echo "  # Find the last known-good commit:"
+        echo "  git --git-dir=/opt/smsb.git log --oneline -5"
+        echo "  # Re-sync the work tree clone to the previous commit:"
+        echo "  cd /opt/smsb && git fetch origin && git reset --hard origin/main~1"
+        echo "  # Rebuild/reinstall as needed, then:"
+        echo "  systemctl restart ${SERVICE_NAME}"
+        echo "  journalctl -u ${SERVICE_NAME} -n 50 --no-pager"
+        echo "============================================================"
         exit 1
     fi
 
