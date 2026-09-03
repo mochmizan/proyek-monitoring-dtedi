@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import { ChevronDown, Check, RefreshCw, ShieldAlert } from 'lucide-react';
@@ -9,6 +9,7 @@ import { queryKeys } from '../lib/queryKeys';
 import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api';
 import { POLL_MS } from '../lib/constants';
 import { formatAlertReading, formatAlertThreshold } from '../lib/formatAlert';
+import { Pagination } from '../components/ui/pagination';
 
 const alertsSearchSchema = z.object({
   rooms: z.preprocess(
@@ -22,6 +23,7 @@ const alertsSearchSchema = z.object({
   severity: z.enum(['All', 'Warning', 'Critical', 'warning', 'critical']).catch('All').optional(),
   status: z.enum(['All', 'Open', 'Resolved', 'all', 'open', 'resolved']).catch('All').optional(),
   timeRange: z.enum(['6h', '24h', '7d', '30d']).catch('24h').optional(),
+  page: z.number().int().min(1).catch(1).optional(),
 });
 
 export const Route = createFileRoute('/alerts')({
@@ -121,14 +123,18 @@ const MultiSelect = React.memo(function MultiSelect({ label, placeholder, option
   );
 });
 
+const PAGE_SIZE = 15;
+
 function AlertsPage() {
+  const search = Route.useSearch();
   const { 
     rooms: selectedRooms = [], 
     devices: selectedDevices = [], 
     severity: selectedSeverity = 'All', 
     status: selectedStatus = 'All',
-    timeRange: selectedTimeRange = '24h' 
-  } = Route.useSearch();
+    timeRange: selectedTimeRange = '24h',
+    page: searchPage = 1,
+  } = search;
   const navigate = Route.useNavigate();
 
   const { data: rooms = [] } = useQuery({
@@ -157,6 +163,8 @@ function AlertsPage() {
   const normalizedSeverity = selectedSeverity.toLowerCase() === 'all' ? undefined : selectedSeverity.toLowerCase();
   const normalizedStatus = selectedStatus.toLowerCase() === 'all' ? undefined : selectedStatus.toLowerCase();
 
+  const offset = (searchPage - 1) * PAGE_SIZE;
+
   const { data: alertsData, isFetching } = useQuery({
     queryKey: queryKeys.alerts.list({
       rooms: selectedRooms,
@@ -164,7 +172,9 @@ function AlertsPage() {
       severity: normalizedSeverity,
       status: normalizedStatus,
       start_time: startTimeIso,
-      limit: 100,
+      limit: PAGE_SIZE,
+      offset,
+      page: searchPage,
     }),
     queryFn: () => fetchAlerts({
       rooms: selectedRooms.length > 0 ? selectedRooms : undefined,
@@ -172,24 +182,32 @@ function AlertsPage() {
       severity: normalizedSeverity,
       status: normalizedStatus,
       start_time: startTimeIso,
-      limit: 100,
+      limit: PAGE_SIZE,
+      offset,
     }),
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
+    placeholderData: keepPreviousData,
   });
 
   const updateSearch = (newParams: Partial<z.infer<typeof alertsSearchSchema>>) => {
     navigate({
-      search: (prev) => ({
-        ...prev,
-        ...newParams,
-      }),
+      search: (prev) => {
+        const page = newParams.page !== undefined ? newParams.page : 1;
+        return {
+          ...prev,
+          ...newParams,
+          page,
+        };
+      },
     });
   };
 
   const roomOptions = rooms.map((r) => ({ id: r.id, name: r.name }));
   const deviceOptions = devices.map((d) => ({ id: d.dev_id, name: d.dev_name || d.dev_id }));
   const alerts = alertsData?.alerts || [];
+  const totalAlerts = alertsData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalAlerts / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -272,7 +290,7 @@ function AlertsPage() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-            Recorded Events ({alerts.length})
+            Recorded Events ({totalAlerts})
           </h3>
         </div>
         <div className="overflow-x-auto">
@@ -355,6 +373,15 @@ function AlertsPage() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={searchPage}
+          totalPages={totalPages}
+          totalItems={totalAlerts}
+          pageSize={PAGE_SIZE}
+          onPageChange={(page) => updateSearch({ page })}
+          isLoading={isFetching}
+          itemLabel="alerts"
+        />
       </div>
     </div>
   );

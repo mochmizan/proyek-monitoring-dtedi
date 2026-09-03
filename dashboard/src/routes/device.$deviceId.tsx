@@ -1,8 +1,9 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ShieldAlert, RefreshCw, Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { z } from 'zod';
+import { Pagination } from '../components/ui/pagination';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchDevice, fetchRooms, fetchAlerts, fetchCurrentUser } from '../lib/api';
@@ -21,11 +22,14 @@ export const Route = createFileRoute('/device/$deviceId')({
   component: DeviceDetailPage,
 });
 
+const DEVICE_ALERT_PAGE_SIZE = 10;
+
 function DeviceDetailPage() {
   const { deviceId } = Route.useParams();
   const { range } = Route.useSearch();
   const router = useRouter();
   const [timeRange, setTimeRange] = useState<'6h' | '24h' | '7d' | '30d'>(range ?? '24h');
+  const [alertPage, setAlertPage] = useState(1);
   const [copiedMac, setCopiedMac] = useState(false);
 
   const { data: currentUser } = useQuery({ queryKey: queryKeys.auth.me(), queryFn: fetchCurrentUser });
@@ -39,6 +43,10 @@ function DeviceDetailPage() {
 
   const canonicalDevId = device?.dev_id || deviceId;
 
+  useEffect(() => {
+    setAlertPage(1);
+  }, [canonicalDevId]);
+
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
@@ -46,9 +54,18 @@ function DeviceDetailPage() {
     refetchIntervalInBackground: true,
     placeholderData: keepPreviousData,
   });
-  const { data: deviceAlertsData } = useQuery({
-    queryKey: queryKeys.alerts.list({ device: canonicalDevId }),
-    queryFn: () => fetchAlerts({ device: canonicalDevId }),
+  const { data: deviceAlertsData, isFetching: isFetchingAlerts } = useQuery({
+    queryKey: queryKeys.alerts.list({
+      device: canonicalDevId,
+      page: alertPage,
+      limit: DEVICE_ALERT_PAGE_SIZE,
+    }),
+    queryFn: () =>
+      fetchAlerts({
+        device: canonicalDevId,
+        limit: DEVICE_ALERT_PAGE_SIZE,
+        offset: (alertPage - 1) * DEVICE_ALERT_PAGE_SIZE,
+      }),
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: true,
     placeholderData: keepPreviousData,
@@ -93,6 +110,8 @@ function DeviceDetailPage() {
   }
 
   const alerts = deviceAlertsData?.alerts || [];
+  const totalDeviceAlerts = deviceAlertsData?.total ?? 0;
+  const totalAlertPages = Math.max(1, Math.ceil(totalDeviceAlerts / DEVICE_ALERT_PAGE_SIZE));
   const historyPoints = historyData?.points || [];
   const displayName = device.dev_name || device.dev_id;
   const isOnline = device.status === 'online';
@@ -268,6 +287,16 @@ function DeviceDetailPage() {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              currentPage={alertPage}
+              totalPages={totalAlertPages}
+              totalItems={totalDeviceAlerts}
+              pageSize={DEVICE_ALERT_PAGE_SIZE}
+              onPageChange={setAlertPage}
+              isLoading={isFetchingAlerts}
+              itemLabel="alerts"
+              className="-mx-6 -mb-6 rounded-b-lg border-t border-zinc-800"
+            />
           </div>
         </div>
         <div className="space-y-6">

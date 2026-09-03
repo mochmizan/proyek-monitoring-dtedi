@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Thermometer, ShieldAlert, Loader2 } from 'lucide-react';
+import { Cpu, ShieldAlert, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, loginUser } from '../lib/api';
@@ -84,9 +84,9 @@ function LoginPage() {
       {/* Title */}
       <div className="flex flex-col items-center gap-2 mb-8">
         <div className="h-12 w-12 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
-          <Thermometer className="h-7 w-7 text-indigo-500" />
+          <Cpu className="h-7 w-7 text-indigo-500" />
         </div>
-        <h1 className="text-2xl font-bold text-zinc-100 tracking-wider">TracerTemp IoT</h1>
+        <h1 className="text-2xl font-bold text-zinc-100 tracking-wider">Proyek Monitoring</h1>
         <p className="text-zinc-500 text-sm">Temperature & Environment Monitor</p>
       </div>
 

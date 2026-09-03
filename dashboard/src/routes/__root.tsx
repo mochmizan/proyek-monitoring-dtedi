@@ -8,7 +8,7 @@ import {
   Bell, 
   Settings as SettingsIcon, 
   LogOut, 
-  Thermometer, 
+  Cpu, 
   ShieldAlert, 
   Radio,
   CalendarClock
@@ -145,9 +145,9 @@ function RootLayout() {
         <div>
           {/* Logo */}
           <div className="px-6 py-5 border-b border-zinc-800 flex items-center gap-2">
-            <Thermometer className="h-6 w-6 text-indigo-500" />
+            <Cpu className="h-6 w-6 text-indigo-500" />
             <span className="font-bold text-lg tracking-wider bg-gradient-to-r from-indigo-400 to-indigo-600 bg-clip-text text-transparent">
-              TracerTemp
+              Proyek Monitoring
             </span>
           </div>
 
