@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-data-model.md, wiki/entity-hubbrain-v5.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/concept-command-path.md, wiki/concept-alert-engine.md, wiki/concept-time-conventions.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/app/main.py, server/databasev5.py, server/app/dependencies.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/services/presence.py, server/app/services/scheduler.py, server/schemasv5.py, server/AGENTS.md, commit:8f8f6cd, commit:9961f5c, commit:35708e4]
-updated: 2026-09-02
+sources: [server/app/main.py, server/databasev5.py, server/app/dependencies.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/services/presence.py, server/app/services/scheduler.py, server/schemasv5.py, server/AGENTS.md, tools/rotate_credentials.py, docs/CREDENTIAL_ROTATION_GUIDE.md, commit:8f8f6cd, commit:9961f5c, commit:35708e4]
+updated: 2026-09-03
 ---
 
 # HubGate V5 (server/)
@@ -61,5 +61,6 @@ Device connectivity monitoring is handled by a dedicated background sweeper (`ap
 
 - Admin hub deletion: `DELETE /api/hubs/{hub_id}` allows hard-deleting decommissioned hubs (409 Conflict if active devices remain paired; associated room links are set to `NULL`).
 - Authentication: Argon2id password hashing, 2h sliding / 12h absolute sessions stored in `sessions` table and delivered via httpOnly, Secure, SameSite=Lax cookies.
+- Credential Rotation: Operational rotation of web users (`admin`, `operator`, `viewer`), `HUB_KEY`, and session invalidation via `tools/rotate_credentials.py` (documented in `docs/CREDENTIAL_ROTATION_GUIDE.md`).
 - Rate limiting: SlowAPI keyed by client IP (`X-Real-IP` or first component of `X-Forwarded-For`).
 - Datetime Contract: All serialized timestamps follow ISO-8601 UTC with explicit timezone offsets (see [concept-time-conventions.md](concept-time-conventions.md)).

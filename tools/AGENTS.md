@@ -15,7 +15,7 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 |---|---|---|
 | **Pi deploy & services** | `deploy_pi_edge.py`, `install_pi_service.py`, `setup_hubbrain_service.py` | Paramiko/SFTP deploy of HubBrain, systemd unit install/restart |
 | **Pi backup** | `backup_hub.sh`, `run_pi_backup.py` | Mandatory backup gate: tar `/etc` networking + `.env`/certs/WAL, SHA256 verify, offload (see `docs/HUB_BACKUP_GUIDE.md`) |
-| **DB admin** | `init_postgres_db.py`, `setup_postgres_wsl.sh`, `reset_sqlite_users.py`, `purge_dummy_data.py` | Schema init + seeding, SQLite user reset, mock-data purge |
+| **DB & Credential Admin** | `init_postgres_db.py`, `setup_postgres_wsl.sh`, `reset_sqlite_users.py`, `rotate_credentials.py`, `purge_dummy_data.py` | Schema init + seeding, SQLite user reset, production credential / HUB_KEY rotation CLI, mock-data purge |
 | **Seeding / simulation** | `seed_demo_data.py`, `seed_rich_history.py`, `mock_publishers.py`, `stream_live_telemetry.py`, `seed_benchmark_telemetry.py` | Demo rooms/devices, 30-day synthetic history, MQTT node simulators (`hs109rs/{ts,ats,ac}/data`), live TS streaming, 1M row chunked benchmark seeder with index EXPLAIN verification |
 | **Sniffing / debug** | `sniff_pi.py`, `sniff_pi_mqtt.py`, `send_ac_command.py`, `debug_auth_wsl.py` | Remote MQTT sniff via SSH, AC command injection, auth debugging |
 | **Verification & Benchmarking** | `verify_production_deployment.py`, `verify_prod_env.py`, `benchmark_concurrency_stress.py` | 7-step production smoke test; `.env` auditor; async high-concurrency stress test evaluating 5 hard invariants (read/write/throughput/zero-lock) with Markdown/JSON report export |
@@ -31,6 +31,10 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
   - High-performance synthetic telemetry seeder generating and inserting realistic telemetry rows (500k TS, 500k ATS = 1,000,000 rows across 30 days) using chunked SQLAlchemy Core DML in < 15s (SQLite WAL / PostgreSQL). Validates query plans with EXPLAIN.
   - CLI: `python tools/seed_benchmark_telemetry.py [--total-rows 1000000] [--days 30] [--batch-size 25000] [--db-url URL] [--clean] [--verify]`
   - Recipe: `just seed-benchmark [total_rows] [days]` (default: `1000000`, `30`)
+- **`tools/rotate_credentials.py`**:
+  - Production CLI utility to rotate HubGate V5 web user credentials (Argon2id hashing), generate 64-char hex HUB_KEY, update SQLite / PostgreSQL databases and server .env files, flush active user sessions, and print operational runbooks.
+  - CLI: `python tools/rotate_credentials.py [--dry-run] [--keep-dev-logins] [--target-db PATH_OR_URL] [--update-env PATH] [--hub-id ID]`
+  - Runbook documentation: `docs/CREDENTIAL_ROTATION_GUIDE.md`
 - **`tools/benchmark_concurrency_stress.py`**:
   - Async multi-worker concurrency stress benchmark executing concurrent write batches (`POST /api/iot/batch`), dashboard polling reads (`GET /api/devices`, `/api/rooms`), and heavy downsampling queries (`GET /api/devices/{id}/history?range=30d`) against HubGate V5 to validate 5 SLAs (read latency P95 < 300ms, batch write latency P95 < 350ms, zero DB locked errors, throughput > 500 pts/sec, bounded room map <= 4 queries). Exports Markdown and JSON reports.
   - CLI: `python tools/benchmark_concurrency_stress.py [--duration 15] [--writers 2] [--readers 3] [--downsample-workers 1] [--batch-size 75] [--base-url URL] [--output-json PATH] [--output-markdown PATH]`
