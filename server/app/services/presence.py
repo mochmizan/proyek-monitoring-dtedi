@@ -11,14 +11,14 @@ from modelsv5 import dev_table, event_log, rooms, data_table, temperature_data, 
 logger = logging.getLogger(__name__)
 
 HUB_ONLINE_WINDOW_SECONDS = 60
-DEVICE_OFFLINE_WINDOW_SECONDS = 25
+DEVICE_OFFLINE_WINDOW_SECONDS = 60
 PRESENCE_INTERVAL_SECONDS = 15
 
 
 def evaluate_device_presence_batch() -> None:
     """Periodic background task running every PRESENCE_INTERVAL_SECONDS.
     Evaluates active device state transitions in-memory, batches offline alert
-    insertions and online recoveries, and prunes stale unapproved devices older than 25s.
+    insertions and online recoveries, and prunes stale unapproved devices older than cutoff.
     Runs in an isolated scoped SessionLocal() with rollback protection.
     """
     db = SessionLocal()
@@ -73,7 +73,7 @@ def evaluate_device_presence_batch() -> None:
                         event_id=uuid.uuid4().hex,
                         alarm="DEVICE_OFFLINE",
                         timestamp=now_utc,
-                        message=f"Device '{dev_label}' ({dev.dev_id}) in '{room_name}' went OFFLINE (No signal for > 25s).",
+                        message=f"Device '{dev_label}' ({dev.dev_id}) in '{room_name}' went OFFLINE (No signal for > {DEVICE_OFFLINE_WINDOW_SECONDS}s).",
                         dev_id=dev.dev_id,
                         room_id=dev.room_id,
                         metric="connectivity",
@@ -157,7 +157,7 @@ def update_device_presence_on_list(db: Session, now_utc: datetime, cutoff: datet
                     event_id=uuid.uuid4().hex,
                     alarm="DEVICE_OFFLINE",
                     timestamp=now_utc,
-                    message=f"Device '{dev_label}' ({d.dev_id}) in '{room_name}' went OFFLINE (No signal for > 25s).",
+                    message=f"Device '{dev_label}' ({d.dev_id}) in '{room_name}' went OFFLINE (No signal for > {DEVICE_OFFLINE_WINDOW_SECONDS}s).",
                     dev_id=d.dev_id,
                     room_id=d.room_id,
                     metric="connectivity",
@@ -195,38 +195,71 @@ def prune_stale_pending(db: Session, cutoff: datetime):
         db.commit()
 
 
-def resolve_offline_on_telemetry(db: Session, device, now_utc: datetime):
-    """Called on successful telemetry: mark device online and resolve DEVICE_OFFLINE alerts."""
-    was_offline = device.last_status == "offline"
-    device.last_seen = now_utc
-    device.last_status = "online"
-    if was_offline:
-        open_offline_alerts = (
-            db.query(event_log)
-            .filter(
-                event_log.dev_id == device.dev_id,
-                event_log.alarm == "DEVICE_OFFLINE",
-                event_log.resolved_at.is_(None),
+def resolve_offline_on_telemetry(
+    db: Session,
+    device,
+    event_time: datetime = None,
+    now_utc: datetime = None,
+):
+    """Called on successful telemetry: mark device online and resolve DEVICE_OFFLINE alerts.
+    Preserves timestamp monotonicity: last_seen is only updated if event_time > last_seen.
+    Only marks online and resolves alerts if the telemetry event is fresh (>= cutoff).
+    """
+    if now_utc is None:
+        now_utc = datetime.now(UTC)
+    elif now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=UTC)
+
+    if event_time is None:
+        event_time = now_utc
+    elif event_time.tzinfo is None:
+        event_time = event_time.replace(tzinfo=UTC)
+
+    # 1. Monotonic update of last_seen (never move backward on replay/out-of-order)
+    d_seen = (
+        device.last_seen if (device.last_seen and device.last_seen.tzinfo is not None)
+        else (device.last_seen.replace(tzinfo=UTC) if device.last_seen else None)
+    )
+    if d_seen is None or event_time > d_seen:
+        device.last_seen = event_time
+
+    # 2. Freshness check: only mark online and resolve alerts if within offline window
+    cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
+    effective_seen = (
+        device.last_seen if (device.last_seen and device.last_seen.tzinfo is not None)
+        else (device.last_seen.replace(tzinfo=UTC) if device.last_seen else None)
+    )
+
+    if effective_seen and effective_seen >= cutoff:
+        was_offline = device.last_status == "offline"
+        device.last_status = "online"
+        if was_offline:
+            open_offline_alerts = (
+                db.query(event_log)
+                .filter(
+                    event_log.dev_id == device.dev_id,
+                    event_log.alarm == "DEVICE_OFFLINE",
+                    event_log.resolved_at.is_(None),
+                )
+                .all()
             )
-            .all()
-        )
-        if open_offline_alerts:
-            for alert in open_offline_alerts:
-                alert.resolved_at = now_utc
-            dev_label = device.dev_name or device.dev_id
-            room_obj = db.get(rooms, device.room_id) if device.room_id else None
-            room_name = room_obj.name if room_obj else "Unassigned"
-            online_event = event_log(
-                event_id=uuid.uuid4().hex,
-                alarm="DEVICE_ONLINE",
-                timestamp=now_utc,
-                message=f"Device '{dev_label}' ({device.dev_id}) in '{room_name}' is back ONLINE.",
-                dev_id=device.dev_id,
-                room_id=device.room_id,
-                metric="connectivity",
-                severity="info",
-                value=1.0,
-                threshold=1.0,
-                resolved_at=now_utc,
-            )
-            db.add(online_event)
+            if open_offline_alerts:
+                for alert in open_offline_alerts:
+                    alert.resolved_at = now_utc
+                dev_label = device.dev_name or device.dev_id
+                room_obj = db.get(rooms, device.room_id) if device.room_id else None
+                room_name = room_obj.name if room_obj else "Unassigned"
+                online_event = event_log(
+                    event_id=uuid.uuid4().hex,
+                    alarm="DEVICE_ONLINE",
+                    timestamp=now_utc,
+                    message=f"Device '{dev_label}' ({device.dev_id}) in '{room_name}' is back ONLINE.",
+                    dev_id=device.dev_id,
+                    room_id=device.room_id,
+                    metric="connectivity",
+                    severity="info",
+                    value=1.0,
+                    threshold=1.0,
+                    resolved_at=now_utc,
+                )
+                db.add(online_event)

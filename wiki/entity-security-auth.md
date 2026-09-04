@@ -207,7 +207,7 @@ def require_role(*allowed_roles: str):
 
 Rate limiting is enforced globally through SlowAPI (`server/app/core/rate_limit.py`) using client IP tracking:
 - **Authentication**: `5/minute` on `/api/auth/login`.
-- **Edge Telemetry Ingestion**: `120/minute` on `/api/iot`, `60/minute` on `/api/iot/batch` and `/api/iot/unapproved`.
+- **Edge Telemetry Ingestion**: `1200/minute` on `/api/iot` (aggregated edge gateway pacing), `60/minute` on `/api/iot/batch` and `/api/iot/unapproved`.
 - **Edge Command Polling**: `30/minute` on `/api/hub/commands` and delivered acknowledgments.
 - **Admin & Configuration Writes**: `30/minute` on device pairing, threshold updates, rooms, schedules, and command dispatch.
 - **Read Queries**: `60/minute` on devices, room maps, sparklines, history, alerts, and schedules.

@@ -186,7 +186,7 @@ def receive_unapproved_alert(
 
 
 @router.post("/api/iot")
-@limiter.limit("120/minute")
+@limiter.limit("1200/minute")
 def receive_iot(
     request: Request,
     device: IotPayload,
@@ -211,7 +211,7 @@ def receive_iot(
         event_time = _parse_event_time(device, now_utc)
         data_id = _generate_deterministic_id(device.DEV_ID, event_time)
 
-        resolve_offline_on_telemetry(db, registered_device, now_utc)
+        resolve_offline_on_telemetry(db, registered_device, event_time=event_time, now_utc=now_utc)
 
         dev_type = getattr(device, "DEV_TYPE", None)
         if isinstance(device, TSData) or dev_type == "TS":
@@ -411,7 +411,7 @@ def receive_iot_batch(
 
         # 3. Deduplicated Presence & Alert Evaluation (Latest reading only)
         for dev_id, (latest_ts, latest_payload, dev_obj) in latest_reading_per_dev.items():
-            resolve_offline_on_telemetry(db, dev_obj, now_utc)
+            resolve_offline_on_telemetry(db, dev_obj, event_time=latest_ts, now_utc=now_utc)
             evaluate_device_thresholds(db=db, dev=dev_obj, payload=latest_payload, timestamp=latest_ts)
 
         # 4. Single atomic commit: Heartbeat + Bulk Telemetry + Presence + Alerts

@@ -28,21 +28,21 @@ The hardened Presence Engine completely divorces state evaluation from read requ
    - Fetches all active devices in a single query using eager loading: `select(dev_table).options(selectinload(dev_table.room)).where(dev_table.is_active == True)`.
    - Fetches all currently unresolved `DEVICE_OFFLINE` records from `event_log` in a single query, grouping them by `dev_id` in Python memory (`defaultdict(list)`).
 4. **In-Memory State Transitions**:
-   - Determines cutoff timestamp: $T_{\text{cutoff}} = \text{now}_{\text{UTC}} - 25\text{s}$ (`DEVICE_OFFLINE_WINDOW_SECONDS = 25`).
+   - Determines cutoff timestamp: $T_{\text{cutoff}} = \text{now}_{\text{UTC}} - 60\text{s}$ (`DEVICE_OFFLINE_WINDOW_SECONDS = 60`).
    - **Online to Offline Transition**: If a device's `last_seen < T_{\text{cutoff}}` and its current `last_status == "online"`, the sweeper transitions `dev.last_status = "offline"` and stages a `DEVICE_OFFLINE` warning alert in `event_log`.
    - **Offline to Online Transition**: If `last_seen >= T_{\text{cutoff}}` and `last_status != "online"`, the sweeper sets `dev.last_status = "online"` and stamps `resolved_at = now_utc` on all open offline alerts.
-5. **Stale Pending Device Pruning**: Executes a single bulk `delete()` for unapproved devices (`is_active == False` and `room_id IS NULL`) older than 25 seconds.
+5. **Stale Pending Device Pruning**: Executes a single bulk `delete()` for unapproved devices (`is_active == False` and `room_id IS NULL`) older than cutoff.
 6. **Conditional Commit**: The database session only executes `db.commit()` if state changes or prune deletions actually occurred (`has_state_changes`), minimizing disk write I/O.
 
-## 3. Detection Lag SLA: 40 Seconds Maximum
+## 3. Detection Lag SLA: 75 Seconds Maximum
 
 The combination of the offline timeout window and the background sweeper schedule defines the system detection SLA:
 
-$$\text{Detection Lag}_{\max} = \text{DEVICE\_OFFLINE\_WINDOW\_SECONDS} + \text{PRESENCE\_INTERVAL\_SECONDS} = 25\text{s} + 15\text{s} = 40\text{s}$$
+$$\text{Detection Lag}_{\max} = \text{DEVICE\_OFFLINE\_WINDOW\_SECONDS} + \text{PRESENCE\_INTERVAL\_SECONDS} = 60\text{s} + 15\text{s} = 75\text{s}$$
 
-- Best-case detection latency: 25.0 seconds (if hardware drops immediately before sweeper tick).
-- Worst-case detection latency: 40.0 seconds (if hardware drops immediately after sweeper tick).
-- All device disconnects are guaranteed to be flagged as `offline` and alerted within 40 seconds.
+- Best-case detection latency: 60.0 seconds (if hardware drops immediately before sweeper tick).
+- Worst-case detection latency: 75.0 seconds (if hardware drops immediately after sweeper tick).
+- All device disconnects are guaranteed to be flagged as `offline` and alerted within 75 seconds.
 
 ## 4. Idempotent Read-Only Invariant (`GET /api/devices`)
 

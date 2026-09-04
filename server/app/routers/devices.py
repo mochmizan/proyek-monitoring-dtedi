@@ -15,6 +15,7 @@ from app.core.rate_limit import limiter
 from app.routers.alerts import parse_datetime_param
 from app.dependencies import hub_auth_cache, stage_hub_heartbeat
 from app.services.telemetry import get_latest_readings_for_devices
+from app.services.presence import DEVICE_OFFLINE_WINDOW_SECONDS
 
 router = APIRouter(tags=["devices"])
 
@@ -526,7 +527,7 @@ def get_device(
         )
 
     now_utc = datetime.now(UTC)
-    cutoff = now_utc - timedelta(seconds=25)
+    cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
     d_seen = device.last_seen if (device.last_seen and device.last_seen.tzinfo is not None) else (device.last_seen.replace(tzinfo=UTC) if device.last_seen else None)
     if not device.is_active:
         computed_status = "pending"
@@ -627,7 +628,7 @@ def get_devices(
         _user = get_current_user(request, db)
 
     now_utc = datetime.now(UTC)
-    cutoff = now_utc - timedelta(seconds=25)
+    cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
 
     stmt = (
         select(dev_table)
