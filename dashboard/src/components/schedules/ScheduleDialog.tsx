@@ -1,10 +1,15 @@
-import React, { useState, useMemo, useEffect } from "react"
+﻿import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
+import { AlertTriangle, CheckCircle, Loader2, Search } from "lucide-react"
 import { queryKeys } from "@/lib/queryKeys"
 import { createSchedule, updateSchedule } from "@/lib/api"
+import { validateCron } from "@/lib/cron"
+import { cronExprSchema, payloadSchema } from "@/lib/scheduleApi"
+import { toast, parseApiError } from "@/lib/toast"
 import { cn } from "@/lib/utils"
-import { validateCron, describeCron, getNextRuns, formatNextRun } from "@/lib/cron"
+import CronBuilder from "@/components/schedules/CronBuilder"
+import ATSForm from "@/components/schedules/PayloadForm/ATSForm"
+import ACForm from "@/components/schedules/PayloadForm/ACForm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,154 +18,176 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import type { ScheduleResponse, ScheduleCreate, DeviceResponse } from "@/types/api"
 
-export type PresetKey = "warmup" | "cooldown" | "sgm_on" | "sgm_off" | "reset" | "manual" | "auto" | "custom"
+// payloadToPreset removed
 
-export const PRESETS: Record<PresetKey, { label: string; payload: Record<string, unknown> }> = {
-  warmup: { label: "Warmup (manual + on) — bundled", payload: { mode: "manual", start_genset: "on" } },
-  cooldown: { label: "Cooldown (auto)", payload: { mode: "auto" } },
-  sgm_on: { label: "Start Genset (on)", payload: { start_genset: "on" } },
-  sgm_off: { label: "Stop Genset (off)", payload: { start_genset: "off" } },
-  reset: { label: "Reset (rst)", payload: { reset: "rst" } },
-  manual: { label: "Mode manual", payload: { mode: "manual" } },
-  auto: { label: "Mode auto", payload: { mode: "auto" } },
-  custom: { label: "Custom JSON", payload: {} },
-}
-
-export function payloadToPreset(payload: Record<string, unknown>): PresetKey {
-  const keys = Object.keys(payload)
-  if (keys.length === 0) return "custom"
-  if (payload.mode === "manual" && payload.start_genset === "on" && keys.length === 2) return "warmup"
-  if (payload.mode === "auto" && keys.length === 1) return "auto"
-  if (payload.mode === "manual" && keys.length === 1) return "manual"
-  if (payload.start_genset === "on" && keys.length === 1) return "sgm_on"
-  if (payload.start_genset === "off" && keys.length === 1) return "sgm_off"
-  if (payload.reset === "rst" && keys.length === 1) return "reset"
-  if (payload.mode === "auto" && Object.keys(payload).length === 1) return "cooldown"
-  return "custom"
-}
 
 export interface ScheduleDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   editing: ScheduleResponse | null
+  devices?: DeviceResponse[]
   atsDevices?: DeviceResponse[]
   onSuccess?: () => void
+  existingSchedules?: ScheduleResponse[]
 }
 
 export default function ScheduleDialog({
   open,
   onOpenChange,
   editing,
-  atsDevices = [],
+  devices,
+  atsDevices,
   onSuccess,
+  existingSchedules = [],
 }: ScheduleDialogProps) {
   const queryClient = useQueryClient()
+  const allDevices = useMemo(() => devices ?? atsDevices ?? [], [devices, atsDevices])
 
   const [devId, setDevId] = useState("")
   const [cronExpr, setCronExpr] = useState("0 18 * * 0")
-  const [preset, setPreset] = useState<PresetKey>("warmup")
-  const [customJson, setCustomJson] = useState('{"mode":"manual","start_genset":"on"}')
+  const [payload, setPayload] = useState<Record<string, unknown>>({ mode: "manual", start_genset: "on" })
   const [enabled, setEnabled] = useState(true)
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
+  const [filterTab, setFilterTab] = useState<"all" | "ATS" | "AC" | "ACC">("all")
+  const [search, setSearch] = useState("")
+
+  const devIdRef = useRef<HTMLButtonElement>(null)
+  const cronRef = useRef<HTMLDivElement>(null)
+
+  const selectedDevice = useMemo(() => allDevices.find((d) => d.dev_id === devId) ?? null, [allDevices, devId])
+  const devType = (selectedDevice?.dev_type ?? "ATS").toUpperCase()
+
+  const filteredDevices = useMemo(() => {
+    let list = allDevices.filter((d) => d.is_active && d.status === "online" && ["ATS", "AC", "ACC"].includes((d.dev_type ?? "").toUpperCase()))
+    if (filterTab !== "all") list = list.filter((d) => (d.dev_type ?? "").toUpperCase() === filterTab)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      list = list.filter((d) => d.dev_id.toLowerCase().includes(q) || (d.dev_name ?? "").toLowerCase().includes(q))
+    }
+    return list
+  }, [allDevices, filterTab, search])
+
+  const onlineATS = useMemo(() => allDevices.filter((d) => d.is_active && d.status === "online" && (d.dev_type ?? "").toUpperCase() === "ATS"), [allDevices])
+  const onlineAC = useMemo(() => allDevices.filter((d) => d.is_active && d.status === "online" && (d.dev_type ?? "").toUpperCase() === "AC"), [allDevices])
+  const onlineACC = useMemo(() => allDevices.filter((d) => d.is_active && d.status === "online" && (d.dev_type ?? "").toUpperCase() === "ACC"), [allDevices])
 
   useEffect(() => {
     if (open) {
       if (editing) {
         setDevId(editing.dev_id)
         setCronExpr(editing.cron_expr)
-        setPreset(payloadToPreset(editing.payload))
-        setCustomJson(JSON.stringify(editing.payload, null, 2))
+        setPayload(editing.payload ?? { mode: "manual", start_genset: "on" })
         setEnabled(editing.enabled)
       } else {
-        setDevId(atsDevices[0]?.dev_id ?? "")
+        const first = filteredDevices[0] ?? allDevices.find((d) => d.is_active && d.status === "online") ?? allDevices[0]
+        setDevId(first?.dev_id ?? "")
         setCronExpr("0 18 * * 0")
-        setPreset("warmup")
-        setCustomJson('{"mode":"manual","start_genset":"on"}')
+        setPayload({ mode: "manual", start_genset: "on" })
         setEnabled(true)
       }
       setFormError(null)
       setFormSuccess(null)
+      setSearch("")
+      setFilterTab("all")
     }
-  }, [open, editing, atsDevices])
+  }, [open, editing, allDevices, filteredDevices])
 
-  const cronValidation = useMemo(() => validateCron(cronExpr), [cronExpr])
-  const cronHuman = useMemo(() => describeCron(cronExpr), [cronExpr])
-  const nextRuns = useMemo(() => (cronValidation.valid ? getNextRuns(cronExpr, 3) : []), [cronExpr, cronValidation.valid])
+  // when device changes, adapt payload shape
+  useEffect(() => {
+    if (!selectedDevice) return
+    const t = (selectedDevice.dev_type ?? "ATS").toUpperCase()
+    if (t === "AC" || t === "ACC") {
+      // if payload looks like ATS, switch to AC default
+      if (!payload.target) setPayload({ target: "AC1", action: "ON" })
+    } else {
+      if ((payload as Record<string, unknown>).target) setPayload({ mode: "manual", start_genset: "on" })
+    }
+  }, [selectedDevice, payload])
 
   const createMut = useMutation({
-    mutationFn: (payload: ScheduleCreate) => createSchedule(payload),
+    mutationFn: (body: ScheduleCreate) => createSchedule(body),
     onSuccess: () => {
       setFormSuccess("Schedule created")
+      toast.success("Schedule created")
       queryClient.invalidateQueries({ queryKey: queryKeys.schedules.all })
       onSuccess?.()
       setTimeout(() => onOpenChange(false), 600)
     },
-    onError: (e: Error) => setFormError(e.message),
+    onError: (e: unknown) => {
+      const msg = parseApiError(e)
+      setFormError(msg)
+      toast.error("Create failed", { description: msg })
+    },
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<ScheduleCreate> & { enabled?: boolean } }) =>
-      updateSchedule(id, payload as never),
+    mutationFn: ({ id, body }: { id: string; body: Partial<ScheduleCreate> & { enabled?: boolean } }) =>
+      updateSchedule(id, body as never),
     onSuccess: () => {
       setFormSuccess("Schedule updated")
+      toast.success("Schedule updated")
       queryClient.invalidateQueries({ queryKey: queryKeys.schedules.all })
       onSuccess?.()
       setTimeout(() => onOpenChange(false), 500)
     },
-    onError: (e: Error) => setFormError(e.message),
+    onError: (e: unknown) => {
+      const msg = parseApiError(e)
+      setFormError(msg)
+      toast.error("Update failed", { description: msg })
+    },
   })
+
+  const overlapHint = useMemo(() => {
+    if (!devId || !cronExpr) return null
+    const dup = existingSchedules.some((s) => s.dev_id === devId && s.cron_expr === cronExpr.trim() && s.id !== editing?.id)
+    return dup ? "Same device already has identical cron — both will fire" : null
+  }, [existingSchedules, devId, cronExpr, editing])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
     setFormSuccess(null)
     if (!devId) {
-      setFormError("Select an ATS device")
+      setFormError("Select a device")
+      devIdRef.current?.focus()
       return
     }
-    if (!cronValidation.valid) {
-      setFormError(cronValidation.error || "Invalid cron")
+    const cronRes = cronExprSchema.safeParse(cronExpr.trim())
+    if (!cronRes.success) {
+      setFormError(cronRes.error.issues[0]?.message ?? "Invalid cron")
+      cronRef.current?.focus()
       return
     }
-    let payload: Record<string, unknown>
-    if (preset === "custom") {
-      try {
-        payload = JSON.parse(customJson) as Record<string, unknown>
-        if (!payload || typeof payload !== "object" || Object.keys(payload).length === 0) {
-          setFormError("Custom JSON must be a non-empty object")
-          return
-        }
-      } catch {
-        setFormError("Custom JSON invalid — must be valid JSON")
-        return
-      }
-    } else {
-      payload = PRESETS[preset]?.payload ?? {}
+    const payloadRes = payloadSchema.safeParse(payload)
+    if (!payloadRes.success) {
+      setFormError(payloadRes.error.issues[0]?.message ?? "Invalid payload")
+      return
     }
-    const dev = atsDevices.find((d) => d.dev_id === devId)
-    const hubId = dev?.hub_id ?? null
+    const vc = validateCron(cronExpr.trim())
+    if (!vc.valid) {
+      setFormError(vc.error ?? "Invalid cron")
+      return
+    }
     const body: ScheduleCreate = {
       dev_id: devId,
-      hub_id: hubId,
       cron_expr: cronExpr.trim(),
-      payload,
+      payload: payloadRes.data as Record<string, unknown>,
       tz: "Asia/Jakarta",
       enabled,
     }
-    if (editing) {
-      updateMut.mutate({ id: editing.id, payload: body as never })
-    } else {
-      createMut.mutate(body)
-    }
+    if (editing) updateMut.mutate({ id: editing.id, body: body as never })
+    else createMut.mutate(body)
   }
+
+  const isAC = devType === "AC" || devType === "ACC"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? `Edit schedule #${editing.id}` : "New ATS schedule"}</DialogTitle>
-          <DialogDescription>Flexible cron (5 fields). Timezone canonical Asia/Jakarta. Bundled warmup payload bypasses PROMINI check_genset_mode.</DialogDescription>
+          <DialogTitle>{editing ? `Edit schedule #${editing.id.slice(0, 8)}` : "New schedule"}</DialogTitle>
+          <DialogDescription>Visual builder generates 5-field cron (Asia/Jakarta). Device payload adapts to ATS vs AC.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -168,90 +195,56 @@ export default function ScheduleDialog({
           {formSuccess && <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded flex gap-2"><CheckCircle className="h-4 w-4 shrink-0" /><span>{formSuccess}</span></div>}
 
           <div>
-            <Label className="mb-1.5 block">ATS Device *</Label>
+            <Label className="mb-1.5 block">Device *</Label>
+            <div className="flex gap-1 mb-2">
+              {(["all", "ATS", "AC", "ACC"] as const).map((t) => (
+                <Button key={t} type="button" size="sm" variant={filterTab === t ? "default" : "outline"} className={filterTab === t ? "h-7 px-2 text-xs bg-indigo-600" : "h-7 px-2 text-xs"} onClick={() => setFilterTab(t)}>
+                  {t === "all" ? "All" : t} {t === "ATS" ? `(${onlineATS.length})` : t === "AC" ? `(${onlineAC.length})` : t === "ACC" ? `(${onlineACC.length})` : `(${onlineATS.length + onlineAC.length + onlineACC.length})`}
+                </Button>
+              ))}
+            </div>
+            <div className="relative mb-2">
+              <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-zinc-500" />
+              <Input placeholder="Search dev_name or dev_id" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-7 h-8 text-xs" />
+            </div>
             <Select value={devId} onValueChange={setDevId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select ATS device" />
+              <SelectTrigger ref={devIdRef} className={cn("w-full", !devId && "border-red-500")} aria-invalid={!devId}>
+                <SelectValue placeholder="Select device (online & active only)" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  {atsDevices.length === 0 ? (
-                    <SelectItem value="__none" disabled>No ATS devices found — pair one first</SelectItem>
+                  {filteredDevices.length === 0 ? (
+                    <SelectItem value="__none" disabled>
+                      {filterTab === "ATS" ? "No online ATS — pair one in Settings" : filterTab === "AC" ? "No online AC — pair one" : "No online devices matching filter"}
+                    </SelectItem>
                   ) : (
-                    atsDevices.map((d) => (
+                    filteredDevices.map((d) => (
                       <SelectItem key={d.dev_id} value={d.dev_id}>
-                        {d.dev_name ? `${d.dev_name} (${d.dev_id})` : d.dev_id} — hub {d.hub_id ?? "?"}
+                        {(d.dev_name ? `${d.dev_name} (${d.dev_id})` : d.dev_id)} — {d.dev_type} · {d.hub_id ?? "?"}
                       </SelectItem>
                     ))
                   )}
                 </SelectGroup>
               </SelectContent>
             </Select>
-            {atsDevices.length === 0 && <p className="text-[11px] text-amber-400 mt-1">No ATS devices. Pair an ATS device in Settings first.</p>}
+            {filteredDevices.length === 0 && <p className="text-[11px] text-amber-400 mt-1">No online devices for this filter. Pair and bring online first.</p>}
+            {selectedDevice && <p className="text-[11px] text-zinc-500 mt-1">Selected {selectedDevice.dev_type} · {selectedDevice.status} · {selectedDevice.is_active ? "active" : "pending"}</p>}
+          </div>
+
+          <div ref={cronRef}>
+            <Label className="mb-1.5 block">Schedule</Label>
+            <CronBuilder value={cronExpr} onChange={setCronExpr} />
+            {overlapHint && <p className="text-[11px] text-amber-400 mt-1">{overlapHint}</p>}
           </div>
 
           <div>
-            <Label className="mb-1.5 block">Command preset</Label>
-            <Select value={preset} onValueChange={(v) => setPreset(v as PresetKey)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {Object.entries(PRESETS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>
-                      {v.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-zinc-500 mt-1">Warmup sends <code className="bg-zinc-950 px-1 rounded">{"{\"mode\":\"manual\",\"start_genset\":\"on\"}"}</code> via hub 2s poll → MQTT → bounded serial.</p>
-          </div>
-
-          {preset === "custom" && (
-            <div>
-              <Label className="mb-1.5 block">Custom JSON payload</Label>
-              <textarea value={customJson} onChange={(e) => setCustomJson(e.target.value)} rows={3} placeholder='{"mode":"manual","start_genset":"on"}' className="w-full bg-zinc-950 border border-border rounded-md px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-          )}
-
-          {preset !== "custom" && (
-            <div className="bg-zinc-950 border border-zinc-800 rounded p-2.5 text-xs font-mono text-zinc-400">
-              Payload: <span className="text-indigo-300">{JSON.stringify(PRESETS[preset].payload)}</span>
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="cron" className="mb-1.5 block">Cron expression *</Label>
-            <Input id="cron" value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder="0 18 * * 0" className={cn(!cronValidation.valid && "border-red-500 focus-visible:ring-red-500")} />
-            {!cronValidation.valid ? (
-              <p className="text-xs text-red-400 mt-1">{cronValidation.error}</p>
+            <Label className="mb-1.5 block">Payload *</Label>
+            {isAC ? (
+              <ACForm value={payload} onChange={setPayload} />
             ) : (
-              <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1"><CheckCircle className="h-3 w-3" />{cronHuman}</p>
+              <ATSForm value={payload} onChange={setPayload} />
             )}
-            <div className="flex flex-wrap gap-1 mt-2">
-              {[
-                ["Sun 18:00 warmup", "0 18 * * 0"],
-                ["Daily 07:00", "0 7 * * *"],
-                ["Mon/Thu 18:00", "0 18 * * 1,4"],
-                ["Every 30m", "*/30 * * * *"],
-              ].map(([label, expr]) => (
-                <button key={expr} type="button" onClick={() => setCronExpr(expr)} className={cn("px-2 py-1 rounded border text-[11px] font-mono", cronExpr === expr ? "bg-indigo-600 border-indigo-500 text-white" : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200")}>{label}</button>
-              ))}
-            </div>
           </div>
-
-          {cronValidation.valid && nextRuns.length > 0 && (
-            <div className="bg-zinc-950 border border-zinc-800 rounded p-3 space-y-1">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Next runs (WIB / UTC)</p>
-              {nextRuns.map((d) => {
-                const f = formatNextRun(d)
-                return <div key={d.toISOString()} className="text-xs font-mono text-zinc-300">{f.jakarta} <span className="text-zinc-500">· {f.utc}</span></div>
-              })}
-              <p className="text-[11px] text-zinc-500">Computed client-side (Jakarta UTC+7). Server next_run_at may differ by seconds.</p>
-            </div>
-          )}
 
           <div className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-950 p-3">
             <Label htmlFor="enabled" className="text-sm">Enabled (APScheduler job active)</Label>
@@ -260,7 +253,7 @@ export default function ScheduleDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={createMut.isPending || updateMut.isPending || !cronValidation.valid} className="bg-indigo-600 hover:bg-indigo-500">
+            <Button type="submit" disabled={createMut.isPending || updateMut.isPending} className="bg-indigo-600 hover:bg-indigo-500">
               {(createMut.isPending || updateMut.isPending) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {editing ? "Save changes" : "Create schedule"}
             </Button>

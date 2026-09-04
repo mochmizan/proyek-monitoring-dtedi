@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   UserResponse,
   UserLoginPayload,
   RoomResponse,
@@ -166,10 +166,13 @@ export async function fetchRoomSparklines(range = '6h', maxPoints = 24): Promise
 // Devices & Pairing API
 // ----------------------------------------------------
 
-export async function fetchDevices(status?: 'pending' | 'active' | 'all'): Promise<DeviceResponse[]> {
+export async function fetchDevices(status?: 'pending' | 'active' | 'all', dev_type?: string): Promise<DeviceResponse[]> {
   const url = new URL(`${BASE}/api/devices`, window.location.origin);
   if (status) {
     url.searchParams.set('status', status);
+  }
+  if (dev_type) {
+    url.searchParams.set('dev_type', dev_type);
   }
   const res = await fetch(url.toString(), {
     credentials: 'same-origin',
@@ -323,7 +326,7 @@ export async function revokeHub(hubId: string): Promise<HubActionResponse> {
 }
 
 // ----------------------------------------------------
-// Schedules API — ATS flexible cron (server-scheduler)
+// Schedules API â€” ATS flexible cron (server-scheduler)
 // ----------------------------------------------------
 
 export async function fetchSchedules(params?: { hub_id?: string; dev_id?: string; enabled?: boolean }): Promise<ScheduleResponse[]> {
@@ -383,3 +386,5 @@ export async function previewScheduleCron(cronExpr: string, tz?: string): Promis
   const res = await fetch(url.toString(), { credentials: 'same-origin' });
   return handleResponse<SchedulePreviewResponse>(res);
 }
+
+

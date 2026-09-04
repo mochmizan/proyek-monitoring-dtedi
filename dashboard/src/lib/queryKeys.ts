@@ -1,11 +1,11 @@
-export const queryKeys = {
+﻿export const queryKeys = {
   auth: {
     all: ['auth'] as const,
     me: () => [...queryKeys.auth.all, 'me'] as const,
   },
   devices: {
     all: ['devices'] as const,
-    list: (status?: string) => [...queryKeys.devices.all, 'list', { status }] as const,
+    list: (status?: string, dev_type?: string) => [...queryKeys.devices.all, 'list', { status, dev_type }] as const,
     detail: (id: string) => [...queryKeys.devices.all, 'detail', id] as const,
     history: (id: string, range?: string) => [...queryKeys.devices.all, 'history', id, { range }] as const,
     pending: () => [...queryKeys.devices.all, 'pending'] as const,

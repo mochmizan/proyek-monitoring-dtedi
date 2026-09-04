@@ -1,4 +1,4 @@
-# app/routers/devices.py
+﻿# app/routers/devices.py
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Optional
@@ -570,6 +570,7 @@ def get_device(
 def get_devices(
     request: Request,
     status_filter: Optional[str] = Query(None, alias="status"),
+    dev_type_filter: Optional[str] = Query(None, alias="dev_type"),
     x_hub_id: Optional[str] = Header(None, alias="X-Hub-ID"),
     x_hub_key: Optional[str] = Header(None, alias="X-Hub-Key"),
     db: Session = Depends(get_db),
@@ -649,6 +650,11 @@ def get_devices(
             detail="Invalid status filter. Use 'pending', 'active', or 'all'.",
         )
 
+    if dev_type_filter is not None:
+        dt = dev_type_filter.strip().upper()
+        if dt not in ("ATS", "AC", "ACC", "TS"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid dev_type filter. Use ATS, AC, ACC, or TS.")
+        stmt = stmt.where(dev_table.dev_type == dt)
     devices = db.execute(stmt).scalars().all()
     readings = get_latest_readings_for_devices(db, devices)
     results = []
@@ -688,3 +694,4 @@ def get_devices(
             )
         )
     return results
+

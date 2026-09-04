@@ -1,9 +1,74 @@
-/**
+﻿/**
  * Lightweight cron helpers — avoids external cron-parser/cronstrue deps.
  * 5-field standard cron (minute hour dom month dow), Asia/Jakarta canonical.
+ * Server GET /api/schedules/preview is source of truth for next_runs;
+ * client helpers are for inline validation + optimistic preview fallback.
  */
 
 const CRON_FIELD_REGEX = /^[\d*,/\-\s]+$/
+
+export type CronFrequency = "daily" | "weekdays" | "weekly" | "custom"
+
+export interface BuilderState {
+  frequency: CronFrequency
+  time: string
+  weekdays: number[]
+  raw: string
+}
+
+export function buildCron(args: { frequency: CronFrequency; time: string; weekdays: number[]; raw?: string }): string {
+  if (args.frequency === "custom") {
+    return (args.raw ?? "").trim() || "0 18 * * 0"
+  }
+  const parts = (args.time || "18:00").split(":")
+  const h = parseInt(parts[0] ?? "18", 10)
+  const m = parseInt(parts[1] ?? "0", 10)
+  const hh = Number.isFinite(h) ? Math.max(0, Math.min(23, h)) : 18
+  const mm = Number.isFinite(m) ? Math.max(0, Math.min(59, m)) : 0
+  if (args.frequency === "daily") return `${mm} ${hh} * * *`
+  if (args.frequency === "weekdays") return `${mm} ${hh} * * 1-5`
+  const w = [...args.weekdays].sort((a, b) => a - b)
+  if (w.length === 0) return `${mm} ${hh} * * 0`
+  return `${mm} ${hh} * * ${w.join(",")}`
+}
+
+export function parseCronToBuilderState(cron: string): BuilderState {
+  const trimmed = cron.trim()
+  const fields = trimmed.split(/\s+/)
+  if (fields.length !== 5) {
+    return { frequency: "custom", time: "18:00", weekdays: [0], raw: trimmed }
+  }
+  const minute = fields[0] as string
+  const hour = fields[1] as string
+  const dom = fields[2] as string
+  const month = fields[3] as string
+  const dow = fields[4] as string
+  if (dom !== "*" || month !== "*") {
+    return { frequency: "custom", time: "18:00", weekdays: [0], raw: trimmed }
+  }
+  if (!/^\d+$/.test(minute) || !/^\d+$/.test(hour)) {
+    return { frequency: "custom", time: "18:00", weekdays: [0], raw: trimmed }
+  }
+  const mm = minute.padStart(2, "0")
+  const hh = hour.padStart(2, "0")
+  const time = `${hh}:${mm}`
+  if (dow === "*") return { frequency: "daily", time, weekdays: [], raw: trimmed }
+  if (dow === "1-5") return { frequency: "weekdays", time, weekdays: [1, 2, 3, 4, 5], raw: trimmed }
+  const weekdays: number[] = []
+  let ok = true
+  for (const part of dow.split(",")) {
+    const n = parseInt(part, 10)
+    if (Number.isNaN(n)) { ok = false; break }
+    let v = n
+    if (v === 7) v = 0
+    if (v < 0 || v > 6) { ok = false; break }
+    weekdays.push(v)
+  }
+  if (ok && weekdays.length > 0) {
+    return { frequency: "weekly", time, weekdays: [...new Set(weekdays)].sort((a,b)=>a-b), raw: trimmed }
+  }
+  return { frequency: "custom", time: "18:00", weekdays: [0], raw: trimmed }
+}
 
 function parseField(field: string, min: number, max: number): Set<number> | null {
   const result = new Set<number>()
@@ -23,9 +88,9 @@ function parseField(field: string, min: number, max: number): Set<number> | null
       rangeMin = min
       rangeMax = max
     } else if (rangePart.includes("-")) {
-      const [a, b] = rangePart.split("-")
-      rangeMin = parseInt(a as string, 10)
-      rangeMax = parseInt(b as string, 10)
+      const ab = rangePart.split("-")
+      rangeMin = parseInt(ab[0] as string, 10)
+      rangeMax = parseInt(ab[1] as string, 10)
       if (Number.isNaN(rangeMin) || Number.isNaN(rangeMax)) return null
     } else {
       const v = parseInt(rangePart, 10)
@@ -45,37 +110,28 @@ export function validateCron(expr: string): { valid: boolean; error?: string } {
   if (trimmed.startsWith("@")) return { valid: false, error: "Shorthand @reboot etc not supported — use 5-field cron" }
   const fields = trimmed.split(/\s+/)
   if (fields.length !== 5) return { valid: false, error: `Expected 5 fields, got ${fields.length}` }
+  if (trimmed.length > 64) return { valid: false, error: "Cron too long (max 64)" }
   if (!CRON_FIELD_REGEX.test(trimmed)) return { valid: false, error: "Invalid characters — use digits, *, ,, -, /" }
-  const ranges: [number, number][] = [
-    [0, 59],
-    [0, 23],
-    [1, 31],
-    [1, 12],
-    [0, 7],
-  ]
+  const ranges: [number, number][] = [[0, 59],[0, 23],[1, 31],[1, 12],[0, 7]]
   for (let i = 0; i < 5; i++) {
     const f = fields[i] as string
-    const [min, max] = ranges[i] as [number, number]
-    if (parseField(f, min, max) === null) return { valid: false, error: `Invalid field ${i + 1}: "${f}" out of range ${min}-${max}` }
+    const mn = ranges[i]![0]
+    const mx = ranges[i]![1]
+    if (parseField(f, mn, mx) === null) return { valid: false, error: `Invalid field ${i + 1}: "${f}" out of range ${mn}-${mx}` }
   }
   return { valid: true }
 }
 
-// Simple human preview — covers common patterns used in ATS scheduling.
 export function describeCron(expr: string): string {
   const v = validateCron(expr)
   if (!v.valid) return v.error || "Invalid cron"
   const [minute, hour, dom, month, dow] = expr.trim().split(/\s+/) as [string, string, string, string, string]
-
-  const dowNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-  const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-
-  // Exact presets
+  const dowNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+  const monthNames = ["","January","February","March","April","May","June","July","August","September","October","November","December"]
   if (expr.trim() === "0 18 * * 0") return "At 6:00 PM, only on Sunday"
   if (expr.trim() === "0 18 * * 1,4") return "At 6:00 PM, only on Monday and Thursday"
   if (expr.trim() === "* * * * *") return "Every minute"
-
-  // Daily at fixed time: "M H * * *"
+  if (/^0 18 \* \* 1-5$/.test(expr.trim())) return "At 6:00 PM, Monday through Friday"
   if (dom === "*" && month === "*" && dow === "*") {
     const m = parseInt(minute, 10)
     const h = parseInt(hour, 10)
@@ -86,61 +142,63 @@ export function describeCron(expr: string): string {
       return `At ${h12}:${mm} ${ampm}, every day`
     }
   }
-
-  // Weekly
+  if (dow === "1-5" && dom === "*" && month === "*") {
+    const m = parseInt(minute, 10)
+    const h = parseInt(hour, 10)
+    if (!Number.isNaN(m) && !Number.isNaN(h) && String(m) === minute && String(h) === hour) {
+      const ampm = h >= 12 ? "PM" : "AM"
+      const h12 = h % 12 === 0 ? 12 : h % 12
+      const mm = String(m).padStart(2, "0")
+      return `At ${h12}:${mm} ${ampm}, Monday through Friday`
+    }
+  }
   if (dom === "*" && month === "*") {
     const m = parseInt(minute, 10)
     const h = parseInt(hour, 10)
     if (!Number.isNaN(m) && !Number.isNaN(h) && String(m) === minute && String(h) === hour && dow !== "*") {
-      const dows = dow.split(",").map((d) => {
-        let n = parseInt(d, 10)
-        if (n === 7) n = 0
-        return dowNames[n] ?? d
-      })
+      const dows = dow.split(",").map((d) => { let n = parseInt(d, 10); if (n === 7) n = 0; return dowNames[n] ?? d })
       const ampm = h >= 12 ? "PM" : "AM"
       const h12 = h % 12 === 0 ? 12 : h % 12
       const mm = String(m).padStart(2, "0")
       return `At ${h12}:${mm} ${ampm}, only on ${dows.join(", ")}`
     }
   }
-
-  // Monthly day
+  if (/^\*\/\d+/.test(minute) || /^\*\/\d+/.test(hour)) {
+    return `Every ${minute} minute(s), every ${hour} hour(s) — ${expr}`
+  }
   if (month === "*" && dow === "*" && dom !== "*") {
     return `At ${hour}:${minute.padStart(2, "0")}, on day ${dom} of the month`
   }
-
   if (month !== "*" && /^\d+$/.test(month)) {
     const mn = parseInt(month, 10)
     return `At ${hour}:${minute.padStart(2, "0")}, in ${monthNames[mn] ?? month} (day ${dom}, dow ${dow})`
   }
-
   return `Cron ${expr} — every ${minute !== "*" ? `minute ${minute}` : "minute"}, hour ${hour}, day ${dom}, month ${month}, weekday ${dow}`
 }
 
 function matchesCron(date: Date, sets: Set<number>[]): boolean {
-  // Use Jakarta time (UTC+7, no DST) for display consistency
   const jakartaOffsetMs = 7 * 60 * 60 * 1000
   const j = new Date(date.getTime() + jakartaOffsetMs)
   const minute = j.getUTCMinutes()
   const hour = j.getUTCHours()
   const dom = j.getUTCDate()
   const month = j.getUTCMonth() + 1
-  const dow = j.getUTCDay() // 0 Sun
+  const dow = j.getUTCDay()
   const checks = [minute, hour, dom, month, dow]
   for (let i = 0; i < 5; i++) {
     const v = checks[i] as number
     const s = sets[i] as Set<number>
-    // Dow: 7 also means Sunday
     if (i === 4 && s.has(7) && v === 0) continue
     if (!s.has(v)) return false
   }
   return true
 }
 
+/** @deprecated Prefer server GET /api/schedules/preview for authoritative next_runs (Asia/Jakarta ZoneInfo). Kept for offline fallback/tests. */
 export function getNextRuns(cronExpr: string, count = 3, fromDate = new Date()): Date[] {
   if (!validateCron(cronExpr).valid) return []
   const fields = cronExpr.trim().split(/\s+/) as [string, string, string, string, string]
-  const ranges: [number, number][] = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]]
+  const ranges: [number, number][] = [[0, 59],[0, 23],[1, 31],[1, 12],[0, 7]]
   const sets: Set<number>[] = []
   for (let i = 0; i < 5; i++) {
     const s = parseField(fields[i] as string, ranges[i]![0], ranges[i]![1])
@@ -148,33 +206,18 @@ export function getNextRuns(cronExpr: string, count = 3, fromDate = new Date()):
     sets.push(s)
   }
   const results: Date[] = []
-  // start at next minute boundary
   let cursor = new Date(fromDate.getTime() + 60_000)
   cursor.setSeconds(0, 0)
-  // Jakarta offset for iteration limit guard
-  const maxMinutes = 366 * 24 * 60 // 1 year
+  const maxMinutes = 366 * 24 * 60
   for (let i = 0; i < maxMinutes && results.length < count; i++) {
-    if (matchesCron(cursor, sets)) {
-      results.push(new Date(cursor))
-      // step at least 1 minute; after match, advance 1 min to find next
-    }
+    if (matchesCron(cursor, sets)) results.push(new Date(cursor))
     cursor = new Date(cursor.getTime() + 60_000)
   }
   return results
 }
 
 export function formatNextRun(date: Date): { jakarta: string; utc: string } {
-  const jakarta = new Date(date.getTime())
-  // Display Jakarta as UTC+7
-  const jakartaStr = jakarta.toLocaleString("en-GB", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
+  const jakartaStr = new Date(date.getTime()).toLocaleString("en-GB", { timeZone: "Asia/Jakarta", year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
   const utcStr = date.toISOString().replace("T", " ").slice(0, 16) + " UTC"
   return { jakarta: `${jakartaStr} WIB`, utc: utcStr }
 }
