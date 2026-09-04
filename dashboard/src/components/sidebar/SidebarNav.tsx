@@ -83,7 +83,7 @@ export function SidebarNav({
   const visibleItems = items.filter((item) => item.visible)
 
   return (
-    <nav className={cn("p-2 space-y-1 select-none", className)} aria-label="Main Navigation">
+    <nav className={cn("p-0 space-y-0.5 select-none", className)} aria-label="Main Navigation">
       {visibleItems.map((item) => {
         const Icon = item.icon
         const isAlerts = item.to === '/alerts'
@@ -102,10 +102,10 @@ export function SidebarNav({
               className: 'text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-100',
             }}
             className={cn(
-              'rounded-lg transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+              'rounded-none transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
               isCollapsed
-                ? 'flex items-center justify-center h-10 w-10 mx-auto'
-                : 'flex items-center gap-3 px-3.5 py-2.5 w-full text-sm'
+                ? 'flex items-center justify-center h-10 w-full'
+                : 'flex items-center gap-3 px-4 py-2.5 w-full text-sm'
             )}
           >
             <Icon className="h-5 w-5 shrink-0" />
@@ -114,7 +114,7 @@ export function SidebarNav({
               <>
                 <span className="truncate">{item.label}</span>
                 {hasAlerts && (
-                  <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold shrink-0">
+                  <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-none font-bold shrink-0">
                     {alertCount}
                   </span>
                 )}
@@ -124,7 +124,7 @@ export function SidebarNav({
             {isCollapsed && hasAlerts && (
               <span
                 data-testid="alert-dot"
-                className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-zinc-900 animate-pulse"
+                className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-none bg-red-500 ring-1 ring-zinc-900 animate-pulse"
               />
             )}
           </Link>

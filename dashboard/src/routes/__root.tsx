@@ -119,12 +119,12 @@ function RootLayout() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen w-screen p-2 sm:p-2.5 gap-2 sm:gap-2.5 overflow-hidden bg-zinc-950 text-zinc-100">
+      <div className="flex h-screen w-screen p-0 gap-0 overflow-hidden bg-zinc-950 text-zinc-100">
         {isNavigating && (
           <div className="fixed top-0 left-0 right-0 h-1 bg-indigo-500 z-60 animate-pulse" />
         )}
 
-        {/* Floating Desktop Sidebar & Mobile Radix Drawer */}
+        {/* Desktop Sidebar & Mobile Radix Drawer */}
         <AppSidebar
           currentUser={currentUser}
           role={role}
@@ -134,8 +134,8 @@ function RootLayout() {
           isLoggingOut={logoutMutation.isPending}
         />
 
-        {/* Inset Canvas Card */}
-        <div className="flex-1 flex flex-col min-w-0 h-full rounded-2xl bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 shadow-2xl overflow-hidden relative">
+        {/* Main Canvas Area */}
+        <div className="flex-1 flex flex-col min-w-0 h-full rounded-none bg-zinc-900/40 backdrop-blur-xl border-0 shadow-none overflow-hidden relative">
           {/* Sticky Inset Header */}
           <header className="h-14 sm:h-16 border-b border-zinc-800/80 bg-zinc-900/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between flex-shrink-0 z-10">
             <div className="flex items-center gap-3">
@@ -147,19 +147,19 @@ function RootLayout() {
 
             {/* Telemetry Indicator & Alert Bell */}
             <div className="flex items-center gap-6">
-              <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-none border border-emerald-500/20">
+                <span className="h-2 w-2 rounded-none bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-semibold text-emerald-400">Live Gateway Connected</span>
               </div>
               <Link
                 to="/alerts"
                 search={{}}
-                className="relative p-2 text-zinc-400 hover:text-zinc-100 transition-colors"
+                className="relative p-2 rounded-none text-zinc-400 hover:text-zinc-100 transition-colors"
                 title="Alerts History"
               >
                 <Bell className="h-5 w-5" />
                 {alertCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 h-4 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  <span className="absolute top-1.5 right-1.5 h-4 min-w-[16px] px-1 rounded-none bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                     {alertCount}
                   </span>
                 )}

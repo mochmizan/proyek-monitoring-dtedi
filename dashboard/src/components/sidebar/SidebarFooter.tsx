@@ -42,7 +42,7 @@ export function SidebarFooter({
             <div
               tabIndex={0}
               aria-label={`${displayName} (${role})`}
-              className="h-9 w-9 rounded-full bg-indigo-700/50 flex items-center justify-center font-bold text-xs text-indigo-300 border border-indigo-500/30 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className="h-9 w-9 rounded-none bg-indigo-700/50 flex items-center justify-center font-bold text-xs text-indigo-300 border border-indigo-500/30 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               {initial}
             </div>
@@ -59,7 +59,7 @@ export function SidebarFooter({
               onClick={onLogout}
               disabled={isLoggingOut}
               aria-label="Sign Out"
-              className="h-9 w-9 flex items-center justify-center rounded-lg border border-zinc-800 text-zinc-400 hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/50 transition-all cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className="h-9 w-9 flex items-center justify-center rounded-none border border-zinc-800 text-zinc-400 hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/50 transition-all cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               <LogOut className="h-4 w-4" />
               <span className="sr-only">Sign Out</span>
@@ -76,12 +76,12 @@ export function SidebarFooter({
   return (
     <div
       className={cn(
-        "p-4 border-t border-zinc-800/80 bg-zinc-900/40 select-none",
+        "p-3 border-t border-zinc-800/80 bg-zinc-900/40 select-none",
         className
       )}
     >
       <div className="flex items-center gap-3 mb-3">
-        <div className="h-9 w-9 rounded-full bg-indigo-700/50 flex items-center justify-center font-bold text-xs text-indigo-300 border border-indigo-500/30 shrink-0">
+        <div className="h-9 w-9 rounded-none bg-indigo-700/50 flex items-center justify-center font-bold text-xs text-indigo-300 border border-indigo-500/30 shrink-0">
           {initial}
         </div>
         <div className="overflow-hidden min-w-0">
@@ -95,7 +95,7 @@ export function SidebarFooter({
         type="button"
         onClick={onLogout}
         disabled={isLoggingOut}
-        className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-zinc-800 rounded-lg hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/50 transition-all text-xs text-zinc-400 font-medium cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-zinc-800 rounded-none hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/50 transition-all text-xs text-zinc-400 font-medium cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
       >
         <LogOut className="h-3.5 w-3.5" />
         <span>Sign Out</span>

@@ -50,6 +50,9 @@ describe('AppSidebar Component', () => {
     const aside = screen.getByRole('complementary', { name: /primary navigation/i })
     expect(aside).toBeInTheDocument()
     expect(aside.className).toContain('w-[260px]')
+    expect(aside.className).toContain('rounded-none')
+    expect(aside.className).toContain('border-r')
+    expect(aside.className).toContain('shadow-none')
     expect(screen.getByText('Proyek Monitoring')).toBeInTheDocument()
     expect(screen.getByText('Admin User')).toBeInTheDocument()
     expect(screen.getByText('admin')).toBeInTheDocument()
@@ -104,7 +107,11 @@ describe('AppSidebar Component', () => {
     )
 
     // Mobile dialog should be visible
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(dialog.className).toContain('rounded-none')
+    expect(dialog.className).toContain('border-r')
+    expect(dialog.className).toContain('shadow-none')
     expect(screen.getByText('Navigation Menu')).toBeInTheDocument()
 
     // Close button inside mobile drawer

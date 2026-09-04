@@ -22,12 +22,12 @@ export function SidebarHeader({
     <div
       className={cn(
         "h-16 flex items-center border-b border-zinc-800/80 px-4 transition-all duration-300",
-        isCollapsed ? "justify-center px-2" : "justify-between px-5",
+        isCollapsed ? "justify-center px-0" : "justify-between px-4",
         className
       )}
     >
       <div className="flex items-center gap-2.5 overflow-hidden">
-        <div className="h-9 w-9 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
+        <div className="h-9 w-9 rounded-none bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
           <Cpu className="h-5 w-5 text-indigo-400" />
         </div>
         {!isCollapsed && (
@@ -42,7 +42,7 @@ export function SidebarHeader({
           type="button"
           onClick={onClose}
           aria-label="Close navigation sidebar"
-          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
+          className="p-1.5 rounded-none text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
         >
           <X className="h-5 w-5" />
           <span className="sr-only">Close navigation sidebar</span>

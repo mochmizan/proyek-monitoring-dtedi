@@ -49,7 +49,7 @@ export function SidebarTrigger({ className }: SidebarTriggerProps) {
           aria-label="Toggle navigation sidebar"
           aria-expanded={isOpen}
           className={cn(
-            "p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer",
+            "p-2 rounded-none text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer",
             className
           )}
         >

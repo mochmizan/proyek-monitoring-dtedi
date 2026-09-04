@@ -34,18 +34,18 @@ export function AppSidebar({
 
   return (
     <>
-      {/* Desktop Floating Aside */}
+      {/* Desktop Sidebar */}
       <aside
         aria-label="Primary Navigation"
         className={cn(
-          "hidden md:flex flex-col h-full rounded-2xl bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 shadow-2xl transition-[width] duration-300 ease-[var(--ease-out)] flex-shrink-0 select-none overflow-hidden z-20",
+          "hidden md:flex flex-col h-full rounded-none bg-zinc-900/80 backdrop-blur-xl border-r border-zinc-800/80 shadow-none transition-[width] duration-300 ease-[var(--ease-out)] flex-shrink-0 select-none overflow-hidden z-20",
           isCollapsed ? "w-[68px]" : "w-[260px]",
           className
         )}
       >
         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden">
           <SidebarHeader isCollapsed={isCollapsed} />
-          <div className="flex-1 py-2">
+          <div className="flex-1 py-0">
             <SidebarNav
               role={role}
               isAdmin={isAdmin}
@@ -73,7 +73,7 @@ export function AppSidebar({
           <DialogPrimitive.Content
             data-slot="dialog-content"
             aria-describedby="mobile-sidebar-description"
-            className="fixed inset-y-2.5 left-2.5 z-50 w-[280px] max-w-[calc(100vw-1.25rem)] rounded-2xl bg-zinc-900/95 backdrop-blur-2xl border border-zinc-800 shadow-2xl flex flex-col justify-between overflow-hidden outline-none data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left-full data-[state=open]:animate-in data-[state=open]:slide-in-from-left-full duration-300 ease-[var(--ease-drawer)] md:hidden"
+            className="fixed inset-y-0 left-0 z-50 w-[280px] max-w-[calc(100vw-2rem)] rounded-none bg-zinc-900/95 backdrop-blur-2xl border-r border-zinc-800 shadow-none flex flex-col justify-between overflow-hidden outline-none data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left-full data-[state=open]:animate-in data-[state=open]:slide-in-from-left-full duration-300 ease-[var(--ease-drawer)] md:hidden"
           >
             <DialogPrimitive.Title className="sr-only">Navigation Menu</DialogPrimitive.Title>
             <DialogPrimitive.Description id="mobile-sidebar-description" className="sr-only">
@@ -86,7 +86,7 @@ export function AppSidebar({
                 showCloseButton
                 onClose={closeMobile}
               />
-              <div className="flex-1 py-2">
+              <div className="flex-1 py-0">
                 <SidebarNav
                   role={role}
                   isAdmin={isAdmin}
