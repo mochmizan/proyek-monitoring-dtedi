@@ -1,15 +1,16 @@
-// Polling Frequencies (ms)
-export const POLL_FAST_MS = 3000;              // High-frequency live view polling (rooms, devices, alerts)
-export const POLL_ALERTS_BADGE_MS = 5000;       // Bell badge unread alert polling in root header
-export const POLL_HISTORY_REALTIME_MS = 15000;  // Telemetry chart polling for 6h/24h views
-export const POLL_SPARKLINES_MS = 30000;        // Room sparkline envelope two-pass CTE aggregation
-export const POLL_COMMAND_STATUS_MS = 1500;     // Hardware downlink command delivery polling
+// 4-Tier Polling Frequencies (ms)
+export const POLL_TIER1_COMMAND_MS = 1500;     // Tier 1: Hardware downlink command delivery polling (Fixed, no jitter)
+export const POLL_TIER2_ALERTS_MS = 6000;       // Tier 2: Alerts & Critical Status (+/- 15% jitter)
+export const POLL_TIER3_PRESENCE_MS = 15000;    // Tier 3: Operational Presence & Metadata (+/- 15% jitter)
+export const POLL_TIER4_TRENDS_MS = 60000;      // Tier 4: Analytical Trends & Sparklines (+/- 15% jitter)
 
-// Cache Stale Times (ms)
-export const STALE_TELEMETRY_MS = 10000;        // Live telemetry cache validity
-export const STALE_SPARKLINES_MS = 25000;       // Sparkline cache validity
-export const STALE_METADATA_MS = 60000;         // Static device metadata & threshold config
-export const STALE_USER_MS = 60000;             // Current user profile cache
+// Matching Cache Stale Times (ms) - Enforces staleTime >= refetchInterval
+export const STALE_TIER1_COMMAND_MS = 0;        // Tier 1: Real-time ephemeral commands
+export const STALE_TIER2_ALERTS_MS = 6000;      // Tier 2: Alerts & telemetry cache validity
+export const STALE_TIER3_PRESENCE_MS = 15000;   // Tier 3: Devices & hubs presence cache validity
+export const STALE_TIER4_TRENDS_MS = 60000;     // Tier 4: Sparkline & trend envelope validity
+export const STALE_METADATA_MS = 300000;        // Static reference configuration & rooms metadata (5 minutes)
+export const STALE_USER_MS = 60000;             // Current user profile cache (1 minute)
 
 // Command Lifecycle Timeouts (ms)
 export const COMMAND_DELIVERY_TIMEOUT_MS = 12000; // Radio downlink ACK wait ceiling
@@ -18,7 +19,14 @@ export const COMMAND_AUTO_DISMISS_MS = 8000;       // Success badge banner dismi
 // Telemetry Gap Thresholds (minutes)
 export const GAP_FLOOR_MIN = 5;                 // Minimum gap duration before rendering outage hatch
 
-// Backwards compatibility aliases
-export const POLL_MS = POLL_FAST_MS;
-export const POLL_ALERTS_MS = POLL_ALERTS_BADGE_MS;
-export const STALE_MS = STALE_TELEMETRY_MS;
+// Backwards compatibility aliases mapped to new tiered constants
+export const POLL_COMMAND_STATUS_MS = POLL_TIER1_COMMAND_MS;
+export const POLL_FAST_MS = POLL_TIER2_ALERTS_MS;
+export const POLL_ALERTS_BADGE_MS = POLL_TIER2_ALERTS_MS;
+export const POLL_HISTORY_REALTIME_MS = POLL_TIER3_PRESENCE_MS;
+export const POLL_SPARKLINES_MS = POLL_TIER4_TRENDS_MS;
+export const POLL_MS = POLL_TIER2_ALERTS_MS;
+export const POLL_ALERTS_MS = POLL_TIER2_ALERTS_MS;
+export const STALE_TELEMETRY_MS = STALE_TIER2_ALERTS_MS;
+export const STALE_SPARKLINES_MS = STALE_TIER4_TRENDS_MS;
+export const STALE_MS = STALE_TIER2_ALERTS_MS;

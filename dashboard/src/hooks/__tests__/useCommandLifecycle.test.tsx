@@ -312,4 +312,192 @@ describe('useCommandLifecycle Hook', () => {
     expect(result.current.commandStatus).toBe('queued');
     expect(result.current.commandId).toBe('cmd-retry-2');
   });
+
+  it('halts polling immediately when fetchCommandStatus returns terminal failure', async () => {
+    vi.mocked(api.sendDeviceCommand).mockResolvedValue({
+      status: 'queued',
+      command_id: 'cmd-fail-1',
+    });
+    vi.mocked(api.fetchCommandStatus).mockResolvedValueOnce({
+      command_id: 'cmd-fail-1',
+      dev_id: 'DEV-01',
+      hub_id: 'HUB-01',
+      payload: {},
+      status: 'failed',
+    });
+
+    const { wrapper } = createWrapper();
+    const onError = vi.fn();
+    const { result } = renderHook(() => useCommandLifecycle({ onError }), { wrapper });
+
+    await act(async () => {
+      await result.current.sendCommand('DEV-01', { action: 'ON' });
+    });
+
+    expect(result.current.commandStatus).toBe('queued');
+
+    // Advance 1.5s -> first poll returns failed
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(result.current.commandStatus).toBe('error');
+    expect(result.current.errorMessage).toBe('Command failed');
+    expect(onError).toHaveBeenCalled();
+
+    // Verify polling has stopped
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(api.fetchCommandStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('transitions to delivered immediately on case-insensitive ACK', async () => {
+    vi.mocked(api.sendDeviceCommand).mockResolvedValue({
+      status: 'queued',
+      command_id: 'cmd-ack-1',
+    });
+    vi.mocked(api.fetchCommandStatus).mockResolvedValueOnce({
+      command_id: 'cmd-ack-1',
+      dev_id: 'DEV-01',
+      hub_id: 'HUB-01',
+      payload: {},
+      status: 'ACK',
+      delivered_at: '2026-09-01T12:06:00Z',
+    });
+
+    const { wrapper } = createWrapper();
+    const onSuccess = vi.fn();
+    const { result } = renderHook(() => useCommandLifecycle({ onSuccess }), { wrapper });
+
+    await act(async () => {
+      await result.current.sendCommand('DEV-01', { action: 'ON' });
+    });
+
+    expect(result.current.commandStatus).toBe('queued');
+
+    // Advance 1.5s -> first poll returns ACK
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(result.current.commandStatus).toBe('delivered');
+    expect(result.current.deliveredAt).toEqual(new Date('2026-09-01T12:06:00Z'));
+    expect(onSuccess).toHaveBeenCalledWith('cmd-ack-1');
+  });
+
+  it('pauses polling when document is hidden and resumes when visible', async () => {
+    vi.mocked(api.sendDeviceCommand).mockResolvedValue({
+      status: 'queued',
+      command_id: 'cmd-vis-1',
+    });
+    vi.mocked(api.fetchCommandStatus).mockResolvedValue({
+      command_id: 'cmd-vis-1',
+      dev_id: 'DEV-01',
+      hub_id: 'HUB-01',
+      payload: {},
+      status: 'pending',
+    });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCommandLifecycle(), { wrapper });
+
+    await act(async () => {
+      await result.current.sendCommand('DEV-01', { action: 'ON' });
+    });
+
+    expect(result.current.commandStatus).toBe('queued');
+
+    // Simulate switching away: tab becomes hidden
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Advance 3s while hidden -> should not poll
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(api.fetchCommandStatus).not.toHaveBeenCalled();
+
+    // Switch back: tab becomes visible
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Immediately polls upon becoming visible
+    expect(api.fetchCommandStatus).toHaveBeenCalledTimes(1);
+
+    // Further timers advance resumes polling
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(api.fetchCommandStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not schedule interval if tab switches to hidden while resume poll is in-flight', async () => {
+    let resolveResumePoll!: (value: any) => void;
+    vi.mocked(api.sendDeviceCommand).mockResolvedValue({
+      status: 'queued',
+      command_id: 'cmd-race-1',
+    });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCommandLifecycle(), { wrapper });
+
+    await act(async () => {
+      await result.current.sendCommand('DEV-01', { action: 'ON' });
+    });
+
+    expect(result.current.commandStatus).toBe('queued');
+
+    // Switch to hidden
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Mock next fetchCommandStatus to stay unresolved until we manually resolve
+    vi.mocked(api.fetchCommandStatus).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveResumePoll = resolve;
+        })
+    );
+
+    // Switch back to visible to initiate resume poll
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(api.fetchCommandStatus).toHaveBeenCalledTimes(1);
+
+    // Before resume poll completes, operator switches away again!
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Now resume poll completes
+    await act(async () => {
+      resolveResumePoll({
+        command_id: 'cmd-race-1',
+        dev_id: 'DEV-01',
+        hub_id: 'HUB-01',
+        payload: {},
+        status: 'pending',
+      });
+    });
+
+    // Advance 5 seconds while hidden -> polling should NOT continue!
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    // Should NOT have polled any further while hidden
+    expect(api.fetchCommandStatus).toHaveBeenCalledTimes(1);
+  });
 });
+

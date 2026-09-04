@@ -7,7 +7,8 @@ import { Pagination } from '../components/ui/pagination';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchDevice, fetchRooms, fetchAlerts, fetchCurrentUser } from '../lib/api';
-import { POLL_MS, STALE_METADATA_MS } from '../lib/constants';
+import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS, STALE_METADATA_MS } from '../lib/constants';
+import { getJitteredInterval } from '../lib/jitter';
 import { formatWIBDateTime, formatWIBDate } from '../lib/dateUtils';
 import { HistoryChart } from '../components/device/HistoryChart';
 import { DeviceControls } from '../components/device/Controls';
@@ -51,8 +52,8 @@ function DeviceDetailPage() {
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
-    refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    staleTime: STALE_METADATA_MS,
+    refetchInterval: false,
     placeholderData: keepPreviousData,
   });
   const { data: deviceAlertsData, isFetching: isFetchingAlerts } = useQuery({
@@ -67,8 +68,8 @@ function DeviceDetailPage() {
         limit: DEVICE_ALERT_PAGE_SIZE,
         offset: (alertPage - 1) * DEVICE_ALERT_PAGE_SIZE,
       }),
-    refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    staleTime: STALE_TIER2_ALERTS_MS,
     placeholderData: keepPreviousData,
   });
   const {

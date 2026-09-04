@@ -1,16 +1,30 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Cpu, CheckCircle, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { queryKeys } from '../../lib/queryKeys';
 import { fetchRooms, fetchDevices, pairDevice, unpairDevice } from '../../lib/api';
-import { POLL_MS } from '../../lib/constants';
+import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS, STALE_METADATA_MS } from '../../lib/constants';
+import { getJitteredInterval } from '../../lib/jitter';
 import type { DeviceResponse, DevicePairRequest } from '../../types/api';
 
 export function DevicesTab() {
   const queryClient = useQueryClient();
-  const { data: rooms = [] } = useQuery({ queryKey: queryKeys.rooms.list(), queryFn: fetchRooms });
-  const { data: pendingDevices = [], isFetching: isFetchingPending } = useQuery({ queryKey: queryKeys.devices.pending(), queryFn: () => fetchDevices('pending'), refetchInterval: POLL_MS, refetchIntervalInBackground: false });
-  const { data: activeDevices = [], isFetching: isFetchingActive } = useQuery({ queryKey: queryKeys.devices.active(), queryFn: () => fetchDevices('active'), refetchInterval: POLL_MS, refetchIntervalInBackground: false });
+  const { data: rooms = [] } = useQuery({
+    queryKey: queryKeys.rooms.list(),
+    queryFn: fetchRooms,
+    staleTime: STALE_METADATA_MS,
+  });
+  const { data: allDevices = [], isFetching } = useQuery({
+    queryKey: queryKeys.devices.list('all'),
+    queryFn: () => fetchDevices('all'),
+    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    staleTime: STALE_TIER3_PRESENCE_MS,
+  });
+
+  const pendingDevices = useMemo(() => allDevices.filter((d) => !d.is_active), [allDevices]);
+  const activeDevices = useMemo(() => allDevices.filter((d) => d.is_active), [allDevices]);
+  const isFetchingPending = isFetching;
+  const isFetchingActive = isFetching;
 
   const [selectedDeviceToPair, setSelectedDeviceToPair] = useState<DeviceResponse | null>(null);
   const [pairName, setPairName] = useState('');

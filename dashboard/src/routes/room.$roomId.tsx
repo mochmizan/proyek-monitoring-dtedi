@@ -17,7 +17,8 @@ import { queryKeys } from '../lib/queryKeys';
 import { fetchRooms, fetchRoomMap, fetchCurrentUser, fetchAlerts } from '../lib/api';
 import { useCommandLifecycle } from '../hooks/useCommandLifecycle';
 import { CommandStatusBadge } from '../components/device/CommandStatusBadge';
-import { POLL_MS } from '../lib/constants';
+import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS, STALE_METADATA_MS } from '../lib/constants';
+import { getJitteredInterval } from '../lib/jitter';
 import type { RoomMapMarker, ATSCommand } from '../types/api';
 
 const roomSearchSchema = z.object({
@@ -41,24 +42,23 @@ function RoomDetailPage() {
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
-    refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    staleTime: STALE_METADATA_MS,
     placeholderData: keepPreviousData,
   });
 
   const { data: roomMap, isFetching: isFetchingMap } = useQuery({
     queryKey: queryKeys.rooms.map(roomId),
     queryFn: () => fetchRoomMap(roomId),
-    refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    staleTime: STALE_TIER2_ALERTS_MS,
     placeholderData: keepPreviousData,
   });
 
   const { data: roomAlertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ room: roomId }),
     queryFn: () => fetchAlerts({ room: roomId }),
-    refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    staleTime: STALE_TIER2_ALERTS_MS,
     placeholderData: keepPreviousData,
   });
 
@@ -138,7 +138,7 @@ function RoomDetailPage() {
           {isFetchingMap && (
             <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800">
               <RefreshCw className="h-3 w-3 animate-spin text-indigo-400" />
-              <span>Live 3s Polling</span>
+              <span>Live Polling</span>
             </div>
           )}
           <div className={cn(

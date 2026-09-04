@@ -4,7 +4,8 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, logoutUser, fetchAlerts } from '../lib/api';
-import { POLL_ALERTS_MS } from '../lib/constants';
+import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS } from '../lib/constants';
+import { getJitteredInterval } from '../lib/jitter';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { TooltipProvider } from '../components/ui/tooltip';
 import { AppSidebar } from '../components/sidebar/AppSidebar';
@@ -78,8 +79,9 @@ function RootLayout() {
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
-    refetchInterval: POLL_ALERTS_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
     refetchIntervalInBackground: false,
+    staleTime: STALE_TIER2_ALERTS_MS,
     enabled: !isLoginPage && !!currentUser,
   });
 

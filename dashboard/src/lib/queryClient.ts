@@ -19,6 +19,7 @@ export const queryClient = new QueryClient({
       gcTime: 5 * 60 * 1000,
       placeholderData: keepPreviousData,
       refetchOnWindowFocus: true,
+      refetchIntervalInBackground: false,
       retry: (failureCount, error) => {
         if (error instanceof ApiError && error.status === 401) return false;
         return failureCount < 1;

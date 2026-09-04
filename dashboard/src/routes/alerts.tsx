@@ -7,7 +7,8 @@ import { ChevronDown, Check, RefreshCw, ShieldAlert } from 'lucide-react';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api';
-import { POLL_MS } from '../lib/constants';
+import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS, STALE_METADATA_MS, STALE_TIER3_PRESENCE_MS } from '../lib/constants';
+import { getJitteredInterval } from '../lib/jitter';
 import { computeStartTimeFromRange, formatWIBDateTime } from '../lib/dateUtils';
 import { formatAlertReading, formatAlertThreshold } from '../lib/formatAlert';
 import { Pagination } from '../components/ui/pagination';
@@ -141,11 +142,13 @@ function AlertsPage() {
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
+    staleTime: STALE_METADATA_MS,
   });
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.list('all'),
     queryFn: () => fetchDevices('all'),
+    staleTime: STALE_TIER3_PRESENCE_MS,
   });
 
   const normalizedSeverity = selectedSeverity.toLowerCase() === 'all' ? undefined : selectedSeverity.toLowerCase();
@@ -176,9 +179,10 @@ function AlertsPage() {
         offset,
       });
     },
-    refetchInterval: POLL_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
+    staleTime: STALE_TIER2_ALERTS_MS,
   });
 
   const updateSearch = (newParams: Partial<z.infer<typeof alertsSearchSchema>>) => {

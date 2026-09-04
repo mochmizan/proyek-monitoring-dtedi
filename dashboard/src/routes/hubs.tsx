@@ -12,8 +12,9 @@ import {
   Radio,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchCurrentUser, fetchHubs, approveHub, revokeHub } from '../lib/api'
-import { POLL_MS, STALE_MS } from '../lib/constants';
+import { fetchCurrentUser, fetchHubs, approveHub, revokeHub } from '../lib/api';
+import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS } from '../lib/constants';
+import { getJitteredInterval } from '../lib/jitter';
 import { cn } from '../lib/utils';
 import { StatusDot } from '../components/StatusDot';
 import { FreshnessBadge } from '../components/FreshnessBadge';
@@ -158,8 +159,9 @@ function HubsPage() {
   } = useQuery({
     queryKey: queryKeys.hubs.list(),
     queryFn: fetchHubs,
-    refetchInterval: POLL_MS,
-    staleTime: STALE_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    refetchIntervalInBackground: false,
+    staleTime: STALE_TIER3_PRESENCE_MS,
   });
 
   const [actionError, setActionError] = useState<string | null>(null);

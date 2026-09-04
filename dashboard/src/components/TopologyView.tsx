@@ -14,8 +14,9 @@ import type { Edge, Node, NodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Cpu, HelpCircle, Server, Snowflake, Thermometer, Zap } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchDevices, fetchHubs, fetchRooms } from '../lib/api'
-import { POLL_MS } from '../lib/constants';
+import { fetchDevices, fetchHubs, fetchRooms } from '../lib/api';
+import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS, STALE_METADATA_MS } from '../lib/constants';
+import { getJitteredInterval } from '../lib/jitter';
 import { StatusDot } from './StatusDot';
 import type { StatusTone } from './StatusDot';
 import { cn } from '../lib/utils';
@@ -241,18 +242,21 @@ export function TopologyView() {
   const { data: hubs = [] } = useQuery({
     queryKey: queryKeys.hubs.list(),
     queryFn: fetchHubs,
-    refetchInterval: POLL_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    staleTime: STALE_TIER3_PRESENCE_MS,
   });
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.active(),
     queryFn: () => fetchDevices('active'),
-    refetchInterval: POLL_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    staleTime: STALE_TIER3_PRESENCE_MS,
   });
 
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
+    staleTime: STALE_METADATA_MS,
   });
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);

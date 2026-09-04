@@ -92,22 +92,17 @@ This tiered naming enables precise scoped invalidation (e.g., `queryClient.inval
 
 ---
 
-## 2. Polling Lifecycle Contracts & Memory Management
+## 2. Polling Lifecycle Contracts & 4-Tier Architecture
 
-Telemetry monitoring requires continuous real-time data sync without WebSocket infrastructure. The SPA executes periodic HTTP polling bounded by route lifecycle and application state:
+Telemetry monitoring requires continuous real-time data sync without WebSocket infrastructure. The SPA executes periodic HTTP polling governed by a **Strict 4-Tier Polling Architecture** with anti-stampede jitter ($\pm 15\%$ via `src/lib/jitter.ts`) and enforces the **Cache Harmony Invariant** (`staleTime >= refetchInterval`):
 
-| Surface | Query Key | Interval | Background Tab (`refetchIntervalInBackground`) | Stale Time | Invalidation / Guard |
-| Surface | Query Key | Interval | Background Tab (`refetchIntervalInBackground`) | Stale Time | Invalidation / Guard |
+| Tier / Surface | Target Query Keys | Polling Cadence (`refetchInterval`) | Cache Stale Time (`staleTime`) | Background Tab (`refetchIntervalInBackground`) | Synchronization Rationale |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Root Bell Badge** | `alerts.list({ limit: 100 })` | `5,000ms` (`POLL_ALERTS_BADGE_MS`) | `false` | `10s` | `enabled: !isLoginPage && !!currentUser` |
-| **Dashboard Overview** | `rooms.list()`, `devices.list('all')`, `alerts.list(...)` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/` |
-| **Dashboard Sparklines** | `rooms.sparklines('6h', 24)` | `30,000ms` (`POLL_SPARKLINES_MS`) | `false` (suspended) | `25s` | Single-pass batch query |
-| **Room Detail** | `rooms.list()`, `rooms.map(roomId)`, `alerts.list(...)` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/room/$roomId` |
-| **Device Detail** | `devices.detail(id)` | `false` (manual) | N/A | `60s` | Protected by `isEditingRef` & `isDirty` |
-| **Device Telemetry** | `devices.history(id, range)` | `15,000ms` (`6h`/`24h`) or `false` (`7d`/`30d`) | `false` (suspended) | `10s` | Range-adaptive via `useDeviceHistory` |
-| **Alerts Audit Table** | `alerts.list(filterHash)` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/alerts` |
-| **Hubs Management** | `hubs.list()` | `3,000ms` (`POLL_FAST_MS`) | `false` (suspended) | `10s` | Active route `/hubs` |
-| **Hardware Command** | `GET /api/commands/{id}` | `1,500ms` (`POLL_COMMAND_STATUS_MS`) | Managed via `setInterval` | N/A | `useCommandLifecycle` active state |
+| **Tier 1: Ephemeral Commands** | `GET /api/commands/{id}` (via `useCommandLifecycle`) | `1,500ms` (Fixed, no jitter) | `0ms` | Paused on `visibilitychange: hidden` | 12s downlink ceiling; auto-aborts on `delivered`, `ACK`, `failed`, `rejected`, `timeout` |
+| **Tier 2: Alerts & Critical Status** | `alerts.list(...)`, `rooms.list()` (Overview `/`), `rooms.map(...)` | `6,000ms` ($\pm 15\%$ jitter) | `6,000ms` | `false` (globally inherited) | Synchronized with ESP8266 5s publish interval + 1s network transit |
+| **Tier 3: Operational Presence** | `devices.list('all')`, `hubs.list()`, `devices.active()`, `devices.history` (6h/24h) | `15,000ms` ($\pm 15\%$ jitter) | `15,000ms` | `false` (globally inherited) | Synchronized with APScheduler 15s presence sweeper (`PRESENCE_INTERVAL_SECONDS = 15`) |
+| **Tier 4: Analytical Trends** | `rooms.sparklines('6h', 24)` | `60,000ms` ($\pm 15\%$ jitter) | `60,000ms` | `false` (globally inherited) | 6-hour CTE downsampled envelopes; cuts 95% of heavy aggregation queries |
+| **Static Reference Metadata** | `rooms.list()` (in `/room/$id`, `/device/$id`, `DevicesTab`), `devices.detail(id)` | **Disabled (`false`)** | `300,000ms` (5 minutes) | N/A | Static facility configuration; refetches solely on window focus or mutation invalidation |
 
 ### 2.1 Background Tab Polling Suspension Contract (`refetchIntervalInBackground: false`)
 

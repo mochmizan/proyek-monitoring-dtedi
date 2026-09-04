@@ -15,7 +15,15 @@ import { cn } from '../lib/utils';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchRooms, fetchDevices, fetchAlerts, fetchRoomSparklines } from '../lib/api';
-import { POLL_MS, STALE_MS, POLL_SPARKLINES_MS, STALE_SPARKLINES_MS } from '../lib/constants';
+import {
+  POLL_TIER2_ALERTS_MS,
+  STALE_TIER2_ALERTS_MS,
+  POLL_TIER3_PRESENCE_MS,
+  STALE_TIER3_PRESENCE_MS,
+  POLL_TIER4_TRENDS_MS,
+  STALE_TIER4_TRENDS_MS,
+} from '../lib/constants';
+import { getJitteredInterval } from '../lib/jitter';
 import { formatWIBDateTime } from '../lib/dateUtils';
 import type { DeviceResponse } from '../types/api';
 import { RoomCard, RoomCardSkeleton } from '../components/RoomCard';
@@ -39,26 +47,28 @@ function DashboardPage() {
   const { data: rooms = [], status: roomsStatus } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
-    refetchInterval: POLL_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
-    staleTime: STALE_MS,
+    staleTime: STALE_TIER2_ALERTS_MS,
   });
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.list('all'),
     queryFn: () => fetchDevices('all'),
-    refetchInterval: POLL_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
+    staleTime: STALE_TIER3_PRESENCE_MS,
   });
 
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
-    refetchInterval: POLL_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
+    staleTime: STALE_TIER2_ALERTS_MS,
   });
 
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -66,8 +76,9 @@ function DashboardPage() {
   const { data: sparklinesData } = useQuery({
     queryKey: queryKeys.rooms.sparklines('6h', 24),
     queryFn: () => fetchRoomSparklines('6h', 24),
-    refetchInterval: POLL_SPARKLINES_MS,
-    staleTime: STALE_SPARKLINES_MS,
+    refetchInterval: () => getJitteredInterval(POLL_TIER4_TRENDS_MS),
+    refetchIntervalInBackground: false,
+    staleTime: STALE_TIER4_TRENDS_MS,
   });
 
   const { unresolvedAlerts, criticalCount, warningCount } = React.useMemo(() => {
