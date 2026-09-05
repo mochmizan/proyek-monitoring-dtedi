@@ -1,32 +1,28 @@
-# React + TypeScript + Vite
+﻿# dashboard — SMSB SPA
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React SPA for HubGate V5, same-origin via Vite proxy (`/api` → `127.0.0.1:8000` dev) / Nginx `443` → `127.0.0.1:8000` prod (no CORS).
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+React 19.2.7, Vite 8, TanStack Router 1.170.17, TanStack Query 5.101.2, Zustand 5.0.14, Zod 4.4.3, Tailwind 4.3.2 (`@tailwindcss/vite`), oxlint 1.71.
 
-## React Compiler
+## Structure
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `src/routes/` — file routes (`routeTree.gen.ts` auto-generated, never edit)
+- `src/lib/` — `api.ts`, `queryKeys.ts`, `queryClient.ts`, `scheduleApi.ts`, `constants.ts`, `cron.ts`
+- `src/components/` — `ui/*` (shadcn), `device/*`, `schedules/*`, `settings/*`, layout
+- `src/hooks/` — `useDeviceHistory`, `useCommandLifecycle`, etc.
 
-## Expanding the Oxlint configuration
+## Dev
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```powershell
+npm --prefix dashboard ci
+npm run dev              # Vite :5173, proxy /api → 8000
+npm run build            # tsc -b && vite build
+npm run lint             # oxlint
+npm run test -- --run    # vitest (150 tests, 20 suites)
+# from repo root via justfile:
+just dev / just lint / just build / just test
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+See root `README.md` for architecture overview and `dashboard/AGENTS.md` for full DOX contracts (polling tiers, layout, pagination, auth).

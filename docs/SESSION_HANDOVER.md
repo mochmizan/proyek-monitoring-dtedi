@@ -1,7 +1,7 @@
 ﻿# SESSION HANDOVER DOCUMENT — SMSB IOT MONITORING PLATFORM
 
-**Last Updated:** August 24, 2026 (evening)
-**Repository State:** main @ `4674a1b` | 106/106 pytest green | lint/build clean | VPS LIVE | history downsampled + gap-aware chart live
+**Last Updated:** 2026-09-05
+**Repository State:** main @ `b3b4462` | 395 tests green | lint/build clean | VPS LIVE | history downsampled + gap-aware chart live | scheduler visual builder shipped `b3b4462`
 **Current Blocker:** none — system is deployed and serving campus-wide
 
 ---
@@ -65,8 +65,10 @@ Historical debugging notes (netplan wlan0 drop rules, dnsmasq duplicate-keyword 
 ## 4. Local Dev Resume (unchanged)
 
 ```powershell
-.\start_dev.bat            # API :8000 + SPA :5173
-pytest                     # full suite (107 tests)
+just dev                 # API :8000 + SPA :5173 (justfile runner)
+pytest                 # full suite (395 tests: 217 server + 13 hub + 15 integration + 150 vitest)
 cd dashboard; npm run lint; npm run build
 ```
 Dashboard logins: `admin/admin123`, `operator/operator123`, `viewer/viewer123`.
+
+
