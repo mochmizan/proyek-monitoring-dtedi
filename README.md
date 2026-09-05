@@ -30,8 +30,7 @@ ESP8266 field nodes (firmware/)          Raspberry Pi 4              Cloud / VPS
 | `hub/` | HubBrain V5 â€” Python edge gateway daemon for Raspberry Pi |
 | `server/` | HubGate V5 â€” FastAPI cloud gateway, auth/RBAC, DB models, tests |
 | `dashboard/` | React SPA |
-| `docs/` | Canonical docs: design spec, firmware report, testing/deployment/backup guides, handover, research notes |
-| `openspec/` | Spec-driven change proposals & capability specs |
+| `docs/` | Guides: local testing, production deployment, hub backup, credential rotation, firmware proofing, runbooks |
 | `tests/` | Repo-level E2E pipeline & deployment-verifier tests |
 | `tools/` | Ops utilities: Pi deploy/backup, DB seeding, mock publishers, sniffers, verifiers |
 | `deploy/` | Production deploy script + Nginx configs (prod & WSL staging) |
@@ -78,19 +77,17 @@ npm run build         # typecheck + production build
 | `firmware/fsm_w_serial/` | ATS FSM controller (Arduino) | PLN/genset/backup-battery state machine |
 | `firmware/HARDWARE_OLED_TEST/` | I2C bus recovery & OLED diagnostic utility | |
 
-See `docs/FIRMWARE_ALIGNMENT_REPORT.md` for the protocol reference.
 
 ## Documentation
 
 | Doc | Topic |
 |---|---|
-| `docs/2026-07-01-iot-temperature-monitoring-design.md` | Original design spec (pre-V5 baseline) |
 | `docs/LOCAL_TESTING_GUIDE.md` | Local Docker + mock publisher + E2E test stack |
 | `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` | VPS + Raspberry Pi production runbook |
 | `docs/HUB_BACKUP_GUIDE.md` | Raspberry Pi mandatory backup gate |
-| `docs/FIRMWARE_ALIGNMENT_REPORT.md` | Firmware alignment & serial/MQTT protocol reference |
-| `docs/SESSION_HANDOVER.md` | Session continuation handover |
-| `docs/researcher_notes.md` | Scratch research notes |
+| `docs/CREDENTIAL_ROTATION_GUIDE.md` | Credential rotation procedure |
+| `docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md` | Firmware proofing plan |
+| `docs/runbooks/postgres_cutover_runbook.md` | Postgres cutover runbook |
 | `AGENTS.md` (+ per-directory) | DOX work contracts for AI/agent development |
 
 ## Security Notes

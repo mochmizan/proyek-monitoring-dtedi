@@ -1,8 +1,0 @@
-schema: spec-driven
-status: reverted
-created: 2026-08-29
-implemented: 2026-08-29
-reverted: 2026-08-30
-implementation_commit: e14576d
-revert_commit: 35e0582
-change: dashboard-full-shadcn-redesign-2026-08-29
