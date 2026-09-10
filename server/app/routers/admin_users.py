@@ -1,6 +1,6 @@
 import uuid
 import secrets
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -323,3 +323,14 @@ def delete_user(
 
     log_action(db, current_user.id, "DELETE_USER", user_id, "SUCCESS", request, f"Deleted user {target_user.username}")
     return {"status": "success", "message": "Pengguna berhasil dihapus"}
+
+
+# 9. GET /api/admin/users/audit-logs - Melihat Riwayat Audit Log (Khusus Admin)
+@router.get("/audit-logs", response_model=List[AuditLogResponse])
+def get_audit_logs(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
+    logs = db.query(UserAuditLog).order_by(UserAuditLog.timestamp.desc()).limit(limit).all()
+    return logs
