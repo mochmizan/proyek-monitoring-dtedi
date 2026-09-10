@@ -1,12 +1,19 @@
 # app/routers/auth.py
 from datetime import UTC, datetime
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from databasev5 import get_db
-from modelsv5 import User
-from auth import get_current_user, create_session, delete_session, handle_db_lockout, verify_password_safe
-from schemas_auth import UserLoginPayload, UserResponse
+from modelsv5 import User, UserSession, UserAuditLog
+from auth import (
+    get_current_user,
+    create_session,
+    delete_session,
+    handle_db_lockout,
+    verify_password_safe,
+    hash_password,
+)
+from schemas_auth import UserLoginPayload, UserResponse, ChangePasswordRequest
 from app.core.rate_limit import limiter
 
 router = APIRouter(tags=["auth"])
@@ -32,7 +39,6 @@ def login(
             if locked_until.tzinfo is None:
                 locked_until = locked_until.replace(tzinfo=UTC)
             if locked_until > now:
-                from fastapi import HTTPException, status
                 raise HTTPException(
                     status_code=status.HTTP_423_LOCKED,
                     detail="Account is temporarily locked due to too many failed attempts. Try again in 15 minutes.",
@@ -43,13 +49,24 @@ def login(
 
     if not user or not password_matched:
         handle_db_lockout(payload.username, db, success=False)
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
 
+    # Tambahan: Proteksi jika akun dinonaktifkan
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is disabled",
+        )
+
     handle_db_lockout(payload.username, db, success=True)
+
+    # Tambahan: Catat waktu login terakhir
+    user.last_login_at = now
+    db.commit()
+
     session = create_session(db, user.id)
 
     is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
@@ -67,6 +84,8 @@ def login(
         username=user.username,
         display_name=user.display_name,
         role=user.role,
+        is_active=user.is_active,
+        must_change_password=user.must_change_password,
     )
 
 
@@ -92,4 +111,64 @@ def get_me(
         username=current_user.username,
         display_name=current_user.display_name,
         role=current_user.role,
+        is_active=current_user.is_active,
+        must_change_password=current_user.must_change_password,
     )
+
+
+# Tambahan: Endpoint Ganti Password Mandiri
+@router.post("/api/auth/change-password", status_code=status.HTTP_200_OK)
+def change_password(
+    req: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Verifikasi password lama
+    if not verify_password_safe(current_user.password_hash, req.old_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password lama Anda salah"
+        )
+
+    # 2. Cek password baru tidak boleh sama dengan password lama
+    if req.old_password == req.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password baru tidak boleh sama dengan password lama"
+        )
+
+    now = datetime.now(UTC)
+
+    # 3. Hash password baru & update user
+    current_user.password_hash = hash_password(req.new_password)
+    current_user.must_change_password = False
+    current_user.password_changed_at = now
+    current_user.updated_at = now
+
+    # 4. Revoke seluruh sesi (termasuk sesi saat ini) agar user wajib login ulang[cite: 1]
+    db.query(UserSession).filter(UserSession.user_id == current_user.id).delete()
+
+    # 5. Hapus cookie session dari browser[cite: 1]
+    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.delete_cookie("session_id", httponly=True, secure=is_secure, samesite="lax", path="/")
+
+    # 6. Catat ke Audit Log[cite: 1]
+    ip_addr = request.client.host if request.client else None
+    audit = UserAuditLog(
+        actor_id=current_user.id,
+        action="CHANGE_PASSWORD",
+        target_user_id=current_user.id,
+        status="SUCCESS",
+        ip_address=ip_addr,
+        details="User changed password successfully"
+    )
+    db.add(audit)
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Password berhasil diubah. Silakan login kembali dengan password baru Anda."
+    }

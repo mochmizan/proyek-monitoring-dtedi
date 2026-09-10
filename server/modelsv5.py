@@ -205,6 +205,17 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     lockout_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    must_change_password = Column(Boolean, default=False, nullable=False)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(UTC), 
+        onupdate=lambda: datetime.now(UTC), 
+        nullable=False
+    )
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class UserSession(Base):
@@ -257,6 +268,20 @@ class schedules(Base):
     )
 
 
+class UserAuditLog(Base):
+    __tablename__ = "user_audit_logs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    actor_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action = Column(String, nullable=False)
+    target_user_id = Column(String, nullable=True)
+    status = Column(String, nullable=False)
+    ip_address = Column(String, nullable=True)
+    request_id = Column(String, nullable=True)
+    details = Column(String, nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+
+
 # Standard PascalCase ORM Model Aliases
 Hub = hub_table
 Room = rooms
@@ -268,4 +293,4 @@ EventLog = event_log
 PendingCommand = pending_commands
 DeviceThresholdConfig = device_threshold_config
 Schedule = schedules
-
+

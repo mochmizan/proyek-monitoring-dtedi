@@ -158,6 +158,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not user:
         raise SessionExpired()
 
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail="Akun Anda telah dinonaktifkan")
+
     return user
 
 
