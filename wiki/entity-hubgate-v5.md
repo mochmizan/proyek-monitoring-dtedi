@@ -3,7 +3,7 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-data-model.md, wiki/entity-security-auth.md, wiki/concept-database-lifecycle.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/concept-command-path.md, wiki/concept-alert-engine.md, wiki/concept-time-conventions.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/app/main.py, server/databasev5.py, server/modelsv5.py, server/auth.py, server/app/dependencies.py, server/app/core/config.py, server/app/core/logging.py, server/app/core/rate_limit.py, server/app/routers/auth.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/alerts.py, server/app/services/alert_engine.py, server/app/services/presence.py, server/app/services/scheduler.py, server/app/services/telemetry.py, server/schemasv5.py, server/init_sqlv5.py, server/alembic/env.py]
-updated: 2026-09-03
+updated: 2026-09-12
 ---
 
 # HubGate V5 (server/)
@@ -44,9 +44,9 @@ flowchart TD
             HubCache["HubAuthCache (dependencies.py)<br/>In-Memory Throttled Key Verifier"]
         end
 
-        subgraph "Domain Services (app/services/)"
-            AlertEng["alert_engine.py<br/>Synchronous Threshold & ATS Alerts"]
-            PresenceEng["presence.py<br/>15s Background Presence Sweeper"]
+        subgraph "Engines & Lifespans (app/services/)"
+            AlertEng["alert_engine.py<br/>Debounce & Hysteresis"]
+            PresEng["presence.py<br/>15s Background Sweeper"]
             SchedEng["scheduler.py<br/>APScheduler BackgroundRunner"]
             TelemSvc["telemetry.py<br/>Batched O(1) Latest Readings"]
         end
@@ -54,7 +54,7 @@ flowchart TD
 
     subgraph "Persistence Layer (databasev5.py)"
         SessionDep["get_db() Scoped Dependency"]
-        PG["PostgreSQL 16 (Production Target)<br/>QueuePool (20/10), statement_timeout=15s"]
+        PG["PostgreSQL 16 (Active Production Database)<br/>smsb_prod: QueuePool (20/10), statement_timeout=15s"]
         SQLite["SQLite 3 (Edge / Dev Target)<br/>WAL Mode, busy_timeout=10s, 7 PRAGMAs"]
     end
 
@@ -165,11 +165,12 @@ sequenceDiagram
 
 HubGate V5 operates a dual-dialect persistence layer configured in `server/databasev5.py`:
 
-### PostgreSQL 16 (Production Target)
-- Hosts multi-writer production VPS deployments (`10.33.102.172` / `100.108.98.30`).
+### PostgreSQL 16 (Active Production Database)
+- Hosts multi-writer production VPS deployments (`100.108.98.30` / `10.33.102.172`) running `smsb_prod` (4,152,334 rows migrated with 100% parity).
+- Configured for a dedicated 4 GB allocation profile on the 8 GB Dynamic RAM / 4 vCPUs host, reserving 4 GB for CTFd co-tenancy.
 - Configured with bounded connection pooling: `pool_size=20`, `max_overflow=10`, `pool_recycle=1800`, `pool_pre_ping=True`, `pool_timeout=10`.
 - Enforces a 15-second server-side statement timeout (`-c statement_timeout=15000`), terminating unindexed or runaway analytics queries before database connection starvation occurs.
-- Employs native `JSONB` with support for expression and GIN indexing, and native timezone-aware `TIMESTAMP WITH TIME ZONE`.
+- Employs native `JSONB` with support for expression and GIN indexing, native timezone-aware `TIMESTAMP WITH TIME ZONE`, monthly range partitioning, and BRIN indexing.
 
 ### SQLite 3 WAL Mode (Edge / Local Dev)
 - Single-node target configured with `check_same_thread=False` and `timeout=10.0`.

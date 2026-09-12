@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubbrain-v5.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/entity-firmware-fleet.md, wiki/entity-hubgate-v5.md]
 sources: [hub/main.py, hub/requirements.txt, hub/test_edge_resilience.py, hub/AGENTS.md]
-updated: 2026-09-03
+updated: 2026-09-12
 ---
 
 # Edge Resilience & Offline Buffering
@@ -153,7 +153,7 @@ When network connectivity to HubGate V5 is restored, the `replay_backlog_thread`
 
 ### 5.1 Upstream Rate-Limit & Server Protection
 With `REPLAY_PACING_DELAY = 0.35`, maximum replay rate is capped at ~2.85 requests per second (~171 requests per minute). This prevents:
-- Overloading backend PostgreSQL connection pools on 1GB VPS instances.
+- Overloading backend PostgreSQL connection pools on resource-bounded VPS instances (preserving headroom for co-tenancies like CTFd on the 4GB allocation profile).
 - Triggering HTTP 429 Too Many Requests rate-limiting.
 - Flooding the alert engine with burst anomalies.
 

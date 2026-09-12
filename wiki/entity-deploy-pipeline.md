@@ -3,7 +3,7 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-devops-infrastructure.md, wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-production-readiness.md, wiki/workstream-production-grade-roadmap.md]
 sources: [deploy/setup_push_deploy.sh, deploy/smsb-api.service, deploy/nginx_smsb.conf, deploy/AGENTS.md, tools/rotate_credentials.py, commit:acd4f00, commit:6bf89e6]
-updated: 2026-09-03
+updated: 2026-09-12
 ---
 
 # Deploy Pipeline & Release Operations
@@ -102,13 +102,21 @@ System credentials across web users, gateway API tokens, MQTT brokers, and micro
 | - Flush Sessions |     |    HUB_KEY       |     | - Mosquitto      |
 | - hub_table Key  |     +------------------+     |   passwd         |
 +------------------+                              +------------------+
-                                                           |
-                                                           v
-                                                  +------------------+
-                                                  | ESP8266 Firmware |
-                                                  | - secrets.h      |
-                                                  |   MQTT_PASS      |
-                                                  +------------------+
+## 2. Production Credential Rotation Pipeline (`tools/rotate_credentials.py`)
+
+A unified administrative CLI orchestrates credential rotation across the three infrastructure tiers:
+
+```
++------------------+         +------------------+         +------------------+
+|  Central Server  |         |  Edge Gateway    |         |  ESP8266 Nodes   |
+|  (PostgreSQL)    |         |  (HubBrain)      |         |  (Firmware)      |
++------------------+         +------------------+         +------------------+
+| - Web User Hashes|         | - .env HUB_KEY   |         | - secrets.h      |
+| - hub_table Key  | ------> | - Mosquitto      | ------> |   (WIFI_PASS,    |
+| - server/.env    |         |   passwd file    |         |    MQTT_PASS)    |
+| - Invalidate     |         +------------------+         +------------------+
+|   Sessions       |
++------------------+
 ```
 
 ### Multi-Tier Rotation Procedure
@@ -117,7 +125,7 @@ System credentials across web users, gateway API tokens, MQTT brokers, and micro
 Execute the rotation CLI on the central server (or with remote DB connection):
 ```bash
 python tools/rotate_credentials.py \
-    --target-db /opt/smsb/server/hubgatev5.db \
+    --target-db postgresql://smsb_admin:<PASSWORD>@127.0.0.1:5432/smsb_prod \
     --update-env /opt/smsb/server/.env \
     --hub-id hs109rs-hub-01
 ```
@@ -190,7 +198,7 @@ The current deployment pipeline possesses five critical production-grade gaps:
 
 ### 1. Ingestion & User Downtime During Restarts
 - **Mechanism**: The hook restarts Uvicorn abruptly via `systemctl restart smsb-api.service`.
-- **Impact**: Uvicorn cold start on the 1 GB VPS requires 2 to 5 seconds. During this window, incoming HTTP batch ingestions from edge gateways fail with `HTTP 502 Bad Gateway`. While HubBrain's offline WAL buffers telemetry, web users experience connection drops and chart polling errors.
+- **Impact**: Uvicorn cold start on the VPS requires 2 to 5 seconds. During this window, incoming HTTP batch ingestions from edge gateways fail with `HTTP 502 Bad Gateway`. While HubBrain's offline WAL buffers telemetry, web users experience connection drops and chart polling errors.
 - **Remedy Required**: Implement zero-downtime worker reloads (e.g. Uvicorn graceful worker reload or dual-process blue/green socket switching).
 
 ### 2. Pre-Flight Rollback vs Post-Restart Advisory Rollback
@@ -198,14 +206,12 @@ The current deployment pipeline possesses five critical production-grade gaps:
 - **Impact**: Pre-flight failures are cleanly averted with zero downtime. For post-restart runtime failures, the broken service remains live until an operator manually intervenes.
 - **Remedy Required**: Extend automated rollback and service recycling to the post-restart failure trap.
 
-### 3. Missing Pre-Deployment Migration Safety Gate
-- **Mechanism**: The Git hook runs `pip install` and `npm run build`, but completely skips database migrations (`server/init_sqlv5.py`).
-- **Impact**: Pushing code with new database column requirements causes immediate SQL exceptions upon startup because the schema has not been updated ahead of code execution.
-- **Remedy Required**: Execute pre-flight environment checks (`verify_prod_env.py`) and additive schema migrations (`init_sqlv5.py`) prior to triggering service reloads.
+### 3. Pre-Deployment Migration Safety Gate [RESOLVED]
+- **Implementation**: Automated Alembic migration gating was integrated directly into the Git push hook in `deploy/setup_push_deploy.sh`. The hook executes `python -m alembic upgrade head` after pre-flight Python verification. If schema migration fails, the hook automatically reverts the work tree via `git reset --hard "${oldrev}"` and aborts without restarting `smsb-api.service`.
 
 ### 4. Host Resource Contention During In-Band Vite Builds
 - **Mechanism**: The frontend SPA is compiled directly on the production VPS using `npm run build` inside the post-receive hook.
-- **Impact**: Vite compilation on Node 22 spikes CPU usage to 100% and memory consumption to > 500MB on a 1 GB VPS, risking OOM-kill of active backend processes.
+- **Impact**: Vite compilation on Node 22 spikes CPU usage to 100% and memory consumption to > 500MB, bounded via `NODE_OPTIONS="--max-old-space-size=1024"` and 2GB `/swapfile` provisioning under the 4GB allocation profile (reserving 4GB for CTFd co-tenancy).
 - **Remedy Required**: Build production SPA bundles in CI/CD runners (e.g. GitHub Actions) and deploy pre-built tarball artifacts directly to the web root.
 
 ### 5. Omission of Pre-Flight Environment Auditing in Hook

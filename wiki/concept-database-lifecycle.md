@@ -3,12 +3,12 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/entity-security-auth.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/databasev5.py, server/modelsv5.py, server/init_sqlv5.py, server/alembic/env.py, server/alembic/versions/04a48dbce60b_initial_schema_as_observed.py, server/alembic/versions/b7c9e2f1a4d8_add_schedules.py, server/alembic/versions/c1a8b9f0e2d3_schema_indexing_and_nullability.py, server/app/dependencies.py, server/app/services/presence.py, server/app/services/scheduler.py, server/app/services/telemetry.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/auth.py, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md]
-updated: 2026-09-04
+updated: 2026-09-12
 ---
 
 # HubGate V5 Database Lifecycle & Persistence Architecture
 
-HubGate V5 persists high-frequency time-series telemetry, device inventory, relational hierarchy (hubs, rooms, devices), operational events, scheduled automation jobs, and user sessions. The persistence layer in `server/databasev5.py` operates a dual-dialect engine architecture supporting **PostgreSQL 16** for multi-writer production VPS deployments and **SQLite 3 WAL** for single-node edge and development environments.
+HubGate V5 persists high-frequency time-series telemetry, device inventory, relational hierarchy (hubs, rooms, devices), operational events, scheduled automation jobs, and user sessions. The persistence layer in `server/databasev5.py` operates a dual-dialect engine architecture supporting **PostgreSQL 16** as the active, live production database on the VPS and **SQLite 3 WAL** for single-node edge and development environments.
 
 ```mermaid
 flowchart TD
@@ -29,7 +29,7 @@ flowchart TD
     end
 
     subgraph "Target Databases"
-        PostgreSQL[("PostgreSQL 16 (Production Target)<br/>MVCC, Row-Level Locks, JSONB")]
+        PostgreSQL[("PostgreSQL 16 (Active Production Database)<br/>smsb_prod: MVCC, Row-Level Locks, JSONB, Range Partitioning")]
         SQLite[("SQLite 3 (Edge / Dev Target)<br/>Single-Writer WAL, Shared Mem")]
     end
 
@@ -52,8 +52,9 @@ flowchart TD
 
 The database engine is instantiated via `get_engine_kwargs(DATABASE_URL)` in `server/databasev5.py`, configuring distinct pooling, query timeout, and driver parameters based on the connection scheme.
 
-### PostgreSQL 16 (Production Target)
-- **Deployment Host**: Dedicated VPS instances (`10.33.102.172` / `100.108.98.30`).
+### PostgreSQL 16 (Active Production Database)
+- **Deployment Host**: Dedicated VPS instances (`100.108.98.30` / `10.33.102.172`). Active database: `smsb_prod`.
+- **Hardware Specification & Co-Tenancy Profile**: Hosted on an 8 GB Dynamic RAM / 4 vCPUs VPS, configured with a 4 GB allocation profile for SMSB (reserving 4 GB for CTFd co-tenancy). Uvicorn runs under systemd cgroup limits `MemoryHigh=1.2G`, `MemoryMax=1.8G`.
 - **Hardened Connection Pool Bounds (`QueuePool`)**:
   - `pool_size = 20` (default, overridable via `DB_POOL_SIZE`): Baseline persistent connection pool maintained across requests.
   - `max_overflow = 10` (`DB_MAX_OVERFLOW`): Upper limit of temporary burst connections created under surge traffic. Total connection ceiling is 30.
@@ -73,8 +74,8 @@ The database engine is instantiated via `get_engine_kwargs(DATABASE_URL)` in `se
   - `PRAGMA synchronous = NORMAL;`: Safely minimizes disk sync flushes to WAL checkpoints, improving write IOPS while maintaining durability against power loss or crashes.
   - `PRAGMA foreign_keys = ON;`: Enforces relational integrity (`ON DELETE CASCADE` on child tables).
   - `PRAGMA temp_store = MEMORY;`: In-memory temporary tables and sorting buffers.
-  - `PRAGMA cache_size = -8000;`: Allocates 8MB memory page cache, tuned for the 1GB VPS memory envelope (reduced from legacy 64MB).
-  - `PRAGMA mmap_size = 67108864;`: Allocates 64MB memory-mapped file access, preventing virtual memory exhaustion on memory-constrained VPS hosts (reduced from legacy 256MB).
+  - `PRAGMA cache_size = -8000;`: Allocates 8MB memory page cache, tuned for the edge/dev memory envelope (reduced from legacy 64MB).
+  - `PRAGMA mmap_size = 67108864;`: Allocates 64MB memory-mapped file access, preventing virtual memory exhaustion on memory-constrained hosts (reduced from legacy 256MB).
 
 ### Hourly SQLite WAL Maintenance Job
 - In SQLite WAL mode, continuous telemetry ingestion and concurrent analytical reads can impede automatic checkpoints, causing `hubgatev5.db-wal` to grow indefinitely on disk.
@@ -268,7 +269,7 @@ HubGate V5 eliminates table-wide linear scans by aligning queries with composite
 To transition production from SQLite 3 WAL to PostgreSQL 16 MVCC without memory bloat or transaction loss, HubGate V5 provides a dedicated streaming migration engine (`tools/migrate_sqlite_to_postgres.py`) governed by the operational cutover runbook (`docs/runbooks/postgres_cutover_runbook.md`).
 
 ### 6.1 Architectural Highlights
-- **Native Streaming `copy_expert` Pipeline**: Replaced legacy multi-row INSERTs with memory-buffered CSV streaming via `psycopg2.cursor.copy_expert()`. SQLite cursors are fetched in chunks of 25,000 rows (`fetchmany(25000)`), converted to in-memory CSV buffers (`io.StringIO`), and piped via `COPY "{pg_tbl}" (...) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL '\N')`. Peak memory footprint remains strictly under **45MB RAM**, eliminating OOM risk on the 1GB VPS.
+- **Native Streaming `copy_expert` Pipeline**: Replaced legacy multi-row INSERTs with memory-buffered CSV streaming via `psycopg2.cursor.copy_expert()`. SQLite cursors are fetched in chunks of 25,000 rows (`fetchmany(25000)`), converted to in-memory CSV buffers (`io.StringIO`), and piped via `COPY "{pg_tbl}" (...) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL '\N')`. Peak memory footprint remains strictly under **45MB RAM**, eliminating OOM risk and preserving memory headroom for co-tenant workloads (such as CTFd on the 4GB allocation profile).
 - **Secondary Index Deferral**: The migration tool inspects `pg_index` and drops secondary B-Tree and BRIN indexes on telemetry tables (`data_table`, `temperature_data`, `ats_data`) prior to ingestion, retaining only primary composite keys `(data_id, timestamp)` and unique constraints. After streaming completes, dropped indexes are reconstructed across the partition hierarchy in a single sequential heap scan pass (`rebuild_telemetry_secondary_indexes`).
 - **PostgreSQL 16 Partition Auto-Routing**: Data is streamed directly into parent tables. PostgreSQL 16 automatically routes incoming records into appropriate monthly child partitions based on event timestamp.
 - **Pre-Cutover Session Optimizations**:
@@ -282,6 +283,14 @@ To transition production from SQLite 3 WAL to PostgreSQL 16 MVCC without memory 
 - **PostgreSQL Sequence Synchronization & VACUUM**: Resynchronizes all serial and identity sequences (`SELECT setval(...)`), restores session variables (`session_replication_role = 'origin'`, `synchronous_commit = on`), and executes `VACUUM ANALYZE` across all tables under `autocommit = True`.
 - **Verification & Parity Reporting**: Runs an automated table parity audit comparing source SQLite row counts against target PostgreSQL row counts across all 14 canonical tables, reporting PASS/FAIL status.
 - **Non-Destructive Dry-Run**: The `--dry-run` flag parses tables, validates types, tests transformations, and benchmarks extraction speeds with zero writes to the target PostgreSQL cluster.
+
+### 6.2 Completed Live Production Cutover Execution
+On 2026-09-12, the production database on the VPS (`100.108.98.30`) successfully cut over from SQLite 3 WAL to PostgreSQL 16 (`smsb_prod`):
+- **Data Parity**: **4,152,334 rows** were migrated across all 14 canonical tables with **100% row parity** (0 dropped rows, 0 data drift).
+- **Execution Performance**: Streaming in chunks of 25,000 rows completed full data transfer within the planned maintenance window with a peak memory footprint under 45MB RAM.
+- **Partition Verification**: High-volume telemetry was routed into monthly range partitions (`temperature_data_y2026m08`, `temperature_data_y2026m09`, etc.) with BRIN indexes auto-summarized.
+- **Resource Envelope**: Operational under the 4 GB allocation profile on the 8 GB Dynamic RAM / 4 vCPUs VPS host, cleanly reserving 4 GB for CTFd co-tenancy.
+- **Fallback State**: The previous SQLite database file `/opt/smsb/server/hubgatev5.db` was preserved in a read-only state as an immutable cold backup.
 
 ---
 

@@ -3,12 +3,12 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-alert-engine.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/modelsv5.py, server/init_sqlv5.py, server/alembic/versions/c1a8b9f0e2d3_schema_indexing_and_nullability.py, server/AGENTS.md, commit:8f8f6cd, commit:9961f5c]
-updated: 2026-09-02
+updated: 2026-09-12
 ---
 
 # HubGate V5 Data Model
 
-All ORM entities live in `server/modelsv5.py`. The database architecture targets **PostgreSQL 16** for high-concurrency production deployments (multi-writer MVCC with connection pooling) and **SQLite 3 WAL mode** for local edge and development nodes (`hubgatev5.db`, ~430MB).
+All ORM entities live in `server/modelsv5.py`. The active production database running on the VPS (`100.108.98.30`) is **PostgreSQL 16** (`smsb_prod`, successfully migrated with 4,152,334 rows and 100% parity), utilizing multi-writer MVCC, declarative monthly range partitioning, and BRIN indexing configured under a 4 GB allocation profile on the 8 GB Dynamic RAM / 4 vCPUs host (reserving 4 GB for CTFd co-tenancy). **SQLite 3 WAL mode** serves local edge and development nodes (`hubgatev5.db`, ~430MB).
 
 ## Table Inventory & Primary Schema
 

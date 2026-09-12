@@ -3,7 +3,7 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-deploy-pipeline.md, wiki/entity-hubgate-v5.md, wiki/entity-hubbrain-v5.md, wiki/concept-observability-monitoring.md, wiki/concept-production-readiness.md, wiki/workstream-production-grade-roadmap.md]
 sources: [deploy/nginx_smsb.conf, deploy/smsb-api.service, deploy/hubbrain.service, deploy/setup_push_deploy.sh, deploy/journald.conf.dropin, tools/backup_hub.sh, tools/run_pi_backup.py, tools/rotate_credentials.py, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md, notes/field-ops.md]
-updated: 2026-09-04
+updated: 2026-09-12
 ---
 
 # DevOps & Infrastructure Architecture
@@ -29,7 +29,7 @@ The physical and virtual topology is organized into three segregated tiers:
 |   (Vite React 19 SPA)         User: smsb (127.0.0.1:8000)          |    |
 |                                      |                             |    |
 |                                      v                             |    |
-|                         PostgreSQL 16 / SQLite WAL                  |    |
+|                         PostgreSQL 16 (smsb_prod, 4.15M rows)      |    |
 +-------------------------------------------------------------------------+
                                        ^
                                        | HTTPS Ingestion / Replay
@@ -56,10 +56,10 @@ The physical and virtual topology is organized into three segregated tiers:
 
 ### Central Server Specifications (`genset`)
 - **Network Identity**: Tailscale interface `100.108.98.30`, public ingress via Nginx on ports 80 and 443.
-- **System Constraints**: 1 GB total RAM budget. Memory consumption is strictly bounded per process via systemd cgroups.
+- **Hardware & Resource Allocation Profile**: VPS with 8 GB Dynamic RAM and 4 vCPUs. SMSB is configured for a dedicated 4 GB allocation profile, reserving 4 GB for CTFd co-tenancy. Systemd bounds Uvicorn under `MemoryHigh=1.2G`, `MemoryMax=1.8G`. Active database: PostgreSQL 16 (`smsb_prod`).
 - **User Segregation**:
   - `genset`: Unprivileged deployment user. Possesses SSH key access and narrow sudoers permission to restart `smsb-api`.
-  - `smsb`: Dedicated system execution user (`no-login`). Runs the FastAPI/Uvicorn process and owns the server `.env` and SQLite database files.
+  - `smsb`: Dedicated system execution user (`no-login`). Runs the FastAPI/Uvicorn process, connects to PostgreSQL `smsb_prod`, and owns the server `.env` and static asset directories.
 - **Perimeter & Access Control Posture**:
   - **Firewall**: UFW/nftables is not currently active on the host. Perimeter containment relies solely on loopback socket binding (`127.0.0.1:8000` for Uvicorn, `127.0.0.1:5432` for PostgreSQL) and Nginx reverse proxy mediation.
   - **SSH Enforcement**: Authorized operator workstations connect via SSH key authentication, but password authentication remains permitted in `/etc/ssh/sshd_config` (`PasswordAuthentication yes`). Fail2ban is uninstalled, leaving port 22 exposed to brute-force dictionary attacks.
@@ -136,7 +136,7 @@ Installed at `/etc/systemd/system/smsb-api.service`:
   - `PrivateTmp=yes`: Dedicated, isolated `/tmp` namespace.
   - `RestrictSUIDSGID=yes`: Blocks creation of setuid/setgid binaries.
   - `ProtectKernelTunables=yes`, `ProtectControlGroups=yes`: Blocks sysctl and cgroup tampering.
-  - `ReadWritePaths=/opt/smsb/server`: Single write exception allowing SQLite writes, log creation, and image uploads.
+  - `ReadWritePaths=/opt/smsb/server`: Single write exception allowing log creation, static image uploads, and SQLite backup files.
 
 ### Edge Gateway Unit (`deploy/hubbrain.service`)
 Installed on the Raspberry Pi at `/etc/systemd/system/hubbrain.service`:
@@ -148,7 +148,7 @@ Installed on the Raspberry Pi at `/etc/systemd/system/hubbrain.service`:
 - **Sandboxing**: `ProtectSystem=strict`, `PrivateTmp=yes`, `ReadWritePaths=/home/hubadmin/smsb/hub` (permits local write-ahead log updates in `edge_cache.db`).
 
 ### Journal Disk Quota (`deploy/journald.conf.dropin`)
-To prevent journald from exhausting root disk space on the 1 GB VPS, a drop-in configuration `/etc/systemd/journald.conf.d/99-smsb-size.conf` enforces:
+To prevent journald from exhausting root disk space on the VPS host, a drop-in configuration `/etc/systemd/journald.conf.d/99-smsb-size.conf` enforces:
 ```ini
 [Journal]
 SystemMaxUse=100M
@@ -199,8 +199,8 @@ Mandatory gate required prior to edge hardware updates or kernel modifications:
 - **Remote Automation (`tools/run_pi_backup.py`)**: Uses Paramiko to stage the backup script over SFTP, execute it with root privileges, download the archive and checksum off-device, and verify SHA256 integrity locally.
 
 ### Central Server Disaster Recovery & Migration Pipeline
-- **SQLite-to-PostgreSQL 16 Streaming Migration (`tools/migrate_sqlite_to_postgres.py`)**: Dedicated low-memory streaming ETL tool migrating historical telemetry, configuration, and relational entities from SQLite 3 WAL to PostgreSQL 16 using memory-buffered `COPY FROM STDIN` (< 45MB RAM) and secondary index deferral. Validated via `--dry-run` and live parity check reporting.
-- **PostgreSQL Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Comprehensive operational runbook detailing pre-flight checks, 1GB VPS engine tuning, T-0 WAL truncation (`PRAGMA wal_checkpoint(TRUNCATE)`), read-only service freeze, streaming migration execution, and partition verification under a $\le 3\text{ minute}$ maintenance window.
+- **Completed PostgreSQL 16 Live Cutover**: On 2026-09-12, the production database successfully transitioned from SQLite 3 WAL to PostgreSQL 16 (`smsb_prod`). A total of 4,152,334 rows were migrated with 100% parity across all 14 canonical tables using `tools/migrate_sqlite_to_postgres.py` with memory-bounded streaming (< 45MB RAM footprint) and secondary index deferral. Monthly range partitioning and BRIN indexing are fully operational under the 4 GB allocation profile on the 8 GB host (reserving 4 GB for CTFd co-tenancy).
+- **PostgreSQL Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Operational runbook detailing pre-flight checks, 4GB VPS engine tuning with CTFd co-tenancy, T-0 WAL truncation (`PRAGMA wal_checkpoint(TRUNCATE)`), read-only service freeze, streaming migration execution, and partition verification under a $\le 3\text{ minute}$ maintenance window.
 - **Field Node ATS Remediation Runbook (`docs/runbooks/field_node_ats_remediation.md`)**: Electrical and firmware recovery runbook addressing ~55V floating induced voltage, safety LOTO/PPE procedures, terminal block torquing, and on-site serial flashing for Arduino Pro Mini and Wemos D1 Mini to eliminate the EMERGENCY reset loop on node `68:C6:3A:D7:60:47`.
 - **Automated Backup Posture**: Nightly cron executing `pg_dump` with SHA256 verification and off-site cloud storage replication (`tools/backup_vps.sh`).
 

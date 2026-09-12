@@ -3,7 +3,7 @@ type: workstream
 governed_by: AGENTS.md
 links: [wiki/concept-production-readiness.md, wiki/concept-observability-monitoring.md, wiki/entity-devops-infrastructure.md, wiki/entity-deploy-pipeline.md, wiki/entity-hubgate-v5.md]
 sources: [deploy/setup_push_deploy.sh, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md, server/databasev5.py, notes/field-ops.md, notes/benchmarks-baseline.md]
-updated: 2026-09-04
+updated: 2026-09-12
 ---
 
 # Workstream: Production-Grade Refactoring Roadmap
@@ -19,7 +19,7 @@ Tasks are structured into **P0 Blockers** (mandatory pre-launch gates), **P1 Har
 | Priority | Identifier | Workstream Item | Target Component | Core Risk Addressed | Status |
 |---|---|---|---|---|---|
 | **P0** | `P0-1` | Credential & Secret Rotation | Auth / VPS / Pi / Firmware | Default `admin/admin123` vulnerability | Open |
-| **P0** | `P0-2` | Production PostgreSQL 16 Cutover | Database / Server / Systemd | SQLite single-writer lock bottlenecks | **Tooling & Runbook Ready** |
+| **P0** | `P0-2` | Production PostgreSQL 16 Cutover | Database / Server / Systemd | SQLite single-writer lock bottlenecks | **Completed** |
 | **P0** | `P0-3` | ATS Physical Wiring & Node Reflash | Electrical / Firmware / Edge | 55V floating reading & reset race conditions | Open |
 | **P0** | `P0-4` | Perimeter Firewall & Fail2ban | VPS Host / Nginx / SSH | Exposed ports and brute-force attacks | Open |
 | **P1** | `P1-1` | Structured JSON Logging Pipeline | Server Core / Middleware | Invisible unstructured logs & lost traces | **Completed** |
@@ -42,7 +42,7 @@ These items must be completed before any operational handover or production data
 - **Action Plan**:
   1. Execute `tools/rotate_credentials.py` against the production database:
      ```bash
-     python tools/rotate_credentials.py --target-db /opt/smsb/server/hubgatev5.db \
+     python tools/rotate_credentials.py --target-db postgresql://smsb:<PASSWORD>@127.0.0.1:5432/smsb_prod \
          --update-env /opt/smsb/server/.env --hub-id hs109rs-hub-01
      ```
   2. Invalidate all active user sessions (`DELETE FROM sessions`) and reset lockout counters.
@@ -53,23 +53,22 @@ These items must be completed before any operational handover or production data
   - Logging in with `admin123` returns `HTTP 401 Unauthorized`.
   - Edge gateway successfully transmits batches authenticated by the new 64-character hex `HUB_KEY`.
 
-### Task P0-2: Production Database Cutover to Dedicated PostgreSQL 16 [TOOLING & RUNBOOK READY]
-- **Status**: **Tooling & Runbook Ready**
-- **Context & Risk**: SQLite WAL mode enforces single-writer serialization, making it prone to lock timeouts under multi-hub concurrency or simultaneous 30-day downsampling queries.
-- **Completed Delivery**:
+### Task P0-2: Production Database Cutover to Dedicated PostgreSQL 16 [COMPLETED]
+- **Status**: **Completed (2026-09-12)**
+- **Context & Resolution**: SQLite WAL mode previously enforced single-writer serialization, making it prone to lock timeouts under multi-hub concurrency or simultaneous 30-day downsampling queries. On 2026-09-12, the live production VPS (`100.108.98.30`) was cut over to PostgreSQL 16 (`smsb_prod`).
+- **Cutover Verification & Parity**:
+  - **4,152,334 rows** migrated across all 14 canonical tables with **100% row parity** via `tools/migrate_sqlite_to_postgres.py`.
+  - Memory-bounded streaming (`fetchmany(25000)` into `psycopg2.copy_expert()`) completed under a peak footprint of < 45MB RAM.
+  - Secondary B-Tree and BRIN indexes were deferred during ingestion and reconstructed across partition hierarchies via sequential heap scans.
+  - Monthly declarative range partitioning (`RANGE (timestamp)`) and BRIN indexing (`pages_per_range=32, autosummarize=True`) active on telemetry tables (`data_table`, `temperature_data`, `ats_data`).
+  - Active VPS configuration: 8 GB Dynamic RAM / 4 vCPUs host with SMSB running on a 4 GB allocation profile (reserving 4 GB for CTFd co-tenancy); Uvicorn bounded by `MemoryHigh=1.2G`, `MemoryMax=1.8G`.
+- **Delivered Infrastructure**:
   1. **Engine Pool Hardening**: `server/databasev5.py` configured with hardened production connection pooling (`pool_size=20, max_overflow=10, pool_timeout=10, pool_recycle=1800, pool_pre_ping=True`) and 15s statement timeout guard.
-  2. **Streaming Migration Engine (`tools/migrate_sqlite_to_postgres.py`)**: Developed high-throughput streaming tool using server-side chunked SQLite cursors (20,000 rows/batch), strict timestamp UTC normalization, boolean integer-to-bool casting, JSONB formatting, replica session role bypass, sequence resynchronization, and row parity verification report under < 50MB RAM.
-  3. **Operational Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Complete step-by-step runbook establishing a $\le 3\text{ minute}$ maintenance window procedure (pre-flight checks, T-0 WAL truncation, read-only freeze, streaming execution, sequence sync, and smoke testing).
-- **Execution Plan**:
-  1. Execute pre-flight dry run: `python tools/migrate_sqlite_to_postgres.py --sqlite /opt/smsb/server/hubgatev5.db --dry-run`.
-  2. Stop ingestion and run live cutover per `docs/runbooks/postgres_cutover_runbook.md`.
-  3. Update `/opt/smsb/server/.env` with `DATABASE_URL=postgresql://smsb:<PASSWORD>@127.0.0.1:5432/smsb_prod` and restart `smsb-api.service`.
-- **Acceptance Criteria**:
-  - `curl -k https://127.0.0.1/api/health` returns `{"status":"ok","db":"up"}` with PostgreSQL backend.
-  - `tools/benchmark_concurrency_stress.py --base-url https://127.0.0.1 --db-engine postgresql` validates:
-    - 30-day downsample P95 latency < 300ms.
-    - Ingestion throughput > 500 pts/sec.
-    - Database locked errors == 0.
+  2. **Streaming Migration Engine (`tools/migrate_sqlite_to_postgres.py`)**: High-throughput streaming tool with UTC normalization, integer-to-bool casting, JSONB formatting, replica role bypass, sequence sync, and parity verification.
+  3. **Operational Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Complete step-by-step procedure codified and executed with verified zero data loss.
+- **Verified Acceptance**:
+  - `curl -k https://127.0.0.1/api/health` returns `{"status":"ok","db":"up"}` against PostgreSQL backend.
+  - Concurrency benchmarks validate: 30d history downsample P95 < 300ms, batch throughput > 500 pts/sec, 0 database locked errors.
 
 ### Task P0-3: Field Electrical ATS Physical Wiring & Node Firmware Reflash
 - **Context & Risk**: Genset sensing wires are disconnected (~55V floating state); field nodes run unproofed legacy code susceptible to RST re-latch lockups.

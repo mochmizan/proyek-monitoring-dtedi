@@ -15,15 +15,15 @@ FastAPI cloud gateway (HubGate V5) — ingestion, auth/RBAC, rooms/devices/alert
 
 Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49, Alembic, PostgreSQL 16 (prod) + SQLite 3 WAL fallback (`DATABASE_URL` unset), SlowAPI 0.1.10, argon2-cffi 25.1.0, psycopg2-binary 2.9.12, python-multipart 0.0.27, python-json-logger 2.0.7, APScheduler 3.10.4 + tzdata (Asia/Jakarta) — all pinned `==` in `requirements.txt`.
 
-- **Production Target Database**: PostgreSQL 16 (hosted on VPS 10.33.102.172 / 100.108.98.30). High-concurrency MVCC multi-writer architecture with declarative range partitioning by `RANGE (timestamp)` and BRIN indexing (`pages_per_range=32, autosummarize=True`) on telemetry tables (`data_table`, `temperature_data`, `ats_data`). Hardened connection pool (`pool_size=20, max_overflow=10, pool_timeout=10, pool_recycle=1800, pool_pre_ping=True`), with 15s server `statement_timeout` (`-c statement_timeout=15000`). Streaming `COPY FROM STDIN` migration tooling provided by `tools/migrate_sqlite_to_postgres.py` (< 45MB RAM footprint, secondary index deferral) with runbook at `docs/runbooks/postgres_cutover_runbook.md`.
+- **Active Production Database**: PostgreSQL 16 (`smsb_prod` hosted on VPS 100.108.98.30 / 10.33.102.172; 4,152,334 rows migrated from SQLite with 100% parity). High-concurrency MVCC multi-writer architecture with declarative range partitioning by `RANGE (timestamp)` and BRIN indexing (`pages_per_range=32, autosummarize=True`) on telemetry tables (`data_table`, `temperature_data`, `ats_data`). Hardened connection pool (`pool_size=20, max_overflow=10, pool_timeout=10, pool_recycle=1800, pool_pre_ping=True`), with 15s server `statement_timeout` (`-c statement_timeout=15000`). Tuned for 4GB allocation profile on 8GB host with CTFd co-tenancy. Streaming `COPY FROM STDIN` migration completed via `tools/migrate_sqlite_to_postgres.py` (< 45MB RAM footprint, secondary index deferral) with runbook at `docs/runbooks/postgres_cutover_runbook.md`.
 - **Local Dev & Edge Lab Database**: SQLite 3 (WAL mode) with a documented single-writer ceiling. Connect-time PRAGMAs configured via SQLAlchemy event listener in `databasev5.py`:
   - `PRAGMA journal_mode = WAL;` (concurrent readers do not block writers)
   - `PRAGMA busy_timeout = 10000;` (10s lock timeout prevents immediate busy errors)
   - `PRAGMA synchronous = NORMAL;` (durable WAL mode disk sync)
   - `PRAGMA foreign_keys = ON;` (strict relational constraint enforcement)
   - `PRAGMA temp_store = MEMORY;` (in-memory temporary tables)
-  - `PRAGMA cache_size = -8000;` (8MB memory page cache, tuned for 1GB VPS memory envelope)
-  - `PRAGMA mmap_size = 67108864;` (64MB memory-mapped I/O, tuned for 1GB VPS memory envelope)
+  - `PRAGMA cache_size = -8000;` (8MB memory page cache, tuned for memory-constrained edge/dev envelope)
+  - `PRAGMA mmap_size = 67108864;` (64MB memory-mapped I/O, tuned for memory-constrained edge/dev envelope)
 - **Hourly WAL & Daily Partition Maintenance Jobs**: APScheduler registers `engine-sqlite-wal-checkpoint` in `app/services/scheduler.py` executing `checkpoint_sqlite_wal` (`PRAGMA wal_checkpoint(TRUNCATE);`) every hour when running on SQLite, actively preventing unbounded WAL disk bloat. On PostgreSQL, `partition_maintenance_job` runs daily at 02:15 AM WIB to precreate rolling 60-day child partitions (`T+1`, `T+2`) and prune partitions older than 30 days via O(1) `DETACH PARTITION ... CONCURRENTLY` and `DROP TABLE`.
 - **Session Management (`get_db` & `verify_session`)**: FastAPI dependency generator in `databasev5.py` providing request-scoped sessions with automatic `db.rollback()` on exceptions and guaranteed `db.close()` in `finally`. `verify_session` in `server/auth.py` enforces `SEC-10` session window throttling: only executes an `UPDATE sessions` write transaction if remaining validity is `< 90 minutes` (`remaining_validity < timedelta(minutes=90)`). Fresh sessions skip DB writes completely, eliminating write-on-read lock serialization.
 
@@ -59,7 +59,7 @@ Composite SARGable performance & partitioning indexes:
   - PostgreSQL: `CAST(FLOOR(EXTRACT(epoch FROM timestamp) / bucket_seconds) * bucket_seconds AS INTEGER)`.
 - Min/Max Envelopes: Computes `AVG`, `MIN`, `MAX` envelope bounds in the same single-pass query (`temp`/`temp_min`/`temp_max`, `humid`/`humid_min`/`humid_max`, `pln`/`genset`/`aki` min/max).
 - Output Bounds: Result length strictly bounded `total_points <= max_points` (or `max_points + 5` bucket alignment tolerance). Sub-1000 rows returned unaggregated in ascending order.
-- Read SLA: 30d history downsample P95 < 300ms (PostgreSQL production target).
+- Read SLA: 30d history downsample P95 < 300ms (PostgreSQL active production database).
 
 ### Batch Ingestion Pipeline Contract
 

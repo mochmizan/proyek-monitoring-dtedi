@@ -34,7 +34,7 @@ This is how the system is **actually running today** on the campus VPS `genset` 
 **VPS `genset` (Ubuntu 24.04, 10.33.102.172 / 100.108.98.30 / 202.43.94.30)**
 - nginx site `hubgate` runs this repo's `deploy/nginx_smsb.conf`: SPA at `/var/www/gui-app`, `/api/` + `/static/` proxied to uvicorn (`smsb-api.service`, `127.0.0.1:8000`). Legacy all-proxy config backed up as `/home/genset/hubgate.bak.*`.
 - TLS: self-signed `/etc/nginx/ssl/smsb.crt|.key` with SANs for `10.33.102.172` (campus IP), Tailscale IP, and public IP.
-- Deploy: `git push prod main` → post-receive hook on `/opt/smsb.git` → worktree `/opt/smsb`, DB at `/opt/smsb/server/hubgatev5.db` (SQLite).
+- Deploy: `git push prod main` → post-receive hook on `/opt/smsb.git` → worktree `/opt/smsb`, active DB is PostgreSQL 16 (`smsb_prod` on `127.0.0.1:5432`, 4,152,334 rows migrated with 100% parity; local SQLite fallback preserved).
 - **chrony NTP server**: VPS serves time to campus IoT hubs (`allow 10.33.0.0/16`; UFW allows `123/udp from 10.33.0.0/16`) because the Pi has no internet access.
 
 **Raspberry Pi edge hub (hostname `hs108rs-hub-01`; registered hub identity `hs109rs-hub-01` — legacy room naming; bubble `192.168.72.242`, eth0 static `10.33.36.81/24` via UGM wall port)**

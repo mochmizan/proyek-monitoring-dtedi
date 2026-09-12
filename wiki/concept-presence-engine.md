@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-telemetry-pipeline.md, wiki/concept-alert-engine.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/app/services/presence.py, server/app/routers/devices.py, server/app/services/scheduler.py, server/test_phase5_presence_nplus1.py, commit:8f8f6cd]
-updated: 2026-09-04
+updated: 2026-09-12
 ---
 
 # Presence Engine
@@ -22,7 +22,7 @@ Under concurrent workloads (multiple browser tabs polling every 3 seconds while 
 
 The hardened Presence Engine completely divorces state evaluation from read requests, moving all mutation logic into a periodic background task:
 
-1. **Scheduler Integration**: APScheduler executes `evaluate_device_presence_batch()` (`server/app/services/presence.py`) on a fixed 15-second interval (`PRESENCE_INTERVAL_SECONDS = 15`), tuned down from 5 seconds to reduce idle CPU cycles and database connection checkouts on the memory-constrained 1GB VPS.
+1. **Scheduler Integration**: APScheduler executes `evaluate_device_presence_batch()` (`server/app/services/presence.py`) on a fixed 15-second interval (`PRESENCE_INTERVAL_SECONDS = 15`), tuned down from 5 seconds to reduce idle CPU cycles and database connection checkouts on the host (preserving headroom for CTFd co-tenancy under the 4GB SMSB profile).
 2. **Session Isolation**: The sweeper executes in an independent, scoped database session (`SessionLocal()`) with explicit rollback handling, ensuring presence evaluation errors never contaminate HTTP request sessions.
 3. **N+1 Query Elimination**:
    - Fetches all active devices in a single query using eager loading: `select(dev_table).options(selectinload(dev_table.room)).where(dev_table.is_active == True)`.

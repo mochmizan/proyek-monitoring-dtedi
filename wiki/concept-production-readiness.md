@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-devops-infrastructure.md, wiki/concept-observability-monitoring.md, wiki/entity-deploy-pipeline.md, wiki/workstream-production-grade-roadmap.md]
 sources: [deploy/, tools/, server/, hub/, firmware/, git:notes/field-ops.md (archived), git:notes/benchmarks-baseline.md (archived)]
-updated: 2026-09-03
+updated: 2026-09-12
 ---
 
 # Production Readiness Gap Assessment
@@ -16,8 +16,8 @@ A holistic evaluation of the SMSB platform across five operational pillars: Back
 
 | Domain | Hardened Capabilities (Current State) | Production Gaps & Vulnerabilities | Maturity Level |
 |---|---|---|---|
-| **Backend & Database** | Single-transaction atomic commit (CRIT-01); in-memory throttled `HubAuthCache`; idempotent WAL replay with `uuid5` PKs; Downsampling V2 window functions; Argon2id auth with lockout. | Production VPS runs SQLite WAL mode instead of PostgreSQL; migrations execute ad-hoc without pre-deploy verification gate; no database connection pool metrics. | **Hardened Staging** |
-| **Frontend SPA** | React 19 / Vite build; TanStack Query 4-tier jittered polling (1.5s/6s/15s/60s) with `keepPreviousData` (zero layout shift); dynamic chart envelopes; same-origin reverse proxying. | SPA builds directly on 1 GB VPS during push-deploy, risking host OOM; no client-side error telemetry (Sentry); no Service Worker offline cache. | **Hardened Staging** |
+| **Backend & Database** | Single-transaction atomic commit (CRIT-01); in-memory throttled `HubAuthCache`; idempotent WAL replay with `uuid5` PKs; Downsampling V2 window functions; Argon2id auth with lockout; active PostgreSQL 16 MVCC (`smsb_prod`, 4.15M rows, 100% parity) with monthly range partitioning and BRIN indexes; automated Alembic pre-deploy migration gating. | External connection pool telemetry & Prometheus metrics exporter pending (P2-1); automated nightly pg_dump offsite replication pending (P1-4). | **Production-Grade** |
+| **Frontend SPA** | React 19 / Vite build; TanStack Query 4-tier jittered polling (1.5s/6s/15s/60s) with `keepPreviousData` (zero layout shift); dynamic chart envelopes; same-origin reverse proxying; bounded Node build heap cap (1024MB) + 2GB swap. | No client-side error telemetry (Sentry); no Service Worker offline cache. | **Hardened Staging** |
 | **Edge Gateway (Pi)** | Mosquitto broker isolation; bounded 20,000-row SQLite WAL queue; capture epoch preservation (`_hub_created_at`); mandatory backup script. | High SD card corruption risk from continuous SQLite WAL writes without OverlayFS; hardware watchdog inactive; plaintext `.env` secrets on edge disk. | **Staging Prototype** |
 | **Firmware & Electrical** | Unified WEMOS_ATS canonical bridge; non-blocking millis loops; Pro Mini RST re-latch race condition resolved in code. | Genset voltage leads physically NOT wired to ATS (~55V floating); proofed firmware pending physical flashing to field nodes; no OTA update mechanism. | **Lab Verified** (Field Blocked) |
 | **DevOps & Security** | Sandboxed systemd units; Nginx same-origin reverse proxy; git push-to-deploy; automated credential rotation CLI (`tools/rotate_credentials.py`). | Weak default credentials (`admin/admin123`) live on VPS; self-signed TLS certs; no VPS firewall (UFW) or Fail2ban; deploy restarts cause 2-5s downtime; zero active alert dispatch. | **Staging Prototype** |
@@ -26,16 +26,17 @@ A holistic evaluation of the SMSB platform across five operational pillars: Back
 
 ## 2. Server & Database Tier Gaps
 
-### 1. SQLite Single-Writer Contention in Production
-Although SQLite 3 in WAL mode passed the 15-second multi-worker concurrency benchmark (`tools/benchmark_concurrency_stress.py`), running SQLite on the production VPS presents architectural risks:
-- **Concurrency Limit**: SQLite permits only one writer at any instant. Concurrent write bursts from multiple edge gateways or simultaneous batch replays will queue up and risk hitting the 10-second `busy_timeout`.
-- **Analytical Contention**: Large time-series range queries (`range=30d`) hold shared read locks, impeding WAL checkpoints and causing `hubgatev5.db-wal` to grow indefinitely under continuous ingestion.
-- **Production Target**: Cutover to PostgreSQL 16 is mandatory for production multi-hub scalability and non-blocking concurrent writes.
+### 1. PostgreSQL 16 Multi-Writer Production Cutover [RESOLVED]
+The SQLite single-writer lock contention risk was permanently resolved on 2026-09-12 via the completed cutover to PostgreSQL 16:
+- **Production Host**: Dedicated VPS (`100.108.98.30`) running `smsb_prod` on PostgreSQL 16 under an 8 GB Dynamic RAM / 4 vCPUs configuration (4 GB allocation profile for SMSB, reserving 4 GB for CTFd co-tenancy).
+- **Migration Parity**: 4,152,334 rows were migrated from SQLite with 100% parity across all 14 canonical tables using `tools/migrate_sqlite_to_postgres.py` (< 45MB RAM footprint).
+- **Declarative Partitioning & BRIN**: Telemetry tables employ monthly range partitioning and compact BRIN indexes, enabling logarithmic history scans and O(1) concurrent retention detachment without locking writers.
+- **Role of SQLite**: SQLite 3 WAL mode is retained strictly as the local development engine and Raspberry Pi edge offline queue (`edge_cache.db`).
 
-### 2. Missing Pre-Deployment Migration Safety Gates
-- Current migrations are applied manually or through `server/init_sqlv5.py`.
-- The Git push-deploy hook (`post-receive`) does **not execute database migrations** prior to restarting the service. If code with updated schema requirements is pushed, Uvicorn restarts immediately and throws SQL exceptions on missing columns or constraints.
-- No rollback or schema dry-run mechanism exists for failed migrations.
+### 2. Pre-Deployment Migration Safety Gates [RESOLVED]
+The Git push-deploy pipeline (`deploy/setup_push_deploy.sh`) now enforces automated pre-flight database migrations:
+- The `post-receive` hook executes `python -m alembic upgrade head` prior to restarting the service.
+- If migration fails, the hook automatically executes `git reset --hard "${oldrev}"` and aborts deployment, leaving the running service intact and preventing schema drift.
 
 ---
 
@@ -46,8 +47,8 @@ Although SQLite 3 in WAL mode passed the 15-second multi-worker concurrency benc
   ```bash
   ( cd "${SPA_DIR}" && npm ci --ignore-engines && npm run build --ignore-engines )
   ```
-- Node 22 memory footprint during Vite compilation routinely spikes to 400MB–700MB.
-- On a 1 GB VPS shared with the operating system, Nginx, and FastAPI, running an in-band Node build carries a high risk of exhausting host memory, triggering the Linux OOM-killer to terminate the API or Nginx process.
+- Node 22 memory footprint during Vite compilation is capped via `NODE_OPTIONS="--max-old-space-size=1024"`.
+- The bootstrap script provisions and enables a 2 GB `/swapfile` if active swap is under 1 GB, protecting the host and co-tenanted CTFd from OOM exhaustion during Vite compilation.
 
 ### 2. Client-Side Telemetry & Field Resilience
 - **Zero Frontend Error Reporting**: JavaScript runtime errors, failed chunk downloads, or TanStack query fetch failures are invisible to operators and developers.
@@ -98,7 +99,7 @@ Although SQLite 3 in WAL mode passed the 15-second multi-worker concurrency benc
   sudo -n systemctl restart smsb-api.service
   ```
 - A systemd restart shuts down existing Uvicorn worker processes, clears memory, and launches a fresh Python process.
-- Cold startup on the 1 GB VPS requires **2 to 5 seconds**, during which incoming HTTP requests from edge gateways or web clients receive `HTTP 502 Bad Gateway`.
+- Cold startup on the VPS requires **2 to 5 seconds**, during which incoming HTTP requests from edge gateways or web clients receive `HTTP 502 Bad Gateway`.
 - The pipeline lacks zero-downtime reload (such as Uvicorn process reload or dual-process blue/green socket handoff).
 
 ### 3. Non-Automated Advisory Rollback

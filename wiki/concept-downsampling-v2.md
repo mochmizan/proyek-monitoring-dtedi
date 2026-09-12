@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-telemetry-pipeline.md, wiki/entity-dashboard-spa.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/app/routers/devices.py, server/test_device_history.py, server/test_phase2_downsampling.py, server/test_phase6_verification_benchmark.py, dashboard/src/hooks/useDeviceHistory.ts, commit:8f8f6cd]
-updated: 2026-09-02
+updated: 2026-09-12
 ---
 
 # Downsampling V2
@@ -71,5 +71,5 @@ All history queries construct SARGable predicates filtering on `dev_id = :dev_id
 The database engine navigates directly to the target device's time range via a B-tree range scan, avoiding full-table sequential scans.
 
 **Performance SLAs & Measured Baseline**:
-- PostgreSQL 16 (Production Target): 30-day history downsampling over 1,000,000 rows P95 < 300ms.
+- PostgreSQL 16 (Active Production Database): 30-day history downsampling over 1,000,000 rows P95 < 300ms.
 - SQLite 3 WAL (Edge / Dev Target): 30-day history downsampling over 1,000,000 rows P95 < 1000ms (Measured baseline: 891.28ms P95).

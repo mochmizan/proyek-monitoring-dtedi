@@ -3,23 +3,23 @@ type: workstream
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-downsampling-v2.md, wiki/concept-telemetry-pipeline.md, wiki/concept-presence-engine.md, wiki/concept-alert-engine.md]
 sources: [server/databasev5.py, server/app/dependencies.py, server/app/routers/devices.py, server/app/routers/iot.py, server/app/routers/rooms.py, server/app/services/presence.py, tools/benchmark_concurrency_stress.py, tools/seed_benchmark_telemetry.py, git:notes/benchmarks-baseline.md (archived), commit:8f8f6cd, commit:9961f5c, commit:0fd2e81]
-updated: 2026-09-02
+updated: 2026-09-12
 ---
 
 # Workstream: HubGate V5 Backend Hardening
 
-This workstream details the architectural hardening and optimization of the HubGate V5 FastAPI backend. The initiative eliminated database lock collisions, resolved HTTP 500 query failures under concurrent loads, established high-throughput batch ingestion, implemented Grafana-aligned time-series downsampling, and verified strict performance SLAs across 1,000,000 historical records.
+This workstream details the architectural hardening and optimization of the HubGate V5 FastAPI backend. The initiative eliminated database lock collisions, resolved HTTP 500 query failures under concurrent loads, established high-throughput batch ingestion, implemented Grafana-aligned time-series downsampling, verified strict performance SLAs across 1,000,000 historical records, and culminated in the live cutover of 4,152,334 rows to PostgreSQL 16.
 
 ## 1. Six-Phase Architecture & Implementation
 
 | Phase | Domain | Architectural Implementation |
 |---|---|---|
-| **Phase 1** | Database Engine Hardening & Pool Bounds | Enforced PostgreSQL connection pool boundaries (`pool_size=20, max_overflow=10, pool_recycle=1800, pool_timeout=10`) and a 15-second statement timeout (`-c statement_timeout=15000`). For SQLite 3 WAL, applied connect-time PRAGMAs: `journal_mode=WAL`, `busy_timeout=10000`, `synchronous=NORMAL`, `foreign_keys=ON`, `temp_store=MEMORY`, `cache_size=-8000` (8MB), and `mmap_size=67108864` (64MB). |
+| **Phase 1** | Database Engine Hardening & Pool Bounds | Enforced PostgreSQL connection pool boundaries (`pool_size=20, max_overflow=10, pool_recycle=1800, pool_timeout=10`) and a 15-second statement timeout (`-c statement_timeout=15000`). Active in production as of 2026-09-12 under a 4 GB allocation profile on the 8 GB host (reserving 4 GB for CTFd co-tenancy). For SQLite 3 WAL, applied connect-time PRAGMAs: `journal_mode=WAL`, `busy_timeout=10000`, `synchronous=NORMAL`, `foreign_keys=ON`, `temp_store=MEMORY`, `cache_size=-8000` (8MB), and `mmap_size=67108864` (64MB). |
 | **Phase 2** | Downsampling Query Plan & Aggregation V2 | Engineered single-pass mathematical epoch bucketing ($\Delta T // \text{max\_points}$) in `GET /api/devices/{id}/history`. Implemented native C-level `func.unixepoch(timestamp)` for SQLite 3.38+ (2x speedup over string parsing) and `EXTRACT(epoch FROM timestamp)` for PostgreSQL 16. Aggregated exact min/max envelopes alongside averages, capturing transients while bounding output cardinality to $\le \text{max\_points} + 5$. |
 | **Phase 3** | Schema Hardening & SARGable Indexing | Authored Alembic migration `c1a8b9f0e2d3`. Added B-tree composite indexes (`idx_temp_dev_timestamp`, `idx_ats_dev_timestamp`, `ix_event_log_dev_metric_ts`, `ix_dev_table_hub_id`, `ix_pending_commands_hub_status_created`, `ix_sessions_user_expires`). Made `temp` and `humid` in `temperature_data` `nullable=True` to support partial node payloads. Enforced unique constraints `uq_*_dev_timestamp`. |
 | **Phase 4** | High-Throughput Batch Ingestion | Built `POST /api/iot/batch` accepting up to 1000 items/batch. Replaced per-request hub heartbeat commits with an in-memory throttled `HubAuthCache` (30s window), resolving the CRIT-01 auth double-commit bug. Added deterministic UUID5 `data_id` generation, in-batch deduplication, and chunked upserts (500 items) with `bulk_insert_or_ignore` (`ON CONFLICT DO NOTHING`). Suppressed alert bursts by evaluating thresholds strictly on the newest point per device. |
 | **Phase 5** | Presence Sweeper & N+1 Elimination | Decoupled device connectivity evaluation into a 15-second background task (`evaluate_device_presence_batch` in `app/services/presence.py`, detection lag $\le 75\text{s}$). Enforced a strict read-only invariant across `GET /api/devices`, `GET /api/rooms`, and `GET /api/rooms/{id}/map` (0 database writes). Replaced iterative N+1 queries with eager joins and indexed lookups. |
-| **Phase 6** | Verification, Benchmarks & Zero-Lock SLA | Created 1,000,000 synthetic row benchmark generator (`tools/seed_benchmark_telemetry.py`) and an async concurrency stress testing tool (`tools/benchmark_concurrency_stress.py`). Executed comprehensive verification suite with 427 total passing tests (249 pytest + 178 Vitest across 22 suites). |
+| **Phase 6** | Verification, Benchmarks & Live Cutover | Created 1,000,000 synthetic row benchmark generator (`tools/seed_benchmark_telemetry.py`) and an async concurrency stress testing tool (`tools/benchmark_concurrency_stress.py`). Executed comprehensive verification suite with 427 passing tests. Developed streaming `COPY` ETL tool (`tools/migrate_sqlite_to_postgres.py`) and declarative partitioning manager, achieving successful production cutover of 4,152,334 rows to PostgreSQL 16 (`smsb_prod`) with 100% parity. |
 
 ## 2. Root Cause Analysis: Telemetry & Query HTTP 500 Failures
 
