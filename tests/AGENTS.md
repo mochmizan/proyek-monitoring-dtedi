@@ -1,4 +1,4 @@
-﻿# AGENTS.md — tests
+# AGENTS.md — tests
 
 ## Purpose
 
@@ -28,7 +28,7 @@ Repo-level E2E and verifier tests — offline-safe cross-component suite spannin
 
 ## Verification
 
-- `pytest` at repo root runs `tests/` + `server/` (107 tests total)
+- `pytest` at repo root runs `tests/`, `server/`, and `hub/` (249 tests total; 427 total automated tests across stack)
 
 ## Child DOX Index
 

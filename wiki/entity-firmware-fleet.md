@@ -2,7 +2,7 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-ats-firmware-chain.md, wiki/concept-edge-resilience.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/workstream-firmware-proofing.md]
-sources: [firmware/PROMINI/PROMINI.ino, firmware/WEMOS_ATS/WEMOS_ATS.ino, firmware/WEMOS_TS/WEMOS_TS.ino, firmware/WEMOS_AC/WEMOS_AC.ino, firmware/common/secrets.h.example, firmware/platformio.ini, docs/FIRMWARE_ALIGNMENT_REPORT.md, docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md]
+sources: [firmware/PROMINI/PROMINI.ino, firmware/WEMOS_ATS/WEMOS_ATS.ino, firmware/WEMOS_TS/WEMOS_TS.ino, firmware/WEMOS_AC/WEMOS_AC.ino, firmware/common/secrets.h.example, firmware/platformio.ini, git:docs/FIRMWARE_ALIGNMENT_REPORT.md (archived), git:docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md (archived)]
 updated: 2026-09-03
 ---
 

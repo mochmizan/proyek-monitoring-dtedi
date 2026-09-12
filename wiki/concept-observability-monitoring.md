@@ -164,7 +164,7 @@ The SMSB alerting system operates as a passive database-driven model:
 [evaluate_device_presence] -------> Writes `DEVICE_OFFLINE` to `event_log`
 ```
 
-Alert rows are queried on-demand by the web dashboard (`GET /api/alerts` via TanStack Query polling at 3000ms intervals).
+Alert rows are queried on-demand by the web dashboard (`GET /api/alerts` via TanStack Query polling using Tier 2 jittered polling at 6000ms intervals).
 
 ### The External Dispatch Void
 The platform possesses **no external notification transport**:

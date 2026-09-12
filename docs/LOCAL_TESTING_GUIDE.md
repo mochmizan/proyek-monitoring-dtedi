@@ -107,10 +107,10 @@ docker compose ps
 From `server/`:
 ```bash
 # 1. Run migrations and create tables (also seeds default Hub hs109rs-hub-01)
-python server/init_sqlv5.py
+python init_sqlv5.py
 
 # 2. Create the initial Admin user
-python server/create_admin_user.py --username admin --password adminpassword123 --display-name "System Admin" --role admin
+python create_admin_user.py --username admin --password adminpassword123 --display-name "System Admin" --role admin
 ```
 
 ---
@@ -176,10 +176,10 @@ python tools/mock_publishers.py --loop --interval 5.0
 
 | Test Scenario | Steps to Verify | Expected Result |
 | :--- | :--- | :--- |
-| **1. Telemetry Ingestion (Task 8.5)** | Run `mock_publishers.py --type ats`. | Telemetry flows: `Mock -> Mosquitto -> HubBrain -> HubGate`. Row appears in `ats_data` table. |
+| **1. Telemetry Ingestion** | Run `mock_publishers.py --type ats`. | Telemetry flows: `Mock -> Mosquitto -> HubBrain -> HubGate`. Row appears in `ats_data` table. |
 | **2. Device Auto-Discovery & Pairing** | Send telemetry for a new MAC (e.g. `AA:BB:CC:DD:EE:99`). Open UI **Settings > Device Pairing**. | Device appears under **Pending Devices**. Admin pairs it with a room, thresholds, and floor map coordinates. |
-| **3. Live Dashboard Updates** | Navigate to Room Detail view on UI (`http://localhost:5173/rooms/...`). | Dashboard widgets auto-refresh every 2â€“5s reflecting live temperature, humidity, and ATS status without manual reload. |
-| **4. Threshold Alert & Hysteresis** | Publish high temp: `mock_publishers.py --type ts --temp 36.0`. | Alert badge appears in UI header and active alert is logged in `/alerts`. Publishing `22.0Â°C` resolves the alert automatically. |
+| **3. Live Dashboard Updates** | Navigate to Room Detail view on UI (`http://localhost:5173/rooms/...`). | Dashboard widgets auto-refresh every 2–5s reflecting live temperature, humidity, and ATS status without manual reload. |
+| **4. Threshold Alert & Hysteresis** | Publish high temp: `mock_publishers.py --type ts --temp 36.0`. | Alert badge appears in UI header and active alert is logged in `/alerts`. Publishing `22.0°C` resolves the alert automatically. |
 | **5. Downlink Commands** | Trigger AC/ATS command from UI or API (`POST /api/devices/{id}/command`). | HubBrain polls command, dispatches to MQTT topic (`hs109rs/ats/command` or `hs109rs/ac/command`), and marks `DELIVERED`. |
 | **6. Edge Offline Cache Resiliency** | Stop HubGate (`Ctrl+C` in API terminal). Publish telemetry. Restart HubGate. | HubBrain writes payloads to `edge_cache.db`. Upon restart, the replay worker drains backlog and persists all records to DB. |
 

@@ -2,7 +2,7 @@
 type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-devops-infrastructure.md, wiki/concept-observability-monitoring.md, wiki/entity-deploy-pipeline.md, wiki/workstream-production-grade-roadmap.md]
-sources: [deploy/, tools/, server/, hub/, firmware/, notes/field-ops.md, notes/benchmarks-baseline.md]
+sources: [deploy/, tools/, server/, hub/, firmware/, git:notes/field-ops.md (archived), git:notes/benchmarks-baseline.md (archived)]
 updated: 2026-09-03
 ---
 
@@ -17,7 +17,7 @@ A holistic evaluation of the SMSB platform across five operational pillars: Back
 | Domain | Hardened Capabilities (Current State) | Production Gaps & Vulnerabilities | Maturity Level |
 |---|---|---|---|
 | **Backend & Database** | Single-transaction atomic commit (CRIT-01); in-memory throttled `HubAuthCache`; idempotent WAL replay with `uuid5` PKs; Downsampling V2 window functions; Argon2id auth with lockout. | Production VPS runs SQLite WAL mode instead of PostgreSQL; migrations execute ad-hoc without pre-deploy verification gate; no database connection pool metrics. | **Hardened Staging** |
-| **Frontend SPA** | React 19 / Vite build; TanStack Query polling at 3000ms with `keepPreviousData` (zero layout shift); dynamic chart envelopes; same-origin reverse proxying. | SPA builds directly on 1 GB VPS during push-deploy, risking host OOM; no client-side error telemetry (Sentry); no Service Worker offline cache. | **Hardened Staging** |
+| **Frontend SPA** | React 19 / Vite build; TanStack Query 4-tier jittered polling (1.5s/6s/15s/60s) with `keepPreviousData` (zero layout shift); dynamic chart envelopes; same-origin reverse proxying. | SPA builds directly on 1 GB VPS during push-deploy, risking host OOM; no client-side error telemetry (Sentry); no Service Worker offline cache. | **Hardened Staging** |
 | **Edge Gateway (Pi)** | Mosquitto broker isolation; bounded 20,000-row SQLite WAL queue; capture epoch preservation (`_hub_created_at`); mandatory backup script. | High SD card corruption risk from continuous SQLite WAL writes without OverlayFS; hardware watchdog inactive; plaintext `.env` secrets on edge disk. | **Staging Prototype** |
 | **Firmware & Electrical** | Unified WEMOS_ATS canonical bridge; non-blocking millis loops; Pro Mini RST re-latch race condition resolved in code. | Genset voltage leads physically NOT wired to ATS (~55V floating); proofed firmware pending physical flashing to field nodes; no OTA update mechanism. | **Lab Verified** (Field Blocked) |
 | **DevOps & Security** | Sandboxed systemd units; Nginx same-origin reverse proxy; git push-to-deploy; automated credential rotation CLI (`tools/rotate_credentials.py`). | Weak default credentials (`admin/admin123`) live on VPS; self-signed TLS certs; no VPS firewall (UFW) or Fail2ban; deploy restarts cause 2-5s downtime; zero active alert dispatch. | **Staging Prototype** |
@@ -71,7 +71,7 @@ Although SQLite 3 in WAL mode passed the 15-second multi-worker concurrency benc
 ## 5. Firmware & Electrical Subsystem Gaps
 
 ### 1. Physical Wiring Disconnect (Critical Operational Blocker)
-- As recorded in `notes/field-ops.md`:
+- As recorded in historical field operations logs (archived in git history):
   > "Genset physically NOT wired to the ATS as of 31/8 (reads ~55V floating)."
 - The generator voltage sensing lines have not been physically terminated to the voltage divider circuits on the ATS controller.
 - The ATS logic currently reads approximately 55V of induced floating voltage instead of true zero or true 220V/380V generator phase voltage. This prevents the firmware from detecting generator startup or validating phase synchronization.
@@ -86,7 +86,7 @@ Although SQLite 3 in WAL mode passed the 15-second multi-worker concurrency benc
 ## 6. DevOps, Security & Infrastructure Gaps
 
 ### 1. Default Credentials Live in Production
-- According to `notes/field-ops.md`, the production VPS continues to run with default credentials:
+- According to historical deployment records (archived in git history), the production VPS continues to run with default credentials:
   ```
   admin / admin123
   ```

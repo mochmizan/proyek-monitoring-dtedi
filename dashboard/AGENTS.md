@@ -41,9 +41,11 @@ React SPA for IoT smart-building monitoring. Live rooms/devices/alerts/map views
 
 - `npm run lint` in `dashboard/` — oxlint, 0 errors, 20 fast-refresh warnings.
 - `npm run build` in `dashboard/` — `tsc -b && vite build` (hidden sourcemap, verified manualChunks asset splitting).
-- `npm run test -- --run` — vitest (150 passing tests across 20 suites in `src/**/__tests__/`).
+- `npm run test -- --run` — vitest (178 passing tests across 22 suites in `src/**/__tests__/`).
 - `npx playwright test --list` / `npm run e2e` — playwright 1.62.1 (`e2e/`, needs Vite `:5173`).
 
 ## Child DOX Index
 
-None — no further children under `dashboard/`.
+| Path | Scope |
+|---|---|
+| — | No child docs — `dashboard/` is a leaf. |

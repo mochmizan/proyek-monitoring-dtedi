@@ -1,4 +1,4 @@
-# smsb â€” heterogeneous monorepo (justfile)
+# smsb — heterogeneous monorepo (justfile)
 # Install: winget install Casey.Just  |  cargo install just  |  brew install just
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 set shell := ["bash", "-uc"]
@@ -6,16 +6,16 @@ set shell := ["bash", "-uc"]
 _default:
     @just --list --unsorted
 
-# â”€â”€ dev â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── dev ──────────────────────────────────────────────────────────
 dev: dev-infra
-    @echo "â†’ launching HubGate + SPA (wraps start_dev.ps1)"
+    @echo "→ launching HubGate + SPA (wraps start_dev.ps1)"
     ./start_dev.ps1
 
 dev-infra:
     docker compose up -d
     @echo "postgres:5432 mosquitto:1883 ready"
 
-# â”€â”€ quality gates (DOX Verification) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── quality gates (DOX Verification) ─────────────────────────────
 test:
     pytest server/ -q
     python -m pytest hub/test_edge_resilience.py -q
@@ -36,16 +36,17 @@ build:
     npm --prefix dashboard ci
     npm --prefix dashboard run build
 
-# â”€â”€ firmware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── firmware ─────────────────────────────────────────────────────
 # WEMOS_ATS is canonical ATS bridge (proofed 2026-08-31 dcfeb84)
 firmware-check:
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_TS
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_AC
     arduino-cli compile --fqbn esp8266:esp8266:d1_mini firmware/WEMOS_ATS
 
-# â”€â”€ deploy (no auto-push; use --dry-run first) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── deploy (no auto-push; use --dry-run first) ───────────────────
 deploy-dry-run:
     bash deploy/setup_push_deploy.sh --dry-run
 
 verify base_url="https://10.33.102.10":
     python tools/verify_production_deployment.py --base-url {{base_url}}
+

@@ -46,7 +46,7 @@ flowchart TD
 
         subgraph "Domain Services (app/services/)"
             AlertEng["alert_engine.py<br/>Synchronous Threshold & ATS Alerts"]
-            PresenceEng["presence.py<br/>5s Background Presence Sweeper"]
+            PresenceEng["presence.py<br/>15s Background Presence Sweeper"]
             SchedEng["scheduler.py<br/>APScheduler BackgroundRunner"]
             TelemSvc["telemetry.py<br/>Batched O(1) Latest Readings"]
         end
@@ -54,7 +54,7 @@ flowchart TD
 
     subgraph "Persistence Layer (databasev5.py)"
         SessionDep["get_db() Scoped Dependency"]
-        PG["PostgreSQL 16 (Production Target)<br/>QueuePool (10+5), statement_timeout=15s"]
+        PG["PostgreSQL 16 (Production Target)<br/>QueuePool (20/10), statement_timeout=15s"]
         SQLite["SQLite 3 (Edge / Dev Target)<br/>WAL Mode, busy_timeout=10s, 7 PRAGMAs"]
     end
 
@@ -116,7 +116,7 @@ HubGate V5 decouples route handling (`server/app/routers/`) from domain logic (`
 
 ### 2. Service Subsystems (`server/app/services/`)
 - **`alert_engine.py`**: Synchronously evaluates incoming telemetry against configured warning/critical thresholds and ATS emergency states. Features temporal debouncing (`debounce_seconds`) to eliminate flapping and hysteresis recovery (`warning - hysteresis`) to guarantee single alert resolution transitions.
-- **`presence.py`**: Decoupled connectivity engine running every 5 seconds via APScheduler. Scans active devices against a 25-second inactivity window, emitting `DEVICE_OFFLINE` alerts and resolving returning devices. Also prunes stale unapproved devices in bulk.
+- **`presence.py`**: Decoupled connectivity engine running every 15 seconds via APScheduler. Scans active devices against a 60-second inactivity window (`DEVICE_OFFLINE_WINDOW_SECONDS = 60`), emitting `DEVICE_OFFLINE` alerts and resolving returning devices (max detection lag $\le 75\text{s}$). Also prunes stale unapproved devices in bulk.
 - **`scheduler.py`**: APScheduler `BackgroundScheduler` operating in the canonical `Asia/Jakarta` timezone (`JOB_DEFAULTS: coalesce=True, max_instances=1, misfire_grace_time=60`). Rehydrates enabled schedules from the database on gateway startup, generates pending commands when triggered, and supports optional `SQLAlchemyJobStore` on PostgreSQL.
 - **`telemetry.py`**: Set-based query service (`get_latest_readings_for_devices`) executing 3 subquery joins across `temperature_data`, `ats_data`, and `data_table`, replacing N+1 per-device queries with a single $O(1)$ batch query.
 
@@ -167,7 +167,7 @@ HubGate V5 operates a dual-dialect persistence layer configured in `server/datab
 
 ### PostgreSQL 16 (Production Target)
 - Hosts multi-writer production VPS deployments (`10.33.102.172` / `100.108.98.30`).
-- Configured with bounded connection pooling: `pool_size=10`, `max_overflow=5`, `pool_recycle=1800`, `pool_pre_ping=True`.
+- Configured with bounded connection pooling: `pool_size=20`, `max_overflow=10`, `pool_recycle=1800`, `pool_pre_ping=True`, `pool_timeout=10`.
 - Enforces a 15-second server-side statement timeout (`-c statement_timeout=15000`), terminating unindexed or runaway analytics queries before database connection starvation occurs.
 - Employs native `JSONB` with support for expression and GIN indexing, and native timezone-aware `TIMESTAMP WITH TIME ZONE`.
 
@@ -177,7 +177,7 @@ HubGate V5 operates a dual-dialect persistence layer configured in `server/datab
   - `journal_mode = WAL`: Concurrently supports multiple readers while a single writer operates.
   - `busy_timeout = 10000`: 10-second wait before raising locked exceptions.
   - `synchronous = NORMAL`: Minimizes fsync calls without sacrificing transaction durability.
-  - `foreign_keys = ON`, `temp_store = MEMORY`, `cache_size = -64000` (64MB RAM cache), and `mmap_size = 268435456` (256MB memory mapping).
+  - `foreign_keys = ON`, `temp_store = MEMORY`, `cache_size = -8000` (8MB RAM cache), and `mmap_size = 67108864` (64MB memory mapping).
 
 ### Request-Scoped Session Lifecycle (`get_db`)
 - FastAPI endpoints consume database sessions via the `get_db()` dependency generator.
@@ -195,8 +195,8 @@ A deep architectural review of the `server/` subsystem reveals the following gap
 - **Gap 1.3 (Missing Unhandled Exception Handler)**: `server/app/main.py` registers handlers for `RateLimitExceeded` and `SessionExpired`, but lacks a global handler for `SQLAlchemyError` or generic `Exception`. Unhandled exceptions leak internal Python tracebacks or return standard Starlette HTML error pages.
 
 ### Pillar 2: Connection Pool Sizing & Checkout Starvation
-- **Gap 2.1 (Worker-to-Pool Ratio Imbalance)**: PostgreSQL `pool_size=10, max_overflow=5` caps connections at 15. FastAPI's AnyIO threadpool runs 40 worker threads by default, while APScheduler background tasks run concurrently. A burst of 20 concurrent HTTP requests exhausts the connection pool, forcing threads to block for up to 30 seconds on connection checkout.
-- **Gap 2.2 (Timeout Inversion)**: SQLAlchemy's pool checkout timeout defaults to 30 seconds, while `statement_timeout` is 15 seconds. Clients time out waiting for connection acquisition rather than during query execution.
+- **Gap 2.1 (Worker-to-Pool Ratio Imbalance [RESOLVED])**: Resolved. Scaled PostgreSQL connection pool to `pool_size=20, max_overflow=10` (30 total concurrent connections), supporting up to 40 worker threads and concurrent APScheduler jobs without checkout starvation.
+- **Gap 2.2 (Timeout Inversion [RESOLVED])**: Resolved. Pool checkout timeout tuned to `pool_timeout=10` (10 seconds), preventing checkout hangs beyond the 15-second statement timeout.
 - **Gap 2.3 (Health Check Failure Cascades)**: `/health` and `/api/health` execute synchronous `SELECT 1` queries via `SessionLocal()`. Under pool exhaustion, health check requests hang or fail, causing external orchestrators (Kubernetes / systemd) to erroneously restart healthy gateway processes.
 
 ### Pillar 3: Concurrency & Write-on-Read Lock Contention
@@ -238,7 +238,7 @@ A deep architectural review of the `server/` subsystem reveals the following gap
 | **P0** | PERF-01 / SEC-10 | **Completed** | Eliminate write-on-read: throttle session sliding updates (update only if $<90\text{m}$ validity remains). | `server/auth.py` |
 | **P0** | MIG-04 | Open | Add missing unique constraints (`uq_temp_dev_timestamp`, `uq_ats_dev_timestamp`, `uq_data_dev_timestamp`) to a new Alembic migration revision. | `server/alembic/versions/` |
 | **P1** | SEC-06 | **Completed** | Enforce device-to-hub ownership check (`device.hub_id == hub.hub_id`) in `receive_iot` and `receive_iot_batch`. | `server/app/routers/iot.py` |
-| **P1** | POOL-01 | Open | Scale PostgreSQL connection pool (`DB_POOL_SIZE=25, DB_MAX_OVERFLOW=15`) and tune checkout timeout to 10s. | `server/databasev5.py` |
+| **P1** | POOL-01 | **Completed** | Scale PostgreSQL connection pool (`DB_POOL_SIZE=20, DB_MAX_OVERFLOW=10`) and tune checkout timeout to 10s. | `server/databasev5.py` |
 | **P1** | HEALTH-01 | Open | Separate liveness (`/health/live` returning 200 without DB query) from readiness (`/health/ready` verifying DB connection). | `server/app/main.py` |
 | **P2** | SEC-03 | **Completed** | Refactor privileged routes in `schedules.py` and `commands.py` to use `Depends(require_role("admin"))`. | `server/app/routers/schedules.py`, `server/app/routers/commands.py` |
 | **P2** | ERR-01 | Open | Introduce standardized `ErrorResponse` schema and global exception handlers for `SQLAlchemyError`, `RequestValidationError`, and `Exception`. | `server/schemasv5.py`, `server/app/main.py` |

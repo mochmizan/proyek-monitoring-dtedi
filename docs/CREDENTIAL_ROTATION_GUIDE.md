@@ -84,7 +84,7 @@ python tools/rotate_credentials.py \
 **On PostgreSQL (Production VPS):**
 ```bash
 python tools/rotate_credentials.py \
-  --target-db "postgresql://smsb_admin:<DB_PASS>@127.0.0.1:5432/smsb_prod" \
+  --target-db "postgresql+psycopg2://smsb_admin:<DB_PASS>@127.0.0.1:5432/smsb_prod" \
   --update-env /opt/smsb/server/.env \
   --hub-id hs109rs-hub-01
 ```
@@ -175,9 +175,9 @@ sudo systemctl restart hubbrain
 
 #### Step 3.4: Update ESP8266 Firmware `secrets.h` & Reflash
 Edit the header files:
-- `firmware/temperature_sensor_firmware/secrets.h`
+- `firmware/WEMOS_TS/secrets.h`
 - `firmware/WEMOS_ATS/secrets.h`
-- `firmware/ac_controller/secrets.h`
+- `firmware/WEMOS_AC/secrets.h`
 
 Update the password macro:
 ```c

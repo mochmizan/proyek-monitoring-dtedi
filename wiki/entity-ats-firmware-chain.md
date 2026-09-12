@@ -2,7 +2,7 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-firmware-fleet.md, wiki/concept-edge-resilience.md, wiki/concept-command-path.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-ats-emergency-2026-08.md, wiki/workstream-firmware-proofing.md]
-sources: [firmware/PROMINI/PROMINI.ino, firmware/WEMOS_ATS/WEMOS_ATS.ino, docs/FIRMWARE_ALIGNMENT_REPORT.md, docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md, commit:dcfeb84, commit:7bf3098]
+sources: [firmware/PROMINI/PROMINI.ino, firmware/WEMOS_ATS/WEMOS_ATS.ino, commit:dcfeb84, commit:7bf3098, git:docs/FIRMWARE_ALIGNMENT_REPORT.md (archived), git:docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md (archived)]
 updated: 2026-09-03
 ---
 

@@ -50,5 +50,5 @@ When draining a WAL queue containing thousands of buffered historical readings, 
 
 ## 6. Downlink & Dashboard Consumption
 
-Data persisted in `temperature_data` and `ats_data` is served to the frontend SPA via `GET /api/devices/{id}/history`, which aggregates data into 1000 buckets using [concept-downsampling-v2.md](concept-downsampling-v2.md). The dashboard renders live updates using TanStack Query polling at `POLL_MS=3000` with stale-while-revalidate caching (`keepPreviousData`), displaying 3-panel stacked electrical charts and dynamic min/max envelope bands without blanking or layout shifting.
+Data persisted in `temperature_data` and `ats_data` is served to the frontend SPA via `GET /api/devices/{id}/history`, which aggregates data into 1000 buckets using [concept-downsampling-v2.md](concept-downsampling-v2.md). The dashboard renders live updates using a 4-tier jittered polling architecture (`POLL_TIER2_ALERTS_MS = 6000` for live cards, `POLL_TIER3_PRESENCE_MS = 15000` for telemetry history, `POLL_TIER4_TRENDS_MS = 60000` for 6h sparklines) with cache harmony (`staleTime >= refetchInterval`, `keepPreviousData`), displaying 3-panel stacked electrical charts and dynamic min/max envelope bands without blanking or layout shifting.
 

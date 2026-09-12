@@ -12,6 +12,10 @@ All ORM entities live in `server/modelsv5.py`. The database architecture targets
 
 ## Table Inventory & Primary Schema
 
+- `hub_table`: Registered edge gateways connecting physical facilities to HubGate.
+  - Columns: `hub_id` (PK, String), `hub_name` (String, nullable=False), `hub_key` (String, nullable=False), `room` (String, nullable=True), `is_active` (Boolean, default=True), `created_at` (UTC datetime), `last_seen` (UTC datetime, nullable), `status` (String, default="offline").
+- `rooms`: Physical facility spaces mapped to floor plans.
+  - Columns: `id` (PK, String), `name` (String, unique, nullable=False), `hub_id` (FK `hub_table.hub_id`, nullable), `floor_plan_image_path` (String, nullable), `created_at` (UTC datetime).
 - `temperature_data`: High-volume typed environmental readings (temperature and humidity) from TS and AC sensors.
   - Columns: `data_id` (PK, deterministic UUID), `dev_id` (FK `dev_table.dev_id`, `nullable=False`), `timestamp` (UTC datetime, `nullable=False`), `temp` (Float, `nullable=True`), `humid` (Float, `nullable=True`).
   - Indexing: Composite index `idx_temp_dev_timestamp(dev_id, timestamp DESC)` for fast history scanning.
@@ -29,16 +33,15 @@ All ORM entities live in `server/modelsv5.py`. The database architecture targets
   - Indexing: `ix_dev_table_hub_id`, `ix_dev_table_room_id`, `ix_dev_table_dev_name`.
 - `device_threshold_config`: Per-device warning and critical thresholds for alert evaluation.
   - Columns: `dev_id` (PK / FK `dev_table.dev_id`), `warning`, `critical`, `hysteresis` (default 0.5°C / 0.2V), `debounce_seconds` (default 60s).
-- `rooms`: Physical facility spaces with floor plan dimensions.
-  - Columns: `id` (PK), `name`, `floor`, `hub_id` (FK `hub_table.hub_id`, nullable), `plan_width`, `plan_height`.
 - `event_log`: Alerts and system event log.
   - Columns: `event_id` (PK), `alarm`, `timestamp` (UTC datetime), `message`, `dev_id`, `room_id`, `metric`, `severity`, `value`, `threshold`, `resolved_at` (UTC datetime, nullable).
   - Indexing: `ix_event_log_dev_metric_ts(dev_id, metric, timestamp DESC)`, `ix_event_log_room_ts(room_id, timestamp DESC)`, `ix_event_log_dev_resolved(dev_id, resolved_at)`, `ix_event_log_ts_desc(timestamp DESC)`.
 - `pending_commands`: Downlink queue for edge hub dispatch.
   - Columns: `command_id` (PK), `dev_id` (FK `dev_table.dev_id`), `hub_id` (FK `hub_table.hub_id`), `payload` (JSON), `status` (`pending`/`delivered`), `created_at` (UTC datetime), `delivered_at` (UTC datetime, nullable).
   - Indexing: `ix_pending_commands_hub_status_created(hub_id, status, created_at)`.
-- `schedules`: Warmup and generator maintenance cron jobs.
-  - Columns: `id` (PK), `name`, `cron_expr`, `payload` (JSON), `tz` (default `Asia/Jakarta`), `enabled`, `last_run_at`, `next_run_at`.
+- `schedules`: Automated cron job dispatch for device actions (e.g. ATS warmup).
+  - Columns: `id` (PK, UUID String), `dev_id` (FK `dev_table.dev_id`, `nullable=False`), `hub_id` (FK `hub_table.hub_id`, nullable), `cron_expr` (String(64), nullable=False), `payload` (JSON, nullable=False), `tz` (String(32), default `Asia/Jakarta`), `enabled` (Boolean, default True), `created_by` (String, nullable=False), `created_at` (UTC datetime), `updated_at` (UTC datetime), `next_run_at` (UTC datetime, nullable).
+  - Indexing: `ix_schedules_enabled_hub(enabled, hub_id)`, `ix_schedules_dev(dev_id)`.
 - `users`, `sessions`, `login_attempts`: Argon2id credential store, active user sessions (indexed by `ix_sessions_user_expires(user_id, expires_at)`), and brute-force lockout tracking.
 
 ## Alembic Migration `c1a8b9f0e2d3` & Schema Hardening

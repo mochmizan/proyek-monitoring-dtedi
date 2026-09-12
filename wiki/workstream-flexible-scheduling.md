@@ -2,7 +2,7 @@
 type: workstream
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-dashboard-spa.md, wiki/concept-command-path.md, wiki/workstream-ats-emergency-2026-08.md]
-sources: [server/modelsv5.py, server/app/services/scheduler.py, server/app/routers/schedules.py, dashboard/src/routes/schedules.tsx, openspec/changes/ats-flexible-schedule-2026-08-29/, commit:b4dcec6]
+sources: [server/modelsv5.py, server/app/services/scheduler.py, server/app/routers/schedules.py, dashboard/src/routes/schedules.tsx, commit:b4dcec6, git:openspec/changes/ats-flexible-schedule-2026-08-29/ (archived)]
 updated: 2026-08-31
 ---
 

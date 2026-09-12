@@ -1,4 +1,4 @@
-﻿# Raspberry Pi Edge Gateway Backup Gate Guide (Milestone 9)
+# Raspberry Pi Edge Gateway Backup Gate Guide
 
 ## 1. Overview & Policy
 
@@ -144,7 +144,7 @@ sudo systemctl status hubbrain.service
 
 ## 6. Pre-Deployment Gate Checklist
 
-Before executing Task 10.5 (Edge Deployment), the operator must verify:
+Before executing edge software or firmware updates, the operator must verify:
 
 - [ ] `tools/backup_hub.sh` executed with exit code 0.
 - [ ] Archive size confirmed > 0 bytes.

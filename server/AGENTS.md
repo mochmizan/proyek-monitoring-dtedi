@@ -85,11 +85,11 @@ Composite SARGable performance indexes:
 - New device types: extend discriminated union in `schemasv5.py` (`DEV_TYPE` literal + new model), keep `model_validator` + `ValidationInfo` pattern for DB-aware validation.
 - New endpoints: add SlowAPI `limiter` decorator + auth dependency (`require_role` or hub header).
 - Keep `JSONB().with_variant(JSON, "sqlite")` for Postgres/SQLite compat.
-- Keep tests green: all 217 tests run cleanly via `pytest server/ -q`.
+- Keep tests green: all 221 tests run cleanly via `pytest server/ -q`.
 
 ## Verification
 
-- `pytest server/ -q` — runs all 217 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
+- `pytest server/ -q` — runs all 221 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
 - `python tools/seed_benchmark_telemetry.py --total-rows 1000000 --days 30 --clean --verify` — seeds 1,000,000 synthetic rows in ~60s and verifies composite index query plans.
 - `python tools/benchmark_concurrency_stress.py` — executes 15s multi-worker stress test validating all read, write, throughput, and zero-lock SLAs.
 

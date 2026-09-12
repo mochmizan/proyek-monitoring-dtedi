@@ -1,20 +1,37 @@
-﻿# SMSB â€” Smart Building Monitoring System
+# SMSB — Smart Building Monitoring System
 
-IoT monitoring & control platform for building infrastructure: temperature/humidity sensing, AC (IR) control, and ATS (Automatic Transfer Switch) supervision across multiple rooms â€” with a live web dashboard, alerting with debounce/hysteresis, offline-tolerant edge buffering, and role-based access control.
+IoT monitoring & control platform for building infrastructure: temperature/humidity sensing, AC (IR) control, and ATS (Automatic Transfer Switch) supervision across multiple rooms — with a live web dashboard, alerting with debounce/hysteresis, offline-tolerant edge buffering, and role-based access control.
 
 ## Architecture
 
-```
-ESP8266 field nodes (firmware/)          Raspberry Pi 4              Cloud / VPS
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   MQTT   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  HTTPS   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ WEMOS_TS   (SHT30 + OLED)   â”‚ â”€â”€â”€â”€â”€â”€â”€â–¶ â”‚ HubBrain V5      â”‚ â”€â”€â”€â”€â”€â”€â”€â–¶ â”‚ HubGate V5 (FastAPI)    â”‚
-â”‚ WEMOS_AC   (2x IR Gree AC)  â”‚ hs109rs/#â”‚ edge gateway     â”‚  X-Hub-* â”‚ â”œ REST API + RBAC       â”‚
-â”‚ ATS bridge â†” FSM (serial)   â”‚ â—€â”€â”€â”€â”€â”€â”€â”€ â”‚ â”œ whitelist      â”‚ â—€â”€â”€â”€â”€â”€â”€â”€ â”‚ â”œ PostgreSQL            â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ downlink â”‚ â”œ WAL offline bufâ”‚ commands â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                      â”‚ same-origin
-                                                                           Nginx (443, TLS) / Vite proxy
-                                                                                     â”‚
-                                                                            React SPA (gui-app)
+```mermaid
+flowchart LR
+    subgraph Nodes["ESP8266 Field Nodes (firmware/)"]
+        direction TB
+        TS["WEMOS_TS<br/>(SHT30 + OLED)"]
+        AC["WEMOS_AC<br/>(2x IR Gree AC)"]
+        ATS["WEMOS_ATS + PROMINI<br/>(ATS Bridge & FSM Controller)"]
+    end
+
+    subgraph Edge["Raspberry Pi 4 (Edge Gateway)"]
+        HB["HubBrain V5 Daemon<br/>- Device whitelist filtering<br/>- SQLite WAL offline buffer"]
+    end
+
+    subgraph Cloud["Cloud / VPS Server"]
+        direction TB
+        HG["HubGate V5 (FastAPI)<br/>- REST API + RBAC<br/>- PostgreSQL DB"]
+        PROXY["Nginx (:443 TLS) / Vite Proxy"]
+        SPA["React SPA (dashboard)"]
+
+        HG <-->|REST API & Sessions| PROXY
+        PROXY <-->|Same-Origin| SPA
+    end
+
+    TS -->|MQTT hs109rs/ts/data| HB
+    AC <-->|MQTT hs109rs/ac/data & downlink| HB
+    ATS <-->|MQTT hs109rs/ats/data & downlink| HB
+
+    HB <-->|HTTPS POST (X-Hub-ID / X-Hub-Key)<br/>Telemetry sync & downlink queue| HG
 ```
 
 - **Field nodes** publish telemetry over MQTT (`hs109rs/{ts,ats,ac}/data`) and receive downlink commands (`{hub}/{type}/command`).
@@ -26,15 +43,16 @@ ESP8266 field nodes (firmware/)          Raspberry Pi 4              Cloud / VPS
 
 | Path | What it is |
 |---|---|
-| `firmware/` | ESP8266/Arduino node sketches (one folder per sketch, Arduino IDE compatible; `firmware/common/secrets.h` gitignored) |
-| `hub/` | HubBrain V5 â€” Python edge gateway daemon for Raspberry Pi |
-| `server/` | HubGate V5 â€” FastAPI cloud gateway, auth/RBAC, DB models, tests |
-| `dashboard/` | React SPA |
-| `docs/` | Guides: local testing, production deployment, hub backup, credential rotation, firmware proofing, runbooks |
-| `tests/` | Repo-level E2E pipeline & deployment-verifier tests |
-| `tools/` | Ops utilities: Pi deploy/backup, DB seeding, mock publishers, sniffers, verifiers |
-| `deploy/` | Production deploy script + Nginx configs (prod & WSL staging) |
-| `mosquitto/` | Local Mosquitto broker config (Docker) |
+| [`firmware/`](firmware/) | ESP8266/Arduino node sketches (one folder per sketch, Arduino IDE compatible; `firmware/common/secrets.h` gitignored) |
+| [`hub/`](hub/) | HubBrain V5 — Python edge gateway daemon for Raspberry Pi |
+| [`server/`](server/) | HubGate V5 — FastAPI cloud gateway, auth/RBAC, DB models, tests |
+| [`dashboard/`](dashboard/) | React SPA |
+| [`docs/`](docs/) | Guides: local testing, production deployment, hub backup, credential rotation, runbooks |
+| [`tests/`](tests/) | Repo-level E2E pipeline & deployment-verifier tests |
+| [`tools/`](tools/) | Ops utilities: Pi deploy/backup, DB seeding, mock publishers, sniffers, verifiers |
+| [`deploy/`](deploy/) | Production deploy script + Nginx configs (prod & WSL staging) |
+| [`mosquitto/`](mosquitto/) | Local Mosquitto broker config (Docker) |
+| [`wiki/`](wiki/) | Architecture & engineering knowledge base (`wiki/index.md`) |
 
 ## Quickstart (local dev)
 
@@ -71,27 +89,25 @@ npm run build         # typecheck + production build
 
 | Sketch | Node | Notes |
 |---|---|---|
-| `firmware/WEMOS_TS/` | Temperature/humidity (SHT30 + OLED) | dual I2C auto-probe, NaN-skip publishing, non-blocking loop |
-| `firmware/WEMOS_AC/` | Dual AC/IR controller (IRGreeAC) | EEPROM state persistence across reboot |
-| `firmware/fixed_wemos_mqtt_raspi/` | ATS bridge (MQTT â†” serial FSM) | canonical serial framing `<SGM,on>` `<M,auto>` â€¦ |
-| `firmware/fsm_w_serial/` | ATS FSM controller (Arduino) | PLN/genset/backup-battery state machine |
-| `firmware/HARDWARE_OLED_TEST/` | I2C bus recovery & OLED diagnostic utility | |
-
+| [`firmware/PROMINI/`](firmware/PROMINI/) | ATS FSM controller (Arduino Pro Mini) | PLN/genset/backup-battery state machine, non-blocking millis, serial framing |
+| [`firmware/WEMOS_ATS/`](firmware/WEMOS_ATS/) | ATS bridge (ESP8266 Wemos D1 Mini) | MQTT to serial FSM bridge, canonical framing `<SGM,on>`, `<M,auto>` |
+| [`firmware/WEMOS_TS/`](firmware/WEMOS_TS/) | Temperature/humidity (SHT30 + OLED) | dual I2C auto-probe, NaN-skip publishing, non-blocking loop |
+| [`firmware/WEMOS_AC/`](firmware/WEMOS_AC/) | Dual AC/IR controller (IRGreeAC) | EEPROM state persistence across reboot |
 
 ## Documentation
 
 | Doc | Topic |
 |---|---|
-| `docs/LOCAL_TESTING_GUIDE.md` | Local Docker + mock publisher + E2E test stack |
-| `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` | VPS + Raspberry Pi production runbook |
-| `docs/HUB_BACKUP_GUIDE.md` | Raspberry Pi mandatory backup gate |
-| `docs/CREDENTIAL_ROTATION_GUIDE.md` | Credential rotation procedure |
-| `docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md` | Firmware proofing plan |
-| `docs/runbooks/postgres_cutover_runbook.md` | Postgres cutover runbook |
-| `AGENTS.md` (+ per-directory) | DOX work contracts for AI/agent development |
+| [`docs/LOCAL_TESTING_GUIDE.md`](docs/LOCAL_TESTING_GUIDE.md) | Local Docker + mock publisher + E2E test stack |
+| [`docs/PRODUCTION_DEPLOYMENT_GUIDE.md`](docs/PRODUCTION_DEPLOYMENT_GUIDE.md) | VPS + Raspberry Pi production runbook |
+| [`docs/HUB_BACKUP_GUIDE.md`](docs/HUB_BACKUP_GUIDE.md) | Raspberry Pi mandatory backup gate |
+| [`docs/CREDENTIAL_ROTATION_GUIDE.md`](docs/CREDENTIAL_ROTATION_GUIDE.md) | Credential rotation procedure |
+| [`docs/runbooks/postgres_cutover_runbook.md`](docs/runbooks/postgres_cutover_runbook.md) | Postgres cutover runbook |
+| [`wiki/index.md`](wiki/index.md) | Architecture & engineering knowledge base |
+| [`AGENTS.md`](AGENTS.md) (+ per-directory) | DOX work contracts for AI/agent development |
 
 ## Security Notes
 
-- All hubâ†”server traffic is authenticated (`X-Hub-ID`/`X-Hub-Key` headers, constant-time compare) over verified TLS.
+- All hub—server traffic is authenticated (`X-Hub-ID`/`X-Hub-Key` headers, constant-time compare) over verified TLS.
 - Sessions: Argon2id password hashing, timing-safe verification, sliding expiry with absolute cap, per-username lockout, SlowAPI rate limits.
 - **This repository intentionally excludes** real credentials (`.env`, broker passwd, TLS keys). Create your own from the `*.example` templates before deploying.

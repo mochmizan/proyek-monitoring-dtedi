@@ -42,7 +42,7 @@ yarn-error.log*
 
 # ===== Firmware tooling =====
 firmware_build/
-firmware/common/secrets.h
+# firmware/common/secrets.h
 
 # ===== Generated / tool output =====
 graphify-out/

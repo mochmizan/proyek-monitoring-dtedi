@@ -52,26 +52,24 @@ The pipeline enforces strict privilege separation between deployment operations 
 ### Post-Receive Hook Workflow (`deploy/setup_push_deploy.sh`)
 When changes are pushed to `refs/heads/main`, the hook executes the following deterministic sequence:
 1. **Branch Filter**: Verifies the pushed ref is `refs/heads/main`. Pushes to other branches are skipped.
-2. **Work Tree Synchronization**: Clears Git environment variables (`unset GIT_DIR GIT_WORK_TREE`) and executes:
-   ```bash
-   cd /opt/smsb && git fetch origin main && git reset --hard origin/main
-   ```
-3. **Python Dependency Resolution**: Executes `/opt/smsb/venv/bin/pip install --quiet -r server/requirements.txt` into the pre-provisioned virtual environment.
-4. **Dashboard SPA Compilation**: Sources NVM for Node 22 (`[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" && nvm use 22`) and builds the React 19 / Vite SPA:
+2. **Work Tree Synchronization**: Captures previous commit hash (`oldrev=$(git rev-parse HEAD)`), clears Git environment variables (`unset GIT_DIR GIT_WORK_TREE`), and executes `git fetch origin main && git reset --hard origin/main`.
+3. **Python Dependency Resolution**: Executes `/opt/smsb/venv/bin/pip install --quiet -r server/requirements.txt` into the virtual environment.
+4. **Pre-Flight Python Verification & Automated Rollback**:
+   - Compiles server sources: `python -m compileall -q server/`.
+   - Verifies application import: `from app.main import api`.
+   - **Automated Rollback to `oldrev`**: If either compileall or app import fails, the hook automatically reverts the work tree (`git reset --hard "${oldrev}"`) and aborts deployment without modifying or restarting the running service.
+5. **Dashboard SPA Compilation**: Sources NVM for Node 22 (`[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" && nvm use 22`) and builds the React 19 / Vite SPA:
    ```bash
    cd /opt/smsb/dashboard && npm ci --ignore-engines && npm run build --ignore-engines
    ```
-5. **Atomic Web Asset Publishing**: Synchronizes Vite build output directly to the Nginx root directory:
-   ```bash
-   rsync -a --delete /opt/smsb/dashboard/dist/ /var/www/gui-app/
-   chmod -R 755 /var/www/gui-app
-   ```
-6. **Backend Service Restart**: Executes `sudo -n systemctl restart smsb-api.service`.
-7. **Post-Deploy Smoke Verification**:
+6. **Atomic Web Asset Publishing**: Synchronizes Vite build output directly to the Nginx root directory via `rsync -a --delete /opt/smsb/dashboard/dist/ /var/www/gui-app/`.
+7. **Backend Service Restart**: Executes `sudo -n systemctl restart smsb-api.service`.
+8. **Post-Deploy Smoke Verification**:
+   - **API Health Probe Gate**: Polls `https://127.0.0.1/api/health` for up to 20 seconds, asserting `HTTP 200 OK` and database connectivity (`status: ok`).
    - **Auth Gate**: Polls `https://127.0.0.1/api/auth/me` unauthenticated for up to 20 seconds; asserts that the endpoint returns `HTTP 401 Unauthorized`.
    - **SPA Asset Gate**: Queries `https://127.0.0.1/` and verifies the HTML body contains the `<title>` tag.
    - **Systemd Liveness Gate**: Confirms `systemctl is-active --quiet smsb-api` returns 0.
-8. **Rollback Guidance**: If any check fails, the hook prints actionable manual rollback commands and exits with status 1.
+9. **Rollback Guidance**: If post-restart smoke checks fail, the hook prints actionable manual rollback commands and exits with status 1.
 
 ### Historical Pipeline Normalization (2026-09-03)
 Historically, prior to 2026-08-31, an omission in the rsync step resulted in backend pushes silently deploying nothing while frontend builds appeared fresh. On 2026-09-03, runtime paths were permanently normalized:
@@ -195,10 +193,10 @@ The current deployment pipeline possesses five critical production-grade gaps:
 - **Impact**: Uvicorn cold start on the 1 GB VPS requires 2 to 5 seconds. During this window, incoming HTTP batch ingestions from edge gateways fail with `HTTP 502 Bad Gateway`. While HubBrain's offline WAL buffers telemetry, web users experience connection drops and chart polling errors.
 - **Remedy Required**: Implement zero-downtime worker reloads (e.g. Uvicorn graceful worker reload or dual-process blue/green socket switching).
 
-### 2. Non-Automated Advisory Rollback
-- **Mechanism**: When post-receive smoke tests fail, the hook prints rollback instructions and exits with code 1.
-- **Impact**: The work tree clone remains dirty and pinned to the failing commit. The broken service remains live and serving errors until an operator manually logs in to run `git reset --hard origin/main~1` and restarts the service.
-- **Remedy Required**: Automated worktree rollback and service restoration within the post-receive trap handler.
+### 2. Pre-Flight Rollback vs Post-Restart Advisory Rollback
+- **Mechanism**: Pre-flight Python syntax errors (`compileall`) and application import failures (`from app.main import api`) now trigger immediate automated rollback to `oldrev` via `git reset --hard "${oldrev}"` before the service is touched. However, if post-restart smoke checks fail (e.g. database schema mismatch during runtime), the hook prints rollback instructions and exits with code 1.
+- **Impact**: Pre-flight failures are cleanly averted with zero downtime. For post-restart runtime failures, the broken service remains live until an operator manually intervenes.
+- **Remedy Required**: Extend automated rollback and service recycling to the post-restart failure trap.
 
 ### 3. Missing Pre-Deployment Migration Safety Gate
 - **Mechanism**: The Git hook runs `pip install` and `npm run build`, but completely skips database migrations (`server/init_sqlv5.py`).

@@ -50,7 +50,7 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
                 │   │   │   └── Settings (/settings) [Admin Guarded]
                 │   │   ├── <SidebarFooter> (User Profile, Role, Logout Button with Tooltip)
                 │   │   └── Mobile Drawer (<DialogPrimitive.Root> slide-over w-[280px])
-                │   └── Inset Canvas Card (flex-1 rounded-2xl bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80)
+                │   └── Edge-to-Edge Canvas (flex-1 rounded-none bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80)
                 │       ├── Sticky Inset Header (h-14 sm:h-16)
                 │       │   ├── <SidebarTrigger> (Toggle Button + Tooltip + Shortcut Hint)
                 │       │   ├── Route Breadcrumb / Title
@@ -99,7 +99,7 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
                 │               │   └── HubCard Grid (Approval/Revoke actions, connected device lists)
                 │               ├── Route: /schedules (src/routes/schedules.tsx)
                 │               │   ├── Schedule List & Status Toggles (Flexible ATS cron)
-                │               │   └── Schedule Modal Dialog (Preset selector, cron validator, JSON editor)
+                │               │   └── Schedule Modal Dialog (Preset selector, visual CronBuilder, cron validator, JSON editor)
                 │               ├── Route: /settings (src/routes/settings.tsx)
                 │               │   ├── RoomsTab (Create/Delete rooms, floor plan image upload)
                 │               │   ├── DevicesTab (Unpaired nodes pairing, coordinate assignment)
@@ -122,19 +122,22 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
             ├──── 1. Auth Gate (Root beforeLoad) ───────────────>│ GET /api/auth/me
             │<─── Cached User Object (staleTime 60s) ────────────┤
             │                                                    │
-            ├──── 2. Live Polling (POLL_MS=3000) ───────────────>│ GET /api/rooms
+            ├──── 2. Tier 2 Live Polling (6s ±15% jitter) ──────>│ GET /api/rooms
             │                                                   │ GET /api/devices
             │                                                   │ GET /api/alerts
             │<─── placeholderData: keepPreviousData ─────────────┤
             │                                                    │
-            ├──── 3. Telemetry History (15s polling) ───────────>│ GET /api/devices/{id}/history
+            ├──── 3. Tier 3 Telemetry History (15s ±15%) ───────>│ GET /api/devices/{id}/history
             │<─── Downsampled Buckets + Min/Max Envelopes ───────┤
             │                                                    │
-            ├──── 4. Hardware Command Dispatch ─────────────────>│ POST /api/devices/{id}/command
+            ├──── 4. Tier 4 Sparklines & Trends (60s ±15%) ─────>│ GET /api/rooms/sparklines
+            │<─── Room sparkline envelope data ──────────────────┤
+            │                                                    │
+            ├──── 5. Hardware Command Dispatch ─────────────────>│ POST /api/devices/{id}/command
             │<─── { status: "queued", command_id } ──────────────┤
             │                                                    │
-            │     [ Poll FSM: useCommandLifecycle 1.5s ]         │
-            ├──── 5. Check Command Status ──────────────────────>│ GET /api/commands/{id}
+            │     [ Poll FSM: useCommandLifecycle 1.5s Tier 1 ]  │
+            ├──── 6. Check Command Status ──────────────────────>│ GET /api/commands/{id}
             │<─── { status: "delivered", delivered_at } ─────────┤
             │                                                    │
             │     [ Invalidation Cascade ]                       │
@@ -142,7 +145,12 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
 ```
 
 1. **Authentication Session Flow**: Root route `beforeLoad` validates session via `ensureQueryData(queryKeys.auth.me())`. If null, redirects to `/login?redirect=...`.
-2. **Server State Polling Flow**: Live views execute 3s polling (`POLL_MS`) for active telemetry, and 5s polling (`POLL_ALERTS_MS`) for root navigation badges. Cache-first policies (`keepPreviousData`, `staleTime: 10s`, `gcTime: 5m`) eliminate UI layout flashing.
+2. **4-Tier Jittered Polling Flow**: Query polling implements a decoupled 4-tier architecture with randomized jitter (±15%) to eliminate synchronous herd thundering against HubGate:
+   - **Tier 1 (1.5s)**: `POLL_TIER1_COMMAND_MS` for downlink command delivery polling (fixed, no jitter).
+   - **Tier 2 (6s ±15%)**: `POLL_TIER2_ALERTS_MS` for live room cards, connected nodes, and critical alert badges.
+   - **Tier 3 (15s ±15%)**: `POLL_TIER3_PRESENCE_MS` for telemetry history charting and operational presence metadata.
+   - **Tier 4 (60s ±15%)**: `POLL_TIER4_TRENDS_MS` for 6h sparklines and analytical trend buckets.
+   - **Cache Harmony Invariant**: Guaranteed `staleTime >= refetchInterval` across all tiers (`staleTime: 6s/15s/60s`), eliminating redundant duplicate network requests. Background tab polling is halted via `refetchIntervalInBackground: false`.
 3. **Multi-Panel Telemetry Rendering Flow**: `HistoryChart` passes downsampled telemetry points to `MultiPanelChartContainer`. X-axis timestamps are synchronized across three stacked panels. Dynamic 12% padded Y-axes auto-scale based on visible values, toggled to fixed electrical presets via panel headers.
 4. **Command Dispatch Flow**: Commands dispatch through `useCommandLifecycle`, transitioning from `queuing` to `queued`, polling `GET /api/commands/{id}` every 1.5s, with a 12s client timeout and cache invalidation cascade upon delivery confirmation.
 5. **Form Editing Flow**: Device threshold inputs in `Controls.tsx` track focus (`isEditingRef`) and input dirtiness (`isDirty`), preventing background telemetry refetches from overwriting uncommitted operator edits.
@@ -151,7 +159,7 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
 
 ## 4. Multi-Panel ATS Telemetry: Custom SVG Engine vs Recharts
 
-In late August 2026, an experimental migration to shadcn Recharts components was attempted (`openspec/changes/dashboard-full-shadcn-redesign-2026-08-29/`). As recorded in [workstream-shadcn-revert.md](workstream-shadcn-revert.md) (commit `35e0582`), Recharts was completely reverted due to:
+In late August 2026, an experimental migration to shadcn Recharts components was attempted (archived in git history). As recorded in [workstream-shadcn-revert.md](workstream-shadcn-revert.md) (commit `35e0582`), Recharts was completely reverted due to:
 - Excessive bundle size inflation (~120 kB increase).
 - Inability to cleanly handle synchronized crosshairs across stacked, multi-panel layouts without heavy wrapper overhead.
 - Difficulty styling custom telemetry outage hatch patterns for power dropouts.
@@ -167,7 +175,7 @@ In late August 2026, an experimental migration to shadcn Recharts components was
 ## 5. Production-Readiness Gap Analysis
 
 ### 5.1 Query Cache & Polling Management
-- **Background Tab Battery / Connection Drain**: `index.tsx`, `room.$roomId.tsx`, `device.$deviceId.tsx`, and `useDeviceHistory.ts` configure `refetchIntervalInBackground: true`. Unattended tabs continuously poll HubGate every 3 to 15 seconds. Inactive tabs must pause polling and refresh on window focus (`refetchOnWindowFocus: true`).
+- **Background Tab Battery / Connection Drain [RESOLVED]**: Resolved across all queries with `refetchIntervalInBackground: false`. When tabs are in the background, polling is suspended; fresh telemetry is immediately refetched on window focus (`refetchOnWindowFocus: true`).
 - **Query Key Cardinality Bloat**: In `alerts.tsx`, `start_time` is computed from `Date.now()` rounded to the minute. Every 60 seconds, a new query key is registered. While old queries are garbage collected after `gcTime: 5m`, high filter permutation combinations consume heap memory.
 - **Unmount Observer Cleanup**: While TanStack Query cleans up observers on unmount, views sharing global queries keep network sockets busy during rapid tab toggling.
 
@@ -192,6 +200,6 @@ In late August 2026, an experimental migration to shadcn Recharts components was
   - Alerts multi-select dropdown lacks ARIA combobox/listbox attributes, keyboard arrow navigation, and escape-to-close handling.
 
 ### 5.5 Test Coverage Disparity
-- **Vitest Unit Coverage**: 142 tests across 19 test suites, covering math logic (`chartMath`), device controls (`Controls`, `CommandStatusBadge`), charting (`HistoryChart`), presentation cards (`RoomCard`), schedules modal (`ScheduleDialog`), sidebar navigation (`AppSidebar`, `SidebarNav`, `SidebarTrigger`, `useSidebarKeyboard`, `sidebarStore`), UI primitives (`tooltip`, `pagination`), error boundaries, and utility dates/formatting.
+- **Vitest Unit Coverage**: 178 tests across 22 test suites, covering math logic (`chartMath`), device controls (`Controls`, `CommandStatusBadge`), charting (`HistoryChart`), presentation cards (`RoomCard`), schedules modal (`ScheduleDialog`), sidebar navigation (`AppSidebar`, `SidebarNav`, `SidebarTrigger`, `useSidebarKeyboard`, `sidebarStore`), UI primitives (`tooltip`, `pagination`), error boundaries, and utility dates/formatting.
   - **Remaining gaps** for router routes (`__root`, `index`, `alerts`, `hubs`, `schedules`, `settings`, `map`, `login`), API client error handlers, and settings tabs.
 - **Playwright E2E Coverage**: Contains only **1 single test** (`login.spec.ts: login page loads`). Zero E2E coverage for operational flows: dashboard live updates, alert filtering, floor map interactions, device control dispatches, or schedule creation.

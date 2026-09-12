@@ -189,7 +189,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 ```
 
 **Resilience Failure Mode**:
-1. When an authentication session expires or is cleared, active polling queries (on the overview route `/`, 3 to 4 simultaneous queries run every 3 seconds) hit 401 simultaneously.
+1. When an authentication session expires or is cleared, active polling queries (on the overview route `/`, queries run on Tier 2 6s jittered intervals) hit 401 simultaneously.
 2. Multiple asynchronous calls concurrently execute `window.location.href = ...`.
 3. This triggers competing full-page browser reloads, bypassing the TanStack Router client navigation stack and causing visual screen thrashing.
 4. Hard redirecting circumvents client-side query cache cleanup and prevents displaying session-expired notification banners.

@@ -1,4 +1,4 @@
-﻿# AGENTS.md — hub (HubBrain V5)
+# AGENTS.md — hub (HubBrain V5)
 
 ## Purpose
 
@@ -65,7 +65,7 @@ HubBrain V5 edge gateway on Raspberry Pi 4. Bridges `hs109rs/#` MQTT → HTTPS u
 ## Verification
 
 - `pytest hub/test_edge_resilience.py` — WAL FIFO bound, 7-day TTL, paced replay, dynamic `derive_command_topic` dispatch (primary gate)
-- `pytest` at repo root — 107 tests (includes `hub` 13)
+- `pytest` at repo root — 249 tests (includes `hub` 13; 427 total automated tests across stack)
 - Manual: `python main.py` → expect `[SYNC SUCCESS]` then `[POST SUCCESS]` on whitelisted telemetry; `GET /api/devices` with hub headers matches local whitelist
 - `bash -n hub/CheckSecv5.sh` (on Pi, Linux) — file perms + TLS cert check
 

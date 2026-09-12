@@ -93,10 +93,10 @@ sudo fuser /opt/smsb/server/hubgatev5.db || echo "Database file cleanly released
 Ensure PostgreSQL target tables and constraints are initialized:
 
 ```bash
-cd /opt/smsb
+cd /opt/smsb/server
 export DATABASE_URL="postgresql+psycopg2://smsb:<POSTGRES_PASSWORD>@127.0.0.1:5432/smsb_prod"
 
-# Initialize tables via SQLAlchemy models
+# Initialize tables via SQLAlchemy models (must be executed from /opt/smsb/server or with PYTHONPATH=/opt/smsb/server)
 /opt/smsb/venv/bin/python -c "
 from databasev5 import engine
 from modelsv5 import Base
@@ -104,7 +104,6 @@ Base.metadata.create_all(bind=engine)
 "
 
 # Run Alembic migrations to align version table
-cd /opt/smsb/server
 /opt/smsb/venv/bin/alembic upgrade head
 cd /opt/smsb
 ```
