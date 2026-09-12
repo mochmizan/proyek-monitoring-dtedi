@@ -206,8 +206,8 @@ Environment="PATH=${SERVER_DIR}/venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=${SERVER_DIR}/venv/bin/python -m uvicorn app.main:api --host 127.0.0.1 --port 8000 --workers 1 --limit-concurrency 50 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=always
 RestartSec=5
-MemoryHigh=2G
-MemoryMax=3G
+MemoryHigh=1.2G
+MemoryMax=1.8G
 KillSignal=SIGTERM
 TimeoutStopSec=10
 LimitNOFILE=65536

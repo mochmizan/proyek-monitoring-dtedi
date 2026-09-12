@@ -128,7 +128,7 @@ Installed at `/etc/systemd/system/smsb-api.service`:
   ```
 - **Lifecycle & Resource Ceiling**:
   - `Restart=always`, `RestartSec=5`
-  - `MemoryHigh=2G`, `MemoryMax=3G`: Hard kernel cgroup ceiling. A memory leak or runaway worker will be terminated by systemd before depleting host RAM on the 8 GB VPS.
+  - `MemoryHigh=1.2G`, `MemoryMax=1.8G`: Hard kernel cgroup ceiling. A memory leak or runaway worker will be terminated by systemd before depleting SMSB allocated RAM on the 8 GB host (capped at 4 GB for CTFd co-tenancy).
 - **Security Sandboxing Directives**:
   - `NoNewPrivileges=yes`: Disallows setuid/sudo privilege escalation.
   - `ProtectSystem=strict`: Entire filesystem is mounted read-only for the process.
@@ -178,7 +178,7 @@ When a developer runs `git push prod main`:
    - Verifies canonical application import via `python -c "from app.main import api"`. On import failure, the hook immediately reverts the work tree via `git reset --hard "${oldrev}"` and aborts without touching the running service.
    - Executes database migration gate via `python -m alembic upgrade head`. If schema migration fails, the hook automatically rolls back the work tree via `git reset --hard "${oldrev}"` and aborts deployment, preventing schema corruption and maintaining uptime.
 5. **Gated SPA Compilation & Memory Protection**:
-   - Exports `NODE_OPTIONS="--max-old-space-size=2048"` (2 GB memory ceiling for Vite build on the 8GB VPS).
+   - Exports `NODE_OPTIONS="--max-old-space-size=1024"` (1 GB memory ceiling for Vite build on the 4GB allocation profile).
    - Automatically checks active swap space during bootstrap (`setup_push_deploy.sh`); if active swap < 1GB, provisions and activates a 2GB `/swapfile` persisted in `/etc/fstab`.
    - Invokes NVM Node 22 (`npm ci --ignore-engines && npm run build --ignore-engines`) in `/opt/smsb/dashboard`. Only syncs assets to `/var/www/gui-app/` if the build exits with 0.
 6. **Daemon Restart**: Invokes `sudo -n systemctl restart smsb-api.service`.

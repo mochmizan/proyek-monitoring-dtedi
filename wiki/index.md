@@ -19,7 +19,7 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 - [entity-firmware-fleet.md](entity-firmware-fleet.md) — Fleet node specifications: WEMOS_TS, WEMOS_AC, WEMOS_ATS, PROMINI pinouts, I2C addresses, EEPROM layouts
 - [entity-security-auth.md](entity-security-auth.md) — Authentication & authorization model: RBAC matrix, Argon2id, session cookies, SlowAPI rate limiting, security remediations (SEC-01, SEC-03, SEC-06, SEC-10)
 - [entity-deploy-pipeline.md](entity-deploy-pipeline.md) — Push-deploy to VPS via post-receive hook; normalized server runtime path, V8 heap cap, Alembic migration pre-flight gate
-- [entity-devops-infrastructure.md](entity-devops-infrastructure.md) — VPS topology, Nginx reverse proxy, TLS termination, systemd isolation (--workers 1 --limit-concurrency 50, MemoryMax=3G), swap provisioning (< 1GB -> 2GB /swapfile), push-deploy pre-flight gating, backup & cutover runbook
+- [entity-devops-infrastructure.md](entity-devops-infrastructure.md) — VPS topology, Nginx reverse proxy, TLS termination, systemd isolation (--workers 1 --limit-concurrency 50, MemoryMax=1.8G), swap provisioning (< 1GB -> 2GB /swapfile), push-deploy pre-flight gating, backup & cutover runbook
 - [entity-data-model.md](entity-data-model.md) — HubGate V5 tables, composite primary keys (data_id, timestamp), declarative range partitioning, BRIN indexes, composite indexes, unique constraints, and schema nullability
 
 ## Concepts

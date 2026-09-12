@@ -47,18 +47,18 @@ psql -U smsb -d smsb_prod -h 127.0.0.1 -c "SELECT version();"
 # 4. Check disk space headroom (ensure >= 5GB free for index builds and VACUUM)
 df -h /
 
-# 5. Apply PostgreSQL 16 8GB RAM / 4 vCPU VPS Engine Tuning
+# 5. Apply PostgreSQL 16 4GB RAM / 2 Worker VPS Engine Tuning (SMSB 4GB profile on 8GB host with CTFd co-tenancy)
 # Configures memory bounds, worker processes, and high-throughput append-only autovacuum
 sudo bash -c 'cat << "EOF" > /etc/postgresql/16/main/conf.d/99-smsb-tuning.conf
-# SMSB HubGate V5: PostgreSQL 16 8GB RAM / 4 vCPU VPS Engine Tuning
-# 25% of 8GB RAM dedicated to shared buffer pool
-shared_buffers = 2GB
-effective_cache_size = 6GB
-maintenance_work_mem = 512MB
-work_mem = 32MB
+# SMSB HubGate V5: PostgreSQL 16 4GB VPS Engine Tuning
+# 25% of 4GB RAM dedicated to shared buffer pool
+shared_buffers = 1GB
+effective_cache_size = 3GB
+maintenance_work_mem = 256MB
+work_mem = 16MB
 max_worker_processes = 4
-max_parallel_workers = 4
-max_parallel_workers_per_gather = 2
+max_parallel_workers = 2
+max_parallel_workers_per_gather = 1
 
 # Asynchronous WAL commits: absorbs high-frequency telemetry bursts without disk stalls
 synchronous_commit = off
