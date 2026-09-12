@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, CheckCircle, Loader2, Search } from "lucide-react"
 import { queryKeys } from "@/lib/queryKeys"
@@ -72,38 +72,85 @@ export default function ScheduleDialog({
   const onlineAC = useMemo(() => allDevices.filter((d) => d.is_active && d.status === "online" && (d.dev_type ?? "").toUpperCase() === "AC"), [allDevices])
   const onlineACC = useMemo(() => allDevices.filter((d) => d.is_active && d.status === "online" && (d.dev_type ?? "").toUpperCase() === "ACC"), [allDevices])
 
+  const allDevicesRef = useRef(allDevices)
+  allDevicesRef.current = allDevices
+
+  const initializedKeyRef = useRef<string | null>(null)
+  const prevDevTypeRef = useRef<string | null>(null)
+  const editingId = editing?.id ?? null
+
   useEffect(() => {
-    if (open) {
-      if (editing) {
-        setDevId(editing.dev_id)
-        setCronExpr(editing.cron_expr)
-        setPayload(editing.payload ?? { mode: "manual", start_genset: "on" })
-        setEnabled(editing.enabled)
-      } else {
-        const first = filteredDevices[0] ?? allDevices.find((d) => d.is_active && d.status === "online") ?? allDevices[0]
-        setDevId(first?.dev_id ?? "")
-        setCronExpr("0 18 * * 0")
-        setPayload({ mode: "manual", start_genset: "on" })
-        setEnabled(true)
-      }
-      setFormError(null)
-      setFormSuccess(null)
-      setSearch("")
-      setFilterTab("all")
+    if (!open) {
+      initializedKeyRef.current = null
+      prevDevTypeRef.current = null
+      return
     }
-  }, [open, editing, allDevices, filteredDevices])
+
+    const currentKey = editingId ? `edit-${editingId}` : "create"
+    if (initializedKeyRef.current === currentKey) {
+      return
+    }
+    initializedKeyRef.current = currentKey
+
+    if (editing) {
+      setDevId(editing.dev_id)
+      setCronExpr(editing.cron_expr)
+      setPayload(editing.payload ?? { mode: "manual", start_genset: "on" })
+      setEnabled(editing.enabled)
+      const found = allDevicesRef.current.find((d) => d.dev_id === editing.dev_id)
+      prevDevTypeRef.current = (found?.dev_type ?? "ATS").toUpperCase()
+    } else {
+      const first =
+        allDevicesRef.current.find((d) => d.is_active && d.status === "online" && ["ATS", "AC", "ACC"].includes((d.dev_type ?? "").toUpperCase())) ??
+        allDevicesRef.current.find((d) => d.is_active && d.status === "online") ??
+        allDevicesRef.current[0]
+      const firstType = (first?.dev_type ?? "ATS").toUpperCase()
+      const isFirstAC = firstType === "AC" || firstType === "ACC"
+      setDevId(first?.dev_id ?? "")
+      setCronExpr("0 18 * * 0")
+      setPayload(isFirstAC ? { target: "AC1", action: "ON" } : { mode: "manual", start_genset: "on" })
+      setEnabled(true)
+      prevDevTypeRef.current = first ? firstType : null
+    }
+    setFormError(null)
+    setFormSuccess(null)
+    setSearch("")
+    setFilterTab("all")
+  }, [open, editingId, editing])
+
+  useEffect(() => {
+    if (open && !editing && !devId && allDevices.length > 0) {
+      const first =
+        allDevices.find((d) => d.is_active && d.status === "online" && ["ATS", "AC", "ACC"].includes((d.dev_type ?? "").toUpperCase())) ??
+        allDevices.find((d) => d.is_active && d.status === "online") ??
+        allDevices[0]
+      if (first?.dev_id) {
+        setDevId(first.dev_id)
+        const firstType = (first.dev_type ?? "ATS").toUpperCase()
+        if (firstType === "AC" || firstType === "ACC") {
+          setPayload({ target: "AC1", action: "ON" })
+        }
+        prevDevTypeRef.current = firstType
+      }
+    }
+  }, [open, editing, devId, allDevices])
 
   // when device changes, adapt payload shape
   useEffect(() => {
-    if (!selectedDevice) return
-    const t = (selectedDevice.dev_type ?? "ATS").toUpperCase()
-    if (t === "AC" || t === "ACC") {
-      // if payload looks like ATS, switch to AC default
-      if (!payload.target) setPayload({ target: "AC1", action: "ON" })
-    } else {
-      if ((payload as Record<string, unknown>).target) setPayload({ mode: "manual", start_genset: "on" })
+    if (!open || !devId) return
+    if (prevDevTypeRef.current === null) {
+      prevDevTypeRef.current = devType
+      return
     }
-  }, [selectedDevice, payload])
+    if (prevDevTypeRef.current !== devType) {
+      prevDevTypeRef.current = devType
+      if (devType === "AC" || devType === "ACC") {
+        setPayload({ target: "AC1", action: "ON" })
+      } else {
+        setPayload({ mode: "manual", start_genset: "on" })
+      }
+    }
+  }, [open, devId, devType])
 
   const createMut = useMutation({
     mutationFn: (body: ScheduleCreate) => createSchedule(body),

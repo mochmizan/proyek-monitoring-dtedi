@@ -8,6 +8,11 @@
   --color-card: #18181b;
   --color-card-hover: #27272a;
   --color-card-foreground: #f4f4f5;
+
+  --color-popover: #18181b;
+  --color-popover-foreground: #f4f4f5;
+  --color-accent: #27272a;
+  --color-accent-foreground: #f4f4f5;
   
   --color-primary: #6366f1; /* Premium Indigo */
   --color-primary-hover: #4f46e5;

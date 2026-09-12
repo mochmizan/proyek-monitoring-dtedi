@@ -1,4 +1,4 @@
-﻿import React, { useState, Suspense } from "react"
+import React, { useState, Suspense } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { z } from "zod"
@@ -275,6 +275,7 @@ function SchedulesPage() {
       {dialogOpen && (
         <Suspense fallback={null}>
           <ScheduleDialog
+            key={editing ? editing.id : (dialogOpen ? "create-open" : "create-closed")}
             open={dialogOpen}
             onOpenChange={setDialogOpen}
             editing={editing}

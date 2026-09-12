@@ -63,4 +63,113 @@ describe('ScheduleDialog Component', () => {
       expect(api.updateSchedule).toHaveBeenCalledWith('42', expect.objectContaining({ dev_id: 'ATS_01', cron_expr: '0 18 * * 0', tz: 'Asia/Jakarta', enabled: true }));
     });
   });
+
+  it('preserves user-edited cronExpr, payload, and devId on devices polling re-render', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const initialDevices: DeviceResponse[] = [
+      { dev_id: 'ATS_01', dev_name: 'Main Generator ATS', dev_type: 'ATS', hub_id: 'HUB_01', room_id: 'ROOM_01', is_active: true, status: 'online', last_seen: new Date().toISOString() },
+    ];
+
+    const customSchedule: ScheduleResponse = {
+      id: '99',
+      dev_id: 'ATS_01',
+      hub_id: 'HUB_01',
+      cron_expr: '0 12 * * 1',
+      payload: { mode: 'manual', start_genset: 'off' },
+      tz: 'Asia/Jakarta',
+      enabled: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <ScheduleDialog open={true} onOpenChange={vi.fn()} editing={customSchedule} devices={initialDevices} />
+      </QueryClientProvider>
+    );
+
+    // Initial time is 12:00 from customSchedule
+    expect(screen.getByDisplayValue('12:00')).toBeInTheDocument();
+
+    // User changes time from 12:00 to 09:30
+    const timeInput = screen.getByDisplayValue('12:00');
+    fireEvent.change(timeInput, { target: { value: '09:30' } });
+    expect(screen.getByDisplayValue('09:30')).toBeInTheDocument();
+
+    // Simulate polling refetch: devices array reference changes (new array and object instances)
+    const polledDevices: DeviceResponse[] = [
+      { dev_id: 'ATS_01', dev_name: 'Main Generator ATS Polled', dev_type: 'ATS', hub_id: 'HUB_01', room_id: 'ROOM_01', is_active: true, status: 'online', last_seen: new Date().toISOString() },
+    ];
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <ScheduleDialog open={true} onOpenChange={vi.fn()} editing={customSchedule} devices={polledDevices} />
+      </QueryClientProvider>
+    );
+
+    // Time remains 09:30, not reset back to 12:00 or default 18:00
+    expect(screen.getByDisplayValue('09:30')).toBeInTheDocument();
+
+    // Submitting form confirms cronExpr, devId, and custom payload were preserved
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => {
+      expect(api.updateSchedule).toHaveBeenCalledWith(
+        '99',
+        expect.objectContaining({
+          dev_id: 'ATS_01',
+          cron_expr: '30 9 * * 1',
+          payload: { mode: 'manual', start_genset: 'off' },
+          tz: 'Asia/Jakarta',
+          enabled: true,
+        })
+      );
+    });
+  });
+
+  it('preserves user-edited cronExpr and devId in create mode on devices polling re-render', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const initialDevices: DeviceResponse[] = [
+      { dev_id: 'ATS_01', dev_name: 'Main Generator ATS', dev_type: 'ATS', hub_id: 'HUB_01', room_id: 'ROOM_01', is_active: true, status: 'online', last_seen: new Date().toISOString() },
+    ];
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <ScheduleDialog open={true} onOpenChange={vi.fn()} editing={null} devices={initialDevices} />
+      </QueryClientProvider>
+    );
+
+    // Initial time is 18:00
+    expect(screen.getByDisplayValue('18:00')).toBeInTheDocument();
+
+    // User changes time from 18:00 to 07:45
+    const timeInput = screen.getByDisplayValue('18:00');
+    fireEvent.change(timeInput, { target: { value: '07:45' } });
+    expect(screen.getByDisplayValue('07:45')).toBeInTheDocument();
+
+    // Simulate polling refetch: devices array reference changes
+    const polledDevices: DeviceResponse[] = [
+      { dev_id: 'ATS_01', dev_name: 'Main Generator ATS Polled', dev_type: 'ATS', hub_id: 'HUB_01', room_id: 'ROOM_01', is_active: true, status: 'online', last_seen: new Date().toISOString() },
+      { dev_id: 'ATS_02', dev_name: 'Backup Generator ATS', dev_type: 'ATS', hub_id: 'HUB_01', room_id: 'ROOM_01', is_active: true, status: 'online', last_seen: new Date().toISOString() },
+    ];
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <ScheduleDialog open={true} onOpenChange={vi.fn()} editing={null} devices={polledDevices} />
+      </QueryClientProvider>
+    );
+
+    // Time remains 07:45, not reset back to default 18:00
+    expect(screen.getByDisplayValue('07:45')).toBeInTheDocument();
+
+    // Submitting form confirms cronExpr and devId were preserved
+    fireEvent.click(screen.getByRole('button', { name: /create schedule/i }));
+    await waitFor(() => {
+      expect(api.createSchedule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dev_id: 'ATS_01',
+          cron_expr: '45 7 * * 0',
+          tz: 'Asia/Jakarta',
+          enabled: true,
+        })
+      );
+    });
+  });
 });
