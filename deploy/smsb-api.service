@@ -39,11 +39,11 @@ ExecStart=/opt/smsb/venv/bin/python -m uvicorn app.main:api --host 127.0.0.1 --p
 
 # --- Restart policy & resource ceiling -----------------------------------------
 # Always recover from crashes after a 5s cooldown; hard-cap memory so a leak
-# cannot OOM the VPS (systemd kills and restarts the unit at 800M).
+# cannot OOM the VPS (systemd kills and restarts the unit at 3G).
 Restart=always
 RestartSec=5
-MemoryHigh=650M
-MemoryMax=800M
+MemoryHigh=2G
+MemoryMax=3G
 
 # --- Sandboxing / hardening ----------------------------------------------------
 # NoNewPrivileges: blocks privilege escalation via setuid/sudo from the service.

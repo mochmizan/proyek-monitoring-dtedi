@@ -263,7 +263,7 @@ while read -r oldrev newrev ref; do
         # Use nvm Node 22 if available (Vite 8 requires Node 20.19+/22), else fallback to system npm with engine-strict false
         if [ -s "$HOME/.nvm/nvm.sh" ]; then \. "$HOME/.nvm/nvm.sh" && nvm use 22 >/dev/null 2>&1 || true; fi
         npm config set engine-strict false >/dev/null 2>&1 || true
-        export NODE_OPTIONS="--max-old-space-size=512"
+        export NODE_OPTIONS="--max-old-space-size=2048"
 
         spa_build_ok=0
         if ( cd "${SPA_DIR}" && npm ci --ignore-engines && npm run build --ignore-engines ); then
