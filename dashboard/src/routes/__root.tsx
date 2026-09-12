@@ -161,7 +161,7 @@ function RootLayout() {
               >
                 <Bell className="h-5 w-5" />
                 {alertCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 h-4 min-w-[16px] px-1 rounded-none bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  <span className="absolute top-1 right-1 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                     {alertCount}
                   </span>
                 )}

@@ -114,7 +114,7 @@ export function SidebarNav({
               <>
                 <span className="truncate">{item.label}</span>
                 {hasAlerts && (
-                  <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-none font-bold shrink-0">
+                  <span className="ml-auto bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold shrink-0 min-w-5 h-5 flex items-center justify-center">
                     {alertCount}
                   </span>
                 )}
@@ -124,7 +124,7 @@ export function SidebarNav({
             {isCollapsed && hasAlerts && (
               <span
                 data-testid="alert-dot"
-                className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-none bg-red-500 ring-1 ring-zinc-900 animate-pulse"
+                className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-1 ring-zinc-900 animate-pulse"
               />
             )}
           </Link>

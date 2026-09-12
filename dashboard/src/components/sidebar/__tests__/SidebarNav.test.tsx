@@ -75,6 +75,7 @@ describe('SidebarNav Component', () => {
     const badge = screen.getByText('5')
     expect(badge).toBeInTheDocument()
     expect(badge.className).toContain('bg-red-500')
+    expect(badge.className).toContain('rounded-full')
   })
 
   it('renders alert dot in collapsed mode', () => {
@@ -87,6 +88,7 @@ describe('SidebarNav Component', () => {
     const dot = screen.getByTestId('alert-dot')
     expect(dot).toBeInTheDocument()
     expect(dot.className).toContain('bg-red-500')
+    expect(dot.className).toContain('rounded-full')
     expect(screen.queryByText('Alert History')).not.toBeInTheDocument()
   })
 
