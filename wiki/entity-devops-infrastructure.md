@@ -1,8 +1,8 @@
 ---
 type: entity
 governed_by: AGENTS.md
-links: [wiki/entity-deploy-pipeline.md, wiki/entity-hubgate-v5.md, wiki/entity-hubbrain-v5.md, wiki/concept-observability-monitoring.md, wiki/concept-production-readiness.md, wiki/workstream-production-grade-roadmap.md]
-sources: [deploy/nginx_smsb.conf, deploy/smsb-api.service, deploy/hubbrain.service, deploy/setup_push_deploy.sh, deploy/journald.conf.dropin, tools/backup_hub.sh, tools/run_pi_backup.py, tools/rotate_credentials.py, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md, notes/field-ops.md]
+links: [wiki/entity-deploy-pipeline.md, wiki/entity-hubgate-v5.md, wiki/entity-hubbrain-v5.md, wiki/concept-observability-monitoring.md, wiki/concept-production-readiness.md, wiki/workstream-production-grade-roadmap.md, wiki/entity-security-auth.md]
+sources: [deploy/nginx_smsb.conf, deploy/smsb-api.service, deploy/hubbrain.service, deploy/setup_push_deploy.sh, deploy/journald.conf.dropin, tools/backup_hub.sh, tools/run_pi_backup.py, tools/rotate_credentials.py, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md, docs/PRODUCTION_DEPLOYMENT_GUIDE.md]
 updated: 2026-09-12
 ---
 
@@ -55,19 +55,25 @@ The physical and virtual topology is organized into three segregated tiers:
 ```
 
 ### Central Server Specifications (`genset`)
-- **Network Identity**: Tailscale interface `100.108.98.30`, public ingress via Nginx on ports 80 and 443.
+- **Network Identity**: Tailscale interface `100.108.98.30`, campus interface `10.33.102.172`, ingress via Nginx on ports 80 and 443.
+- **Campus Network Isolation**: Campus IP `10.33.102.172` is isolated from wireless clients on `UGM-Hotspot` and `UGMSecure` due to DSSDI campus core firewall inter-VLAN blocking. Access requires UGM Campus VPN (`vpn.ugm.ac.id`), Tailscale (`100.108.98.30`), or DTEDI wired Ethernet.
 - **Hardware & Resource Allocation Profile**: VPS with 8 GB Dynamic RAM and 4 vCPUs. SMSB is configured for a dedicated 4 GB allocation profile, reserving 4 GB for CTFd co-tenancy. Systemd bounds Uvicorn under `MemoryHigh=1.2G`, `MemoryMax=1.8G`. Active database: PostgreSQL 16 (`smsb_prod`).
 - **User Segregation**:
-  - `genset`: Unprivileged deployment user. Possesses SSH key access and narrow sudoers permission to restart `smsb-api`.
+  - `genset`: Unprivileged deployment and tunneling user. Password authentication is enabled (`PasswordAuthentication yes`, password `genset123`) to support remote hardware team SSH access and MQTT port forwarding. Possesses narrow sudoers permission to restart `smsb-api`.
   - `smsb`: Dedicated system execution user (`no-login`). Runs the FastAPI/Uvicorn process, connects to PostgreSQL `smsb_prod`, and owns the server `.env` and static asset directories.
 - **Perimeter & Access Control Posture**:
-  - **Firewall**: UFW/nftables is not currently active on the host. Perimeter containment relies solely on loopback socket binding (`127.0.0.1:8000` for Uvicorn, `127.0.0.1:5432` for PostgreSQL) and Nginx reverse proxy mediation.
-  - **SSH Enforcement**: Authorized operator workstations connect via SSH key authentication, but password authentication remains permitted in `/etc/ssh/sshd_config` (`PasswordAuthentication yes`). Fail2ban is uninstalled, leaving port 22 exposed to brute-force dictionary attacks.
+  - **Firewall**: UFW/nftables is not currently active on the host. Perimeter containment relies on loopback socket binding (`127.0.0.1:8000` for Uvicorn, `127.0.0.1:5432` for PostgreSQL), Nginx reverse proxy mediation, and DSSDI campus firewall inter-VLAN filtering.
+  - **SSH Enforcement**: Password authentication is explicitly enabled (`PasswordAuthentication yes` in `/etc/ssh/sshd_config`) with password `genset123` for user `genset` to support hardware team remote operations.
+  - **Remote MQTT Port Forwarding**: Hardware engineers tunnel to the edge Mosquitto broker via:
+    ```bash
+    ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30
+    ```
+    allowing authenticated MQTT pub/sub on `localhost:1883` (`hubadmin` / `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`).
 
 ### Edge Gateway Specifications (`hubadmin`)
 - **Hardware**: Raspberry Pi running Raspberry Pi OS (Linux).
 - **Network Configuration**:
-  - `eth0`: Campus LAN uplink at `10.33.102.10` (staging address `10.33.36.81`).
+  - `eth0`: Campus LAN uplink at `10.33.102.10` (staging address `10.33.36.81`). Isolated from campus wireless clients by DSSDI inter-VLAN firewall; reachable from VPS and wired DTEDI subnets.
   - `wlan0`: Isolated Software Access Point (`hostapd` + `dnsmasq`) on `192.168.72.242`, SSID `smsb-iot`.
   - `NTP`: Time synchronization synchronized against local server `10.33.102.172`.
 

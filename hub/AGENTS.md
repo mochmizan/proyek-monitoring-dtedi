@@ -44,7 +44,7 @@ HubBrain V5 edge gateway on Raspberry Pi 4. Bridges `hs109rs/#` MQTT → HTTPS u
 ### Systemd & Networking
 
 - `wlan0` AP: hidden `smsb-iot` WPA2 at `192.168.72.242/24` via `hostapd` + `dnsmasq` (`/etc/dnsmasq.d/smsb-ap.conf`; main `/etc/dnsmasq.conf` empty) + `wlan0-addr.service` (`After=hostapd.service`: `ip link set wlan0 up` + `ip addr add 192.168.72.242/24`)
-- `eth0` only in netplan: `dhcp4: true` + static `10.33.102.10/24` + `via: 10.33.102.254` (campus LAN); never add `wifis:` stanzas (fights hostapd)
+- `eth0` only in netplan: `dhcp4: true` + static `10.33.102.10/24` + `via: 10.33.102.254` (campus LAN); never add `wifis:` stanzas (fights hostapd). Campus network isolation: `10.33.102.10` is unreachable from wireless clients on `UGM-Hotspot`/`UGMSecure` due to DSSDI campus firewall inter-VLAN blocking. Remote hardware access to the local Mosquitto broker (`localhost:1883`, `hubadmin` / `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`) is established via SSH tunnel on the VPS (`ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30`).
 - Clock: no RTC battery; `chrony 4.8` client of `10.33.102.172` (`makestep` corrects fake boot timestamps); `timesyncd` disabled; no internet (wall-port LAN only)
 - `hubbrain.service` runs `python main.py` headless; `main.py --interactive` for AC CLI; `hub/.env` chmod 600
 
@@ -58,6 +58,7 @@ HubBrain V5 edge gateway on Raspberry Pi 4. Bridges `hs109rs/#` MQTT → HTTPS u
 - Keep serial/MQTT bounded — `char[65]` payloads, `512B` buf in firmware bridge; hub `on_message` must not allocate unbounded or block
 - Keep loops non-blocking with `timeout=5`; match log tags `[SYNC ...]` `[FILTER ...]` `[POST ...]` `[CONTROL ...]` `[CACHE ...]` `[REPLAY ...]`
 - Cross-check any MQTT topic change against `firmware/**/*.ino` topics and `server/app/routers/iot.py` + `server/app/services/*`
+- Telemetry cadence roadmap: future sampling must conform to ASHRAE Guideline 36 (ambient/HVAC), NFPA 110 Level 1 (ATS/generator transients), and Sparkplug B RBE deadbands (see `notes/telemetry-cadence.md`)
 - Never commit `.env`, `edge_cache.db`, `cert.crt`, or real `MQTT_PASS`/`HUB_KEY` — all gitignored
 - `m41n` and `brain_of_hub_v5.py` are legacy — do not run; use `main.py`
 - `tools/deploy_pi_edge.py` reverse tunnel (`Pi :8000 -> Laptop :8000`) is the only supported local staging path

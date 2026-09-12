@@ -151,6 +151,10 @@ Default section order:
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md.
 
 - Current: private campus LAN (no public), push via `git push prod main` to `100.108.98.30`, dashboard at `dashboard/` (Vite), server at `server/` (HubGate V5), hub at `hub/` (HubBrain V5), docs at `docs/`
+- Campus Network Reality: Campus IP `10.33.102.172` is isolated from wireless clients on `UGM-Hotspot` and `UGMSecure` due to DSSDI campus core firewall inter-VLAN blocking. Access requires UGM Campus VPN (`vpn.ugm.ac.id`), Tailscale (`100.108.98.30`), or DTEDI wired Ethernet.
+- VPS SSH Authentication: VPS `genset` on `100.108.98.30` has password authentication enabled (`PasswordAuthentication yes`) with password `genset123` for user `genset` to support hardware team remote access.
+- Remote MQTT Access Procedure: Hardware team accesses Raspberry Pi Mosquitto broker via SSH tunnel (`ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30`) using broker credentials `hubadmin` / `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`.
+- Telemetry Cadence Roadmap: Future implementations must follow ASHRAE Guideline 36 (ambient/HVAC), NFPA 110 Level 1 (generator/ATS transient and standby), and Sparkplug B Report-by-Exception (RBE) deadbands ($\Delta T \ge 0.2^\circ\text{C}$, $\Delta V \ge 1.0\text{V}$) with periodic heartbeats to minimize write amplification.
 
 ## Purpose
 
@@ -229,6 +233,8 @@ Private campus repo by decision. Before public, sanitize + rotate (lived in hist
 | Tier | Location | Secret |
 |---|---|---|
 | 1 | `hub/.env` (gitignored), `firmware/common/secrets.h` (tracked with safe defaults) | live MQTT_PASS / HUB_KEY / Pi SSH |
+| 1 | VPS `/etc/ssh/sshd_config`, live user `genset` | `genset123` (hardware team remote access) |
+| 1 | Pi Mosquitto `/etc/mosquitto/passwd` | `hubadmin` / `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1` |
 | 1 | `tests/test_verify_prod_env.py:111/113` verifier fixtures | banned-value literals |
 | 2 | `server/README.txt` `hub/README.txt` samples; `start_dev.*` dev logins; `docker-compose.yml` postgres `postgres` | weak/sample |
 
@@ -268,7 +274,7 @@ Rules: never add hardcoded secrets; `.gitignore` blocks `.env*` `passwd` `cert.k
 
 ## Notes
 
-- Root notes scope: historical notes and benchmark baselines have been codified into the wiki, automated tests, and operational guides (archived in git history).
+- Root notes scope: active staging note at [notes/telemetry-cadence.md](notes/telemetry-cadence.md) (standards roadmap for ASHRAE, NFPA 110, Sparkplug B RBE). Historical notes and benchmark baselines have been codified into the wiki, automated tests, and operational guides (archived in git history).
 
 ## Child DOX Index
 

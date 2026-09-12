@@ -1,9 +1,9 @@
 ---
 type: entity
 governed_by: AGENTS.md
-links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-database-lifecycle.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/auth.py, server/app/routers/auth.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/iot.py, server/app/dependencies.py, server/app/core/rate_limit.py, server/app/core/config.py, server/modelsv5.py, tools/rotate_credentials.py, docs/CREDENTIAL_ROTATION_GUIDE.md]
-updated: 2026-09-03
+links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-database-lifecycle.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-backend-hardening-v5.md, wiki/entity-devops-infrastructure.md]
+sources: [server/auth.py, server/app/routers/auth.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/iot.py, server/app/dependencies.py, server/app/core/rate_limit.py, server/app/core/config.py, server/modelsv5.py, tools/rotate_credentials.py, docs/CREDENTIAL_ROTATION_GUIDE.md, docs/PRODUCTION_DEPLOYMENT_GUIDE.md]
+updated: 2026-09-12
 ---
 
 # HubGate V5 Security & Authentication Architecture
@@ -288,3 +288,28 @@ A comprehensive architectural security audit reveals ten critical vulnerabilitie
 - **Location**: `server/auth.py` (`verify_session`).
 - **Mechanism**: Every request authenticated via session cookie previously executed `db_session.expires_at = min(now + 2h, absolute_expiry)` followed by `db.commit()`, forcing write transactions and exclusive locks on `GET` requests.
 - **Resolution**: Implemented sliding window throttling in `server/auth.py`. An `UPDATE sessions` write transaction and `db.commit()` are executed only when remaining validity is `< 90 minutes` (`remaining_validity < timedelta(minutes=90)`). Requests with fresh sessions (remaining validity $\ge 90\text{m}$) bypass database writes completely, eliminating write-on-read lock serialization and PostgreSQL update churn.
+
+---
+
+## 6. Remote Administration & Hardware Access Perimeter
+
+Outside the web application boundary, physical hardware testing and system administration enforce specific network and authentication constraints:
+
+### VPS Host SSH Authentication Posture
+- **Password Authentication**: Explicitly enabled (`PasswordAuthentication yes` in `/etc/ssh/sshd_config`) for deployment user `genset` with password `genset123` on `100.108.98.30` (and `10.33.102.172`). This accommodates remote hardware team workflows where public key distribution is impractical.
+- **Sudoers Scope**: User `genset` has restricted passwordless sudo privileges limited strictly to restarting the backend service (`sudo systemctl restart smsb-api.service`).
+
+### Network Perimeter & Campus Isolation
+- **Campus Core Firewall Inter-VLAN Blocking**: The central server (`10.33.102.172`) and edge gateway (`10.33.102.10`) reside on the DTEDI wired server VLAN. Wireless clients connected to `UGM-Hotspot` or `UGMSecure` are blocked from reaching these addresses by DSSDI campus core firewall rules.
+- **Authorized Ingress Channels**:
+  1. DTEDI Wired Ethernet (wall ports).
+  2. UGM Campus VPN (`vpn.ugm.ac.id`) providing an authenticated campus IP.
+  3. Tailscale mesh VPN (`100.108.98.30`).
+
+### Edge Mosquitto Broker Authentication & SSH Tunneling
+- **Local Broker Auth**: Mosquitto on the Raspberry Pi edge gateway (`10.33.102.10:1883`) enforces PBKDF2 password authentication for user `hubadmin` (password: `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`).
+- **Remote Port Forwarding**: Because direct inbound MQTT from campus WiFi/WAN is firewalled, hardware team members establish an SSH local forwarding tunnel through the VPS:
+  ```bash
+  ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30
+  ```
+  Remote clients then connect to `localhost:1883` using the `hubadmin` credentials.

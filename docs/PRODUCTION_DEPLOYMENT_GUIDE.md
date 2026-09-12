@@ -24,21 +24,29 @@ graph TD
 
 This is how the system is **actually running today** on the campus VPS `genset` — practical reference for whoever inherits it:
 
-**Access URLs**
-| Who | URL |
-|---|---|
-| Anyone on campus WiFi / wired LAN | `https://10.33.102.172/` (primary dashboard) |
-| Admin off-campus (Tailscale tailnet only) | `https://100.108.98.30` |
-| Public internet | NOT available — inbound 443 blocked by Azure/campus NSG |
+**Access URLs & Network Reality**
+| Who | URL / Method | Notes |
+|---|---|---|
+| DTEDI Wired Ethernet | `https://10.33.102.172/` | Direct access from DTEDI department wired wall ports |
+| Campus WiFi (`UGM-Hotspot`, `UGMSecure`) | `https://10.33.102.172/` (requires UGM VPN) | Direct access BLOCKED by DSSDI campus core firewall inter-VLAN isolation. Must connect via UGM Campus VPN (`vpn.ugm.ac.id`). |
+| Admin & Remote Hardware Team (Tailscale) | `https://100.108.98.30` | Tailnet direct access |
+| Public internet | NOT available | Inbound 443 blocked by Azure/campus NSG |
 
 **VPS `genset` (Ubuntu 24.04, 10.33.102.172 / 100.108.98.30 / 202.43.94.30)**
 - nginx site `hubgate` runs this repo's `deploy/nginx_smsb.conf`: SPA at `/var/www/gui-app`, `/api/` + `/static/` proxied to uvicorn (`smsb-api.service`, `127.0.0.1:8000`). Legacy all-proxy config backed up as `/home/genset/hubgate.bak.*`.
 - TLS: self-signed `/etc/nginx/ssl/smsb.crt|.key` with SANs for `10.33.102.172` (campus IP), Tailscale IP, and public IP.
 - Deploy: `git push prod main` → post-receive hook on `/opt/smsb.git` → worktree `/opt/smsb`, active DB is PostgreSQL 16 (`smsb_prod` on `127.0.0.1:5432`, 4,152,334 rows migrated with 100% parity; local SQLite fallback preserved).
 - **chrony NTP server**: VPS serves time to campus IoT hubs (`allow 10.33.0.0/16`; UFW allows `123/udp from 10.33.0.0/16`) because the Pi has no internet access.
+- **Hardware Team SSH & Remote MQTT Tunnel**:
+  - User: `genset`, Password: `genset123` (`PasswordAuthentication yes` enabled in `/etc/ssh/sshd_config`).
+  - Remote MQTT port forwarding tunnel to Raspberry Pi broker (`10.33.102.10:1883`):
+    ```bash
+    ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30
+    ```
+  - Broker authentication on `localhost:1883`: username `hubadmin`, password `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`.
 
-**Raspberry Pi edge hub (hostname `hs108rs-hub-01`; registered hub identity `hs109rs-hub-01` — legacy room naming; bubble `192.168.72.242`, eth0 static `10.33.36.81/24` via UGM wall port)**
-- Reaches the VPS over pure campus LAN (`SERVER_URL=https://10.33.102.172/api/*`); `[SYNC SUCCESS]` telemetry flowing.
+**Raspberry Pi edge hub (hostname `hs108rs-hub-01`; registered hub identity `hs109rs-hub-01` — legacy room naming; bubble `192.168.72.242`, eth0 static `10.33.102.10/24` [staging `10.33.36.81`] via UGM wall port)**
+- Reaches the VPS over pure campus LAN (`SERVER_URL=https://10.33.102.172/api/*`); `[SYNC SUCCESS]` telemetry flowing. Isolated from wireless campus clients by DSSDI core firewall.
 - Clock: no RTC battery, no internet — chrony client of the VPS (`server 10.33.102.172 iburst prefer`, chrony 4.8; timesyncd unused). Boot-time fake clock corrected within seconds by makestep.
 - Networking details (netplan eth0-only, wlan0-addr.service, dnsmasq.d layout): see `hub/AGENTS.md`.
 

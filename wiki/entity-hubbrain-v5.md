@@ -1,9 +1,9 @@
 ---
 type: entity
 governed_by: AGENTS.md
-links: [wiki/concept-edge-resilience.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/entity-ats-firmware-chain.md, wiki/entity-firmware-fleet.md, wiki/entity-hubgate-v5.md]
-sources: [hub/main.py, hub/AGENTS.md, hub/requirements.txt, hub/test_edge_resilience.py]
-updated: 2026-09-03
+links: [wiki/concept-edge-resilience.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/entity-ats-firmware-chain.md, wiki/entity-firmware-fleet.md, wiki/entity-hubgate-v5.md, wiki/entity-devops-infrastructure.md]
+sources: [hub/main.py, hub/AGENTS.md, hub/requirements.txt, hub/test_edge_resilience.py, docs/PRODUCTION_DEPLOYMENT_GUIDE.md]
+updated: 2026-09-12
 ---
 
 # HubBrain V5 (hub/)
@@ -84,7 +84,11 @@ The downlink topic is formatted as `{hub_name}/{dev_type}/command`:
 ## 5. Network & Hardware Configuration
 
 - **Fleet Wireless Access Point (`wlan0`)**: Broadcasts hidden WPA2 SSID `smsb-iot` at `192.168.72.242/24` using `hostapd` and `dnsmasq`. Dedicated exclusively to ESP8266 node telemetry.
-- **Campus Uplink (`eth0`)**: Static IP `10.33.102.10/24` via gateway `10.33.102.254`. Connects to central server and campus NTP.
+- **Campus Uplink (`eth0`)**: Static IP `10.33.102.10/24` via gateway `10.33.102.254`. Connects to central server and campus NTP. Note that `10.33.102.10` is isolated from wireless clients on `UGM-Hotspot`/`UGMSecure` by DSSDI campus core firewall inter-VLAN blocking; access requires DTEDI wired Ethernet, UGM Campus VPN (`vpn.ugm.ac.id`), or Tailscale.
+- **Remote Hardware MQTT Access**: Remote hardware engineers access the local Mosquitto broker (`localhost:1883`, credentials `hubadmin` / `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`) via an SSH forwarding tunnel through the VPS:
+  ```bash
+  ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30
+  ```
 - **Time Synchronization**: The Raspberry Pi lacks an onboard hardware RTC battery. Timekeeping is maintained by `chrony 4.8` tracking campus NTP server `10.33.102.172` with `makestep` enabled to correct clocks upon cold boot before database transactions occur.
 - **TLS Pinning**: Upstream HTTPS requests pin the server certificate via `verify=TLS_CERT_PATH` (`cert.crt`). Startup fails immediately if `TLS_CERT_PATH` is missing or 0 bytes.
 

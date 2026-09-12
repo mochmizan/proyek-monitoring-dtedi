@@ -1,9 +1,9 @@
 ---
 type: concept
 governed_by: AGENTS.md
-links: [wiki/entity-hubbrain-v5.md, wiki/entity-hubgate-v5.md, wiki/entity-ats-firmware-chain.md, wiki/entity-dashboard-spa.md, wiki/concept-time-conventions.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/concept-alert-engine.md, wiki/workstream-backend-hardening-v5.md]
-sources: [hub/main.py, server/app/routers/iot.py, server/app/dependencies.py, server/schemasv5.py, server/modelsv5.py, commit:8f8f6cd, commit:9961f5c, commit:0fd2e81, commit:d1225f9]
-updated: 2026-09-02
+links: [wiki/entity-hubbrain-v5.md, wiki/entity-hubgate-v5.md, wiki/entity-ats-firmware-chain.md, wiki/entity-dashboard-spa.md, wiki/concept-time-conventions.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/concept-alert-engine.md, wiki/workstream-backend-hardening-v5.md, wiki/entity-devops-infrastructure.md, wiki/entity-security-auth.md]
+sources: [hub/main.py, server/app/routers/iot.py, server/app/dependencies.py, server/schemasv5.py, server/modelsv5.py, notes/telemetry-cadence.md, docs/PRODUCTION_DEPLOYMENT_GUIDE.md, commit:8f8f6cd, commit:9961f5c, commit:0fd2e81, commit:d1225f9]
+updated: 2026-09-12
 ---
 
 # Telemetry Pipeline
@@ -51,4 +51,39 @@ When draining a WAL queue containing thousands of buffered historical readings, 
 ## 6. Downlink & Dashboard Consumption
 
 Data persisted in `temperature_data` and `ats_data` is served to the frontend SPA via `GET /api/devices/{id}/history`, which aggregates data into 1000 buckets using [concept-downsampling-v2.md](concept-downsampling-v2.md). The dashboard renders live updates using a 4-tier jittered polling architecture (`POLL_TIER2_ALERTS_MS = 6000` for live cards, `POLL_TIER3_PRESENCE_MS = 15000` for telemetry history, `POLL_TIER4_TRENDS_MS = 60000` for 6h sparklines) with cache harmony (`staleTime >= refetchInterval`, `keepPreviousData`), displaying 3-panel stacked electrical charts and dynamic min/max envelope bands without blanking or layout shifting.
+
+---
+
+## 7. Hardware Team Remote MQTT Ingestion & Testing Path
+
+Because edge nodes publish to the local Mosquitto broker running on the Raspberry Pi gateway (`10.33.102.10:1883`) and campus core firewall inter-VLAN routing isolates this subnet from wireless clients (`UGM-Hotspot` / `UGMSecure`), remote hardware engineers connect via an SSH local port forwarding tunnel:
+```bash
+ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30
+```
+- **Authentication**: Connects to `localhost:1883` using credentials `hubadmin` / `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`.
+- **Validation**: Permits injection of synthetic MQTT test messages (`hs109rs/ts/data`, `hs109rs/ats/data`) or real-time monitoring of raw ESP8266 traffic directly from off-campus developer machines.
+
+---
+
+## 8. Telemetry Cadence & Transmission Standards (Roadmap)
+
+To balance real-time transient detection fidelity against edge bandwidth consumption and database storage bloat, future firmware and edge updates must implement standard-compliant sampling and report-by-exception cadences (staged in [notes/telemetry-cadence.md](../notes/telemetry-cadence.md)):
+
+### 8.1 ASHRAE Guideline 36 (HVAC & Environmental Monitoring)
+- **Nominal Sampling Cadence**: 60 seconds (1 minute) for ambient temperature and relative humidity monitoring (`WEMOS_TS`).
+- **Dynamic Control Cadence**: 10 seconds during active closed-loop AC automation adjustments.
+- **Deadband Jitter Filter**: Sub-0.2°C temperature fluctuations and sub-1.0% relative humidity shifts are filtered at the microcontroller level before publishing.
+
+### 8.2 NFPA 110 Level 1 (Emergency & Standby Power Systems)
+- **Active Transient Run Cadence**: 1-second sampling during generator cranking, utility mains failure, and ATS contactor transfer events. High-frequency telemetry is essential to detect starter battery voltage drop (< 11.2V critical threshold) and generator voltage stabilization.
+- **Quiescent Standby Cadence**: 10s to 30s sampling when utility mains (PLN) is stable and the generator is stopped.
+
+### 8.3 Sparkplug B / Report-by-Exception (RBE)
+- **Exception-Based Publishing**: Nodes evaluate metric change against the previous published state and publish only when deviations exceed configured deadbands:
+  - $\Delta T \ge 0.2^\circ\text{C}$
+  - $\Delta RH \ge 1.0\%$
+  - $\Delta V_{AC} \ge 1.0\text{V}$ (PLN / Genset)
+  - $\Delta V_{DC} \ge 0.1\text{V}$ (Starter battery)
+- **Periodic Heartbeat (Max Quiescent Interval)**: If no deadband threshold is crossed within 60s (environmental) or 30s (ATS), the node emits a heartbeat frame to maintain presence and update `last_seen` in HubGate.
+
 

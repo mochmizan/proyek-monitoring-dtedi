@@ -22,7 +22,8 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 | **Misc** | `browser_test.mjs`, `generate_mosquitto_passwd.py` | Playwright headless login→dashboard (needs Vite `:5173`); Mosquitto PBKDF2 passwd |
 
 - Env-driven credentials: `MQTT_PASS`/`HUB_KEY`/`PI_PASSWORD` via env/args, error if missing, no hardcoded live defaults (since `afb9c46`); `verify_prod_env.py` banned-value literals are verifier fixtures only
-- Pi tooling defaults to `10.33.36.81` / `hubadmin` — override via args where provided
+- Pi tooling defaults to `10.33.36.81` / `hubadmin` (production: `10.33.102.10`) — override via args where provided
+- Remote Hardware & MQTT Access: Remote hardware team connects to Pi Mosquitto (`10.33.102.10:1883`, `hubadmin` / `414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`) via SSH tunnel `ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30` (user `genset`, password `genset123`). Campus WiFi (`UGM-Hotspot` / `UGMSecure`) cannot reach `10.33.102.10` or `10.33.102.172` directly due to DSSDI inter-VLAN firewall blocking; UGM VPN (`vpn.ugm.ac.id`) or Tailscale is required.
 - `setup_postgres_wsl.sh` opens `pg_hba.conf` to `0.0.0.0/0 md5` — WSL dev bootstrap only, never production
 
 ### Benchmark & Migration Tooling

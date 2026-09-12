@@ -1,8 +1,8 @@
 ---
 type: concept
 governed_by: AGENTS.md
-links: [wiki/entity-hubbrain-v5.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/entity-firmware-fleet.md, wiki/entity-hubgate-v5.md]
-sources: [hub/main.py, hub/requirements.txt, hub/test_edge_resilience.py, hub/AGENTS.md]
+links: [wiki/entity-hubbrain-v5.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/entity-firmware-fleet.md, wiki/entity-hubgate-v5.md, wiki/entity-devops-infrastructure.md]
+sources: [hub/main.py, hub/requirements.txt, hub/test_edge_resilience.py, hub/AGENTS.md, docs/PRODUCTION_DEPLOYMENT_GUIDE.md]
 updated: 2026-09-12
 ---
 
@@ -64,6 +64,8 @@ Each Raspberry Pi 4 edge gateway isolates traffic between two separate network s
    - Upstream link to central server (`HubGate V5`).
    - Static IP `10.33.102.10/24` via gateway `10.33.102.254`.
    - Synchronizes time with campus NTP server (`10.33.102.172`) using `chrony 4.8` to compensate for the Raspberry Pi's lack of a battery-backed hardware RTC.
+   - **Campus Inter-VLAN Isolation**: Inbound access from campus wireless networks (`UGM-Hotspot`, `UGMSecure`) is blocked by DSSDI core firewall inter-VLAN routing rules. Access requires DTEDI wired Ethernet, UGM Campus VPN (`vpn.ugm.ac.id`), or Tailscale.
+   - **Remote Hardware Testing Tunnel**: Off-campus or wireless hardware developers reach the Pi Mosquitto broker by establishing an SSH local forwarding tunnel through the central VPS (`ssh -N -L 1883:10.33.102.10:1883 genset@100.108.98.30`), authenticating on `localhost:1883` as `hubadmin` (`414d9d5949fd2a25f4860d7274c851891ed3551ef85bbf0ac57520bc9416c8e1`).
 
 ---
 
