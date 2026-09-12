@@ -80,6 +80,7 @@ def configure_logging():
         cfg["formatters"]["json"] = {
             "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
             "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+            "timestamp": "asctime",
         }
         cfg["handlers"]["default"]["formatter"] = "json"
 

@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """
 High-Throughput Streaming Migration Tool: SQLite to PostgreSQL 16
-SMSB HubGate V5 Infrastructure
+SMSB HubGate V5 Infrastructure (Phase 3 Cutover Pipeline)
 
 Features:
-- Server-side streaming SQLite cursor using chunked batches (default 20,000 rows).
-- Zero-memory-bloat pipeline (< 50MB RAM footprint).
+- Server-side streaming SQLite cursor using chunked batches (default 25,000 rows).
+- Memory-buffered streaming COPY (copy_expert) (< 45MB RAM footprint).
 - Strict type sanitization:
   * Timestamps: ISO strings/timestamps converted to timezone-aware UTC datetime.
   * Booleans: 0/1 integers converted to True/False.
   * JSON fields: JSONB validation and serialization.
-- Bypasses foreign key checks during load (SET session_replication_role = 'replica').
+- Pre-cutover session optimizations:
+  * SET session_replication_role = 'replica';
+  * SET synchronous_commit = off;
+  * SET maintenance_work_mem = '256MB';
+- Secondary index deferral on telemetry tables (data_table, temperature_data, ats_data):
+  * Temporarily drops secondary B-Tree and BRIN indexes prior to streaming.
+  * Rebuilds indexes in sequential heap scan passes after data load.
+- Automatic partition routing in PostgreSQL 16 parent tables.
 - Sequence resynchronization: setval for all serial/identity columns.
 - Table parity verification report comparing source SQLite and target PostgreSQL row counts.
 - Dry-run validation mode (--dry-run).
 """
 
 import argparse
+import csv
 import datetime
+import io
 import json
 import logging
 import os
@@ -227,6 +236,154 @@ def sanitize_row(row: Tuple[Any, ...], col_types: List[str], wrap_psycopg_json: 
     return tuple(sanitized)
 
 
+def format_csv_value(val: Any) -> str:
+    """Format a sanitized value for PostgreSQL CSV COPY with NULL '\\N'."""
+    if val is None:
+        return r"\N"
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, datetime.datetime):
+        return val.isoformat()
+    return str(val)
+
+
+def stream_copy_chunk(
+    cur_pg: Any,
+    copy_sql: str,
+    batch: List[Tuple[Any, ...]],
+    col_types: List[str],
+) -> None:
+    """Stream a batch of SQLite rows into PostgreSQL using copy_expert and an in-memory CSV buffer (< 45MB RAM)."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
+    for row in batch:
+        sanitized = sanitize_row(row, col_types, wrap_psycopg_json=False)
+        writer.writerow([format_csv_value(v) for v in sanitized])
+    buf.seek(0)
+    cur_pg.copy_expert(copy_sql, buf)
+    buf.close()
+
+
+def ensure_if_not_exists(ddl: str) -> str:
+    """Ensure a CREATE INDEX statement contains IF NOT EXISTS to prevent collision."""
+    ddl_clean = ddl.strip()
+    ddl_upper = ddl_clean.upper()
+    if "IF NOT EXISTS" in ddl_upper:
+        return ddl_clean
+    if ddl_upper.startswith("CREATE UNIQUE INDEX "):
+        return "CREATE UNIQUE INDEX IF NOT EXISTS " + ddl_clean[len("CREATE UNIQUE INDEX ") :]
+    if ddl_upper.startswith("CREATE INDEX "):
+        return "CREATE INDEX IF NOT EXISTS " + ddl_clean[len("CREATE INDEX ") :]
+    return ddl_clean
+
+
+TELEMETRY_SECONDARY_INDEXES: Dict[str, List[Tuple[str, str]]] = {
+    "data_table": [
+        (
+            "ix_data_table_dev_ts_desc",
+            'CREATE INDEX IF NOT EXISTS ix_data_table_dev_ts_desc ON "data_table" ("dev_id", "timestamp" DESC);',
+        ),
+        (
+            "idx_data_table_ts_brin",
+            'CREATE INDEX IF NOT EXISTS idx_data_table_ts_brin ON "data_table" USING brin ("timestamp") WITH (pages_per_range = 32, autosummarize = true);',
+        ),
+    ],
+    "temperature_data": [
+        (
+            "idx_temp_dev_timestamp",
+            'CREATE INDEX IF NOT EXISTS idx_temp_dev_timestamp ON "temperature_data" ("dev_id", "timestamp" DESC);',
+        ),
+        (
+            "idx_temp_ts_brin",
+            'CREATE INDEX IF NOT EXISTS idx_temp_ts_brin ON "temperature_data" USING brin ("timestamp") WITH (pages_per_range = 32, autosummarize = true);',
+        ),
+    ],
+    "ats_data": [
+        (
+            "idx_ats_dev_timestamp",
+            'CREATE INDEX IF NOT EXISTS idx_ats_dev_timestamp ON "ats_data" ("dev_id", "timestamp" DESC);',
+        ),
+        (
+            "idx_ats_ts_brin",
+            'CREATE INDEX IF NOT EXISTS idx_ats_ts_brin ON "ats_data" USING brin ("timestamp") WITH (pages_per_range = 32, autosummarize = true);',
+        ),
+    ],
+}
+
+
+def drop_telemetry_secondary_indexes(pg_conn: Any) -> Dict[str, List[Tuple[str, str]]]:
+    """
+    Temporarily drop secondary B-Tree and BRIN indexes on telemetry tables prior to data streaming.
+    Returns a dictionary mapping table_name -> list of (index_name, create_index_sql).
+    Excludes primary key and unique constraint indexes.
+    """
+    deferred: Dict[str, List[Tuple[str, str]]] = {}
+    with pg_conn.cursor() as cur:
+        for tbl in ("data_table", "temperature_data", "ats_data"):
+            tbl_indexes: List[Tuple[str, str]] = []
+            try:
+                cur.execute(
+                    """
+                    SELECT c.relname AS index_name,
+                           pg_get_indexdef(c.oid) AS index_def
+                    FROM pg_index i
+                    JOIN pg_class c ON c.oid = i.indexrelid
+                    JOIN pg_class t ON t.oid = i.indrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND t.relname = %s
+                      AND NOT i.indisprimary
+                      AND NOT i.indisunique;
+                    """,
+                    (tbl,),
+                )
+                for idx_name, idx_def in cur.fetchall():
+                    tbl_indexes.append((idx_name, idx_def))
+            except Exception as ex:
+                logger.debug(f"Could not inspect existing secondary indexes for {tbl}: {ex}")
+
+            # Merge with known canonical definitions if not found in pg_class
+            found_names = {name for name, _ in tbl_indexes}
+            if tbl in TELEMETRY_SECONDARY_INDEXES:
+                for canon_name, canon_ddl in TELEMETRY_SECONDARY_INDEXES[tbl]:
+                    if canon_name not in found_names:
+                        tbl_indexes.append((canon_name, canon_ddl))
+
+            # Drop each discovered or canonical index
+            for idx_name, _ in tbl_indexes:
+                logger.info(f"  [-] Deferring index {idx_name} on {tbl} (dropping prior to streaming)...")
+                try:
+                    cur.execute(f'DROP INDEX IF EXISTS "{idx_name}";')
+                except Exception as ex:
+                    logger.warning(f"  [-] Failed to drop index {idx_name} on {tbl}: {ex}")
+
+            if tbl_indexes:
+                deferred[tbl] = tbl_indexes
+
+    pg_conn.commit()
+    return deferred
+
+
+def rebuild_telemetry_secondary_indexes(pg_conn: Any, deferred_indexes: Dict[str, List[Tuple[str, str]]]) -> int:
+    """
+    Rebuild dropped secondary B-Tree and BRIN indexes after streaming in a sequential heap scan pass.
+    Returns the count of successfully rebuilt indexes.
+    """
+    rebuilt_count = 0
+    with pg_conn.cursor() as cur:
+        for tbl, idx_list in deferred_indexes.items():
+            for idx_name, idx_ddl in idx_list:
+                safe_ddl = ensure_if_not_exists(idx_ddl)
+                logger.info(f"  [+] Rebuilding deferred index {idx_name} on {tbl}...")
+                try:
+                    cur.execute(safe_ddl)
+                    rebuilt_count += 1
+                except Exception as ex:
+                    logger.warning(f"  [-] Failed to rebuild index {idx_name} on {tbl}: {ex}")
+    pg_conn.commit()
+    return rebuilt_count
+
+
 def get_sqlite_tables(sqlite_conn) -> List[str]:
     """List all user tables in SQLite database."""
     cur = sqlite_conn.cursor()
@@ -289,7 +446,7 @@ def resync_postgres_sequences(pg_conn) -> int:
 def execute_migration(
     sqlite_path: str,
     pg_url: Optional[str],
-    batch_size: int = 20000,
+    batch_size: int = 25000,
     dry_run: bool = False,
     truncate: bool = True,
 ) -> bool:
@@ -352,7 +509,6 @@ def execute_migration(
 
         try:
             import psycopg2
-            from psycopg2.extras import execute_values
         except ImportError:
             logger.error("psycopg2 is required for PostgreSQL ingestion. Install via 'pip install psycopg2-binary'.")
             sqlite_conn.close()
@@ -368,6 +524,7 @@ def execute_migration(
             sqlite_conn.close()
             return False
 
+    deferred_indexes: Dict[str, List[Tuple[str, str]]] = {}
     parity_results: List[Dict[str, Any]] = []
     start_time = time.time()
     all_success = True
@@ -378,7 +535,7 @@ def execute_migration(
             with pg_conn.cursor() as cur:
                 cur.execute("SET session_replication_role = 'replica';")
                 cur.execute("SET synchronous_commit = off;")
-                cur.execute("SET maintenance_work_mem = '512MB';")
+                cur.execute("SET maintenance_work_mem = '256MB';")
             pg_conn.commit()
 
             if truncate:
@@ -387,10 +544,14 @@ def execute_migration(
                 with pg_conn.cursor() as cur:
                     for tbl in target_tables:
                         try:
-                            cur.execute(f"TRUNCATE TABLE {tbl} CASCADE;")
+                            cur.execute(f'TRUNCATE TABLE "{tbl}" CASCADE;')
                         except Exception as ex:
                             logger.warning(f"Could not truncate {tbl} (may not exist yet): {ex}")
                 pg_conn.commit()
+
+            # Secondary index deferral: temporarily drop secondary B-Tree and BRIN indexes prior to streaming
+            logger.info("Deferring secondary B-Tree and BRIN indexes on telemetry tables...")
+            deferred_indexes = drop_telemetry_secondary_indexes(pg_conn)
 
         # Iterate tables and stream data
         for sqlite_tbl, pg_tbl in tables_to_migrate:
@@ -401,7 +562,7 @@ def execute_migration(
             source_count = cur_sqlite.fetchone()[0]
 
             if not pg_conn:
-                # Dry-Run Mode
+                # Dry-Run Mode: validate type sanitization and CSV encoding pipeline
                 logger.info(f"Dry-run: Reading {source_count} rows from {sqlite_tbl} in batches of {batch_size}...")
                 cols_str = ", ".join(sqlite_cols)
                 cur_sqlite.execute(f"SELECT {cols_str} FROM {sqlite_tbl};")
@@ -417,8 +578,14 @@ def execute_migration(
                     batch = cur_sqlite.fetchmany(batch_size)
                     if not batch:
                         break
+                    buf = io.StringIO()
+                    writer = csv.writer(buf, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
                     for row in batch:
-                        _ = sanitize_row(row, col_types, wrap_psycopg_json=False)
+                        sanitized = sanitize_row(row, col_types, wrap_psycopg_json=False)
+                        writer.writerow([format_csv_value(v) for v in sanitized])
+                    buf.seek(0)
+                    _ = buf.read()
+                    buf.close()
                     processed_rows += len(batch)
 
                 cur_sqlite.close()
@@ -432,9 +599,7 @@ def execute_migration(
                 logger.info(f"Dry-run validated {processed_rows}/{source_count} rows for {sqlite_tbl} successfully.")
                 continue
 
-            # Live PostgreSQL Ingestion
-            from psycopg2.extras import execute_values
-
+            # Live PostgreSQL Ingestion via High-Speed Streaming COPY
             pg_cols = get_pg_columns(pg_conn, pg_tbl)
             if not pg_cols:
                 logger.warning(f"Target table {pg_tbl} does not exist in PostgreSQL. Skipping.")
@@ -462,7 +627,7 @@ def execute_migration(
                 col_types.append(get_column_sanitizer_type(c, pg_tbl, model_col))
 
             cols_quoted = ", ".join(f'"{c}"' for c in common_cols)
-            insert_sql = f'INSERT INTO "{pg_tbl}" ({cols_quoted}) VALUES %s'
+            copy_sql = f'COPY "{pg_tbl}" ({cols_quoted}) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL \'\\N\')'
 
             cur_sqlite.execute(f"SELECT {', '.join(common_cols)} FROM {sqlite_tbl};")
             inserted_count = 0
@@ -472,13 +637,10 @@ def execute_migration(
                     batch = cur_sqlite.fetchmany(batch_size)
                     if not batch:
                         break
-                    sanitized_batch = [
-                        sanitize_row(row, col_types, wrap_psycopg_json=True) for row in batch
-                    ]
-                    execute_values(cur_pg, insert_sql, sanitized_batch, page_size=2000)
+                    stream_copy_chunk(cur_pg, copy_sql, batch, col_types)
                     inserted_count += len(batch)
                     pct = (inserted_count / source_count * 100) if source_count > 0 else 100.0
-                    logger.info(f"  Ingested {inserted_count}/{source_count} rows ({pct:.1f}%) into {pg_tbl}")
+                    logger.info(f"  Streamed {inserted_count}/{source_count} rows ({pct:.1f}%) into {pg_tbl}")
 
             pg_conn.commit()
             cur_sqlite.close()
@@ -501,14 +663,21 @@ def execute_migration(
 
         # Post-migration procedures for PostgreSQL
         if pg_conn:
+            # Rebuild deferred secondary indexes in sequential heap scan passes
+            if deferred_indexes:
+                logger.info("\n--- Rebuilding Deferred Telemetry Secondary Indexes ---")
+                rebuilt_count = rebuild_telemetry_secondary_indexes(pg_conn, deferred_indexes)
+                logger.info(f"Successfully rebuilt {rebuilt_count} deferred secondary index(es).")
+                deferred_indexes = {}
+
             logger.info("\n--- Post-Migration Maintenance ---")
             # 1. Resynchronize sequences
             logger.info("Resynchronizing serial sequences...")
             resynced = resync_postgres_sequences(pg_conn)
             logger.info(f"Resynchronized {resynced} sequence(s).")
 
-            # 2. Re-enable foreign key constraints and triggers
-            logger.info("Restoring PostgreSQL session replication role to 'origin'...")
+            # 2. Re-enable foreign key constraints, triggers, and synchronous commit
+            logger.info("Restoring PostgreSQL session replication role to 'origin' and synchronous_commit to 'on'...")
             with pg_conn.cursor() as cur:
                 cur.execute("SET session_replication_role = 'origin';")
                 cur.execute("SET synchronous_commit = on;")
@@ -516,15 +685,15 @@ def execute_migration(
 
             # 3. VACUUM ANALYZE migrated tables
             logger.info("Running VACUUM ANALYZE on migrated tables...")
-            old_isolation = pg_conn.isolation_level
-            pg_conn.set_isolation_level(0)  # autocommit mode required for VACUUM
+            old_autocommit = pg_conn.autocommit
+            pg_conn.autocommit = True
             with pg_conn.cursor() as cur:
                 for _, pg_tbl in tables_to_migrate:
                     try:
                         cur.execute(f'VACUUM ANALYZE "{pg_tbl}";')
                     except Exception as ex:
                         logger.debug(f"VACUUM ANALYZE on {pg_tbl} skipped: {ex}")
-            pg_conn.set_isolation_level(old_isolation)
+            pg_conn.autocommit = old_autocommit
 
     except Exception as ex:
         logger.error(f"Migration aborted due to error: {ex}", exc_info=True)
@@ -532,8 +701,18 @@ def execute_migration(
         if pg_conn:
             try:
                 pg_conn.rollback()
+            except Exception:
+                pass
+            if deferred_indexes:
+                try:
+                    logger.info("Attempting to rebuild deferred secondary indexes following error...")
+                    rebuild_telemetry_secondary_indexes(pg_conn, deferred_indexes)
+                except Exception as reb_ex:
+                    logger.warning(f"Could not rebuild deferred indexes during cleanup: {reb_ex}")
+            try:
                 with pg_conn.cursor() as cur:
                     cur.execute("SET session_replication_role = 'origin';")
+                    cur.execute("SET synchronous_commit = on;")
                 pg_conn.commit()
             except Exception:
                 pass
@@ -542,6 +721,7 @@ def execute_migration(
             try:
                 with pg_conn.cursor() as cur:
                     cur.execute("SET session_replication_role = 'origin';")
+                    cur.execute("SET synchronous_commit = on;")
                 pg_conn.commit()
             except Exception:
                 pass
@@ -592,8 +772,8 @@ def main():
         "--batch-size",
         dest="batch_size",
         type=int,
-        default=20000,
-        help="Streaming batch size per cursor fetch (default: 20000)",
+        default=25000,
+        help="Streaming batch size per cursor fetch (default: 25000)",
     )
     parser.add_argument(
         "--dry-run",

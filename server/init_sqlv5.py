@@ -149,11 +149,92 @@ def try_alembic_upgrade(bind_engine=None):
         logging.warning(f"Alembic upgrade skipped/fallback: {e}")
     return False
 
+def migrate_telemetry_composite_pks(bind_engine=None):
+    """Ensures composite primary keys (data_id, timestamp) on telemetry tables under SQLite."""
+    target_engine = bind_engine or engine
+    if target_engine.dialect.name != "sqlite":
+        return
+    inspector = inspect(target_engine)
+    existing_tables = set(inspector.get_table_names())
+
+    table_schemas = {
+        "data_table": """
+            CREATE TABLE data_table__pk_mig (
+                data_id VARCHAR NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                dev_id VARCHAR REFERENCES dev_table(dev_id) ON DELETE CASCADE,
+                dev_name VARCHAR,
+                payload TEXT,
+                PRIMARY KEY (data_id, timestamp),
+                CONSTRAINT uq_data_dev_timestamp UNIQUE (dev_id, timestamp)
+            );
+            INSERT INTO data_table__pk_mig (data_id, timestamp, dev_id, dev_name, payload)
+                SELECT data_id, timestamp, dev_id, dev_name, payload FROM data_table;
+            DROP TABLE data_table;
+            ALTER TABLE data_table__pk_mig RENAME TO data_table;
+        """,
+        "temperature_data": """
+            CREATE TABLE temperature_data__pk_mig (
+                data_id VARCHAR NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                dev_id VARCHAR NOT NULL REFERENCES dev_table(dev_id) ON DELETE CASCADE,
+                temp FLOAT,
+                humid FLOAT,
+                PRIMARY KEY (data_id, timestamp),
+                CONSTRAINT uq_temp_dev_timestamp UNIQUE (dev_id, timestamp)
+            );
+            INSERT INTO temperature_data__pk_mig (data_id, timestamp, dev_id, temp, humid)
+                SELECT data_id, timestamp, dev_id, temp, humid FROM temperature_data;
+            DROP TABLE temperature_data;
+            ALTER TABLE temperature_data__pk_mig RENAME TO temperature_data;
+        """,
+        "ats_data": """
+            CREATE TABLE ats_data__pk_mig (
+                data_id VARCHAR NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                dev_id VARCHAR NOT NULL REFERENCES dev_table(dev_id) ON DELETE CASCADE,
+                state VARCHAR NOT NULL,
+                pln FLOAT NOT NULL DEFAULT 0.0,
+                genset FLOAT NOT NULL DEFAULT 0.0,
+                aki FLOAT NOT NULL DEFAULT 0.0,
+                rem_hour FLOAT NOT NULL DEFAULT 0.0,
+                rem_min FLOAT NOT NULL DEFAULT 0.0,
+                rem_sec FLOAT NOT NULL DEFAULT 0.0,
+                auto_mode BOOLEAN NOT NULL DEFAULT 0,
+                emergency BOOLEAN NOT NULL DEFAULT 0,
+                PRIMARY KEY (data_id, timestamp),
+                CONSTRAINT uq_ats_dev_timestamp UNIQUE (dev_id, timestamp)
+            );
+            INSERT INTO ats_data__pk_mig (data_id, timestamp, dev_id, state, pln, genset, aki, rem_hour, rem_min, rem_sec, auto_mode, emergency)
+                SELECT data_id, timestamp, dev_id, state, pln, genset, aki, rem_hour, rem_min, rem_sec, auto_mode, emergency FROM ats_data;
+            DROP TABLE ats_data;
+            ALTER TABLE ats_data__pk_mig RENAME TO ats_data;
+        """,
+    }
+
+    with target_engine.begin() as conn:
+        for tbl, sql in table_schemas.items():
+            if tbl in existing_tables:
+                pk = inspector.get_pk_constraint(tbl)
+                if "timestamp" not in pk.get("constrained_columns", []):
+                    logging.info(f"Migrasi: Memperbarui primary key {tbl} menjadi composite (data_id, timestamp)...")
+                    for stmt in sql.strip().split(";"):
+                        stmt = stmt.strip()
+                        if stmt:
+                            conn.execute(text(stmt))
+                    logging.info(f"Migrasi: Composite PK pada {tbl} BERHASIL.")
+
 def migrate_indexes(bind_engine=None):
     """Ensures composite indexes exist on target tables as an additive fallback."""
     target_engine = bind_engine or engine
     inspector = inspect(target_engine)
     existing_tables = set(inspector.get_table_names())
+    is_pg = target_engine.dialect.name == "postgresql"
+
+    if is_pg:
+        brin_opts = "USING brin (timestamp) WITH (pages_per_range = 32, autosummarize = true)"
+    else:
+        brin_opts = "(timestamp)"
 
     indexes_to_create = [
         ("event_log", "ix_event_log_dev_metric_ts", "CREATE INDEX IF NOT EXISTS ix_event_log_dev_metric_ts ON event_log (dev_id, metric, timestamp DESC)"),
@@ -166,6 +247,11 @@ def migrate_indexes(bind_engine=None):
         ("pending_commands", "ix_pending_commands_hub_status_created", "CREATE INDEX IF NOT EXISTS ix_pending_commands_hub_status_created ON pending_commands (hub_id, status, created_at)"),
         ("data_table", "ix_data_table_dev_ts_desc", "CREATE INDEX IF NOT EXISTS ix_data_table_dev_ts_desc ON data_table (dev_id, timestamp DESC)"),
         ("sessions", "ix_sessions_user_expires", "CREATE INDEX IF NOT EXISTS ix_sessions_user_expires ON sessions (user_id, expires_at)"),
+        ("temperature_data", "idx_temp_dev_timestamp", "CREATE INDEX IF NOT EXISTS idx_temp_dev_timestamp ON temperature_data (dev_id, timestamp DESC)"),
+        ("ats_data", "idx_ats_dev_timestamp", "CREATE INDEX IF NOT EXISTS idx_ats_dev_timestamp ON ats_data (dev_id, timestamp DESC)"),
+        ("data_table", "idx_data_table_ts_brin", f"CREATE INDEX IF NOT EXISTS idx_data_table_ts_brin ON data_table {brin_opts}"),
+        ("temperature_data", "idx_temp_ts_brin", f"CREATE INDEX IF NOT EXISTS idx_temp_ts_brin ON temperature_data {brin_opts}"),
+        ("ats_data", "idx_ats_ts_brin", f"CREATE INDEX IF NOT EXISTS idx_ats_ts_brin ON ats_data {brin_opts}"),
         ("temperature_data", "uq_temp_dev_timestamp", "CREATE UNIQUE INDEX IF NOT EXISTS uq_temp_dev_timestamp ON temperature_data (dev_id, timestamp)"),
         ("ats_data", "uq_ats_dev_timestamp", "CREATE UNIQUE INDEX IF NOT EXISTS uq_ats_dev_timestamp ON ats_data (dev_id, timestamp)"),
         ("data_table", "uq_data_dev_timestamp", "CREATE UNIQUE INDEX IF NOT EXISTS uq_data_dev_timestamp ON data_table (dev_id, timestamp)"),
@@ -195,6 +281,7 @@ def init_db(bind_engine=None):
         # Jalankan migrasi kolom sebelum create_all agar kolom yang ada di-rename / ditambahkan terlebih dahulu
         migrate_dev_table_hub_name_to_hub_id(target_engine)
         migrate_additive_columns(target_engine)
+        migrate_telemetry_composite_pks(target_engine)
 
         logging.info("Memulai pembuatan / verifikasi tabel V5 di database...")
         Base.metadata.create_all(bind=target_engine)

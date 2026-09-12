@@ -290,7 +290,7 @@ def test_single_iot_ingestion_atomic():
         "X-Hub-ID": "HUB_P4_01",
         "X-Hub-Key": "secret_key_p4_hub1",
     }
-    ts_epoch = 1725280100.0
+    ts_epoch = time.time() - 3600.0
 
     # 1. Ingest TSData
     ts_payload = {
@@ -376,7 +376,7 @@ def test_batch_iot_ingestion_success():
         "X-Hub-ID": "HUB_P4_01",
         "X-Hub-Key": "secret_key_p4_hub1",
     }
-    base_ts = 1725281000.0
+    base_ts = time.time() - 1800.0
     items = []
 
     # 50 TS items spaced 10 seconds apart
@@ -442,7 +442,7 @@ def test_batch_idempotency_and_deduplication():
         "X-Hub-ID": "HUB_P4_01",
         "X-Hub-Key": "secret_key_p4_hub1",
     }
-    base_ts = 1725283000.0
+    base_ts = time.time() - 1200.0
     items = [
         {
             "HUB_NAME": "HUB_P4_01",
@@ -491,7 +491,7 @@ def test_batch_unapproved_devices_ignored():
         "X-Hub-ID": "HUB_P4_01",
         "X-Hub-Key": "secret_key_p4_hub1",
     }
-    base_ts = 1725284000.0
+    base_ts = time.time() - 900.0
     items = [
         # 2 approved items
         {
@@ -556,7 +556,7 @@ def test_batch_alert_storm_suppression():
     finally:
         db.close()
 
-    base_ts = 1725285000.0
+    base_ts = time.time() - 600.0
     # 10 readings with rising temperatures exceeding warning (28C) and critical (32C)
     items = [
         {
@@ -595,7 +595,7 @@ def test_batch_partial_payloads_resilience():
         "X-Hub-ID": "HUB_P4_01",
         "X-Hub-Key": "secret_key_p4_hub1",
     }
-    base_ts = 1725286000.0
+    base_ts = time.time() - 300.0
     items = [
         # TSData with HUMID=None
         {
@@ -630,7 +630,7 @@ def test_batch_timestamp_preservation():
         "X-Hub-ID": "HUB_P4_01",
         "X-Hub-Key": "secret_key_p4_hub1",
     }
-    target_ts = 1725287123.456
+    target_ts = round(time.time() - 100.0, 3)
     items = [
         {
             "HUB_NAME": "HUB_P4_01",
@@ -668,8 +668,8 @@ def test_subsecond_precision_no_collision():
         "X-Hub-ID": "HUB_P4_01",
         "X-Hub-Key": "secret_key_p4_hub1",
     }
-    t_base = 1725288000.100
-    t_plus_100ms = 1725288000.200
+    t_base = round(time.time() - 50.0, 3)
+    t_plus_100ms = t_base + 0.1
 
     items = [
         {

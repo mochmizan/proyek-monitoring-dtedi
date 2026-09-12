@@ -97,6 +97,50 @@ if [[ "${ASSUME_YES}" != true ]]; then
 fi
 
 # ------------------------------------------------------------------------------
+# 0. Active Swap Space Check & Provisioning (< 1GB -> 2GB /swapfile)
+# ------------------------------------------------------------------------------
+log "Checking active swap memory..."
+swap_active_bytes=0
+if command -v swapon >/dev/null 2>&1; then
+    while read -r sz; do
+        if [[ "${sz}" =~ ^[0-9]+$ ]]; then
+            swap_active_bytes=$(( swap_active_bytes + sz ))
+        fi
+    done < <(swapon --show=SIZE --bytes --noheadings 2>/dev/null || swapon --show --bytes --noheadings 2>/dev/null | awk '{print $3}' || true)
+fi
+
+# Fallback to /proc/meminfo if swapon produced no numbers
+if [[ "${swap_active_bytes}" -eq 0 ]] && [[ -f /proc/meminfo ]]; then
+    swap_kb=$(awk '/SwapTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    if [[ "${swap_kb}" =~ ^[0-9]+$ ]]; then
+        swap_active_bytes=$(( swap_kb * 1024 ))
+    fi
+fi
+
+ONE_GB_BYTES=1073741824
+if [[ "${swap_active_bytes}" -lt "${ONE_GB_BYTES}" ]]; then
+    warn "Active swap is $(( swap_active_bytes / 1024 / 1024 ))MB (< 1GB threshold). Provisioning 2GB /swapfile..."
+    if [[ ! -f /swapfile ]]; then
+        log "Allocating 2GB swapfile at /swapfile..."
+        run "fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none"
+        run "chmod 600 /swapfile"
+        run "mkswap /swapfile"
+    else
+        log "Existing /swapfile found; securing permissions..."
+        run "chmod 600 /swapfile"
+    fi
+    log "Activating swapfile..."
+    run "swapon /swapfile || true"
+    if ! grep -q '^/swapfile' /etc/fstab 2>/dev/null; then
+        log "Appending /swapfile to /etc/fstab for persistence across reboots"
+        run "bash -c 'echo \"/swapfile none swap sw 0 0\" >> /etc/fstab'"
+    fi
+    ok "2GB swap space provisioned and activated."
+else
+    ok "Active swap is $(( swap_active_bytes / 1024 / 1024 ))MB (>= 1GB threshold)."
+fi
+
+# ------------------------------------------------------------------------------
 # 1. Bare repository
 # ------------------------------------------------------------------------------
 if [[ -d "${BARE_REPO}" ]]; then
@@ -200,6 +244,14 @@ while read -r oldrev newrev ref; do
             echo "[post-receive] Aborting deployment without modifying running service."
             exit 1
         fi
+
+        echo "[post-receive] pre-flight: applying database migrations (alembic upgrade head)..."
+        if ! ( cd "${DEPLOY_WORK_TREE}/server" && "${VENV_DIR}/bin/python" -m alembic upgrade head ); then
+            echo "[post-receive] FATAL: Database migration failed (alembic upgrade head). Reverting work tree to ${oldrev}..."
+            ( cd "${DEPLOY_WORK_TREE}" && git reset --hard "${oldrev}" )
+            echo "[post-receive] Aborting deployment without modifying running service."
+            exit 1
+        fi
     else
         echo "[post-receive] NOTE: no python at ${VENV_DIR}/bin/python, skipping python pre-flight"
     fi
@@ -211,6 +263,7 @@ while read -r oldrev newrev ref; do
         # Use nvm Node 22 if available (Vite 8 requires Node 20.19+/22), else fallback to system npm with engine-strict false
         if [ -s "$HOME/.nvm/nvm.sh" ]; then \. "$HOME/.nvm/nvm.sh" && nvm use 22 >/dev/null 2>&1 || true; fi
         npm config set engine-strict false >/dev/null 2>&1 || true
+        export NODE_OPTIONS="--max-old-space-size=512"
 
         spa_build_ok=0
         if ( cd "${SPA_DIR}" && npm ci --ignore-engines && npm run build --ignore-engines ); then

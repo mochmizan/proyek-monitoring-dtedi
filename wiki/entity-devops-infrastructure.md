@@ -173,10 +173,14 @@ When a developer runs `git push prod main`:
 1. **Branch Gate**: Non-main refs are ignored.
 2. **Work Tree Sync & Old Revision Capture**: Captures the current HEAD revision (`oldrev=$(cd "${DEPLOY_WORK_TREE}" && git rev-parse HEAD)`), clears Git environment variables, and executes `git fetch origin main && git reset --hard origin/main` in `/opt/smsb`.
 3. **Python Dependency Sync**: Executes `/opt/smsb/venv/bin/pip install --quiet -r server/requirements.txt`.
-4. **Pre-Flight Syntax & Import Gating**:
+4. **Pre-Flight Syntax, Import & Migration Gating**:
    - Compiles all Python source files via `python -m compileall -q "${DEPLOY_WORK_TREE}/server"`. On syntax compilation error, the hook immediately reverts the work tree via `git reset --hard "${oldrev}"` and aborts without touching the running service.
    - Verifies canonical application import via `python -c "from app.main import api"`. On import failure, the hook immediately reverts the work tree via `git reset --hard "${oldrev}"` and aborts without touching the running service.
-5. **Gated SPA Compilation**: Invokes NVM Node 22 (`npm ci --ignore-engines && npm run build --ignore-engines`) in `/opt/smsb/dashboard`. Only syncs assets to `/var/www/gui-app/` if the build exits with 0.
+   - Executes database migration gate via `python -m alembic upgrade head`. If schema migration fails, the hook automatically rolls back the work tree via `git reset --hard "${oldrev}"` and aborts deployment, preventing schema corruption and maintaining uptime.
+5. **Gated SPA Compilation & Memory Protection**:
+   - Exports `NODE_OPTIONS="--max-old-space-size=512"` to prevent Node/Vite from exhausting physical RAM on the 1GB VPS.
+   - Automatically checks active swap space during bootstrap (`setup_push_deploy.sh`); if active swap < 1GB, provisions and activates a 2GB `/swapfile` persisted in `/etc/fstab`.
+   - Invokes NVM Node 22 (`npm ci --ignore-engines && npm run build --ignore-engines`) in `/opt/smsb/dashboard`. Only syncs assets to `/var/www/gui-app/` if the build exits with 0.
 6. **Daemon Restart**: Invokes `sudo -n systemctl restart smsb-api.service`.
 7. **Post-Deploy Smoke Verification**:
    - Polling check: `https://127.0.0.1/api/auth/me` must return `HTTP 401 Unauthorized`.
@@ -195,8 +199,9 @@ Mandatory gate required prior to edge hardware updates or kernel modifications:
 - **Remote Automation (`tools/run_pi_backup.py`)**: Uses Paramiko to stage the backup script over SFTP, execute it with root privileges, download the archive and checksum off-device, and verify SHA256 integrity locally.
 
 ### Central Server Disaster Recovery & Migration Pipeline
-- **SQLite-to-PostgreSQL 16 Streaming Migration (`tools/migrate_sqlite_to_postgres.py`)**: Dedicated low-memory streaming ETL tool migrating historical telemetry, configuration, and relational entities from SQLite 3 WAL to PostgreSQL 16. Validated via `--dry-run` and live parity check reporting.
-- **PostgreSQL Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Comprehensive operational runbook detailing pre-flight checks, T-0 WAL truncation (`PRAGMA wal_checkpoint(TRUNCATE)`), read-only service freeze, streaming migration execution, and verification under a $\le 3\text{ minute}$ maintenance window.
+- **SQLite-to-PostgreSQL 16 Streaming Migration (`tools/migrate_sqlite_to_postgres.py`)**: Dedicated low-memory streaming ETL tool migrating historical telemetry, configuration, and relational entities from SQLite 3 WAL to PostgreSQL 16 using memory-buffered `COPY FROM STDIN` (< 45MB RAM) and secondary index deferral. Validated via `--dry-run` and live parity check reporting.
+- **PostgreSQL Cutover Runbook (`docs/runbooks/postgres_cutover_runbook.md`)**: Comprehensive operational runbook detailing pre-flight checks, 1GB VPS engine tuning, T-0 WAL truncation (`PRAGMA wal_checkpoint(TRUNCATE)`), read-only service freeze, streaming migration execution, and partition verification under a $\le 3\text{ minute}$ maintenance window.
+- **Field Node ATS Remediation Runbook (`docs/runbooks/field_node_ats_remediation.md`)**: Electrical and firmware recovery runbook addressing ~55V floating induced voltage, safety LOTO/PPE procedures, terminal block torquing, and on-site serial flashing for Arduino Pro Mini and Wemos D1 Mini to eliminate the EMERGENCY reset loop on node `68:C6:3A:D7:60:47`.
 - **Automated Backup Posture**: Nightly cron executing `pg_dump` with SHA256 verification and off-site cloud storage replication (`tools/backup_vps.sh`).
 
 ### Production Credential Rotation Harness (`tools/rotate_credentials.py`)

@@ -140,8 +140,8 @@ python init_sqlv5.py
 # 7. JALANKAN UVICORN
 HOST="127.0.0.1"
 PORT="8000"
-WORKERS=4
+WORKERS=1
 
 echo -e "${GREEN}[SERVER] HubGate V5 aktif di https://$SERVER_IP via Nginx Same-Origin Proxy${NC}"
-uvicorn app.main:api --host "$HOST" --port "$PORT" --workers "$WORKERS"
+uvicorn app.main:api --host "$HOST" --port "$PORT" --workers "$WORKERS" --limit-concurrency 50
 

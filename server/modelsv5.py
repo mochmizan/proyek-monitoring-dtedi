@@ -92,10 +92,9 @@ class data_table(Base):
     __tablename__ = "data_table"
 
     data_id = Column(String, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), primary_key=True, default=lambda: datetime.now(UTC))
     dev_id = Column(String, ForeignKey("dev_table.dev_id", ondelete="CASCADE"))
     dev_name = Column(String)
-    
-    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     payload = Column(JSON_TYPE)
 
     # Relationship to dev_table
@@ -104,6 +103,13 @@ class data_table(Base):
     __table_args__ = (
         Index("ix_data_table_dev_ts_desc", "dev_id", text("timestamp DESC")),
         UniqueConstraint("dev_id", "timestamp", name="uq_data_dev_timestamp"),
+        Index(
+            "idx_data_table_ts_brin",
+            "timestamp",
+            postgresql_using="brin",
+            postgresql_with={"pages_per_range": 32, "autosummarize": True},
+        ),
+        {"postgresql_partition_by": "RANGE (timestamp)"},
     )
 
 
@@ -135,8 +141,8 @@ class temperature_data(Base):
     __tablename__ = "temperature_data"
 
     data_id = Column(String, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), primary_key=True, nullable=False)
     dev_id = Column(String, ForeignKey("dev_table.dev_id", ondelete="CASCADE"), nullable=False)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
     temp = Column(Float, nullable=True)
     humid = Column(Float, nullable=True)
 
@@ -144,8 +150,15 @@ class temperature_data(Base):
     device = relationship("dev_table", back_populates="temperature_records")
 
     __table_args__ = (
-        Index("idx_temp_dev_timestamp", "dev_id", timestamp.desc()),
+        Index("idx_temp_dev_timestamp", "dev_id", text("timestamp DESC")),
         UniqueConstraint("dev_id", "timestamp", name="uq_temp_dev_timestamp"),
+        Index(
+            "idx_temp_ts_brin",
+            "timestamp",
+            postgresql_using="brin",
+            postgresql_with={"pages_per_range": 32, "autosummarize": True},
+        ),
+        {"postgresql_partition_by": "RANGE (timestamp)"},
     )
 
 
@@ -153,8 +166,8 @@ class ats_data(Base):
     __tablename__ = "ats_data"
 
     data_id = Column(String, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), primary_key=True, nullable=False)
     dev_id = Column(String, ForeignKey("dev_table.dev_id", ondelete="CASCADE"), nullable=False)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
     state = Column(String, nullable=False)
     pln = Column(Float, nullable=False)
     genset = Column(Float, nullable=False)
@@ -169,8 +182,15 @@ class ats_data(Base):
     device = relationship("dev_table", back_populates="ats_records")
 
     __table_args__ = (
-        Index("idx_ats_dev_timestamp", "dev_id", timestamp.desc()),
+        Index("idx_ats_dev_timestamp", "dev_id", text("timestamp DESC")),
         UniqueConstraint("dev_id", "timestamp", name="uq_ats_dev_timestamp"),
+        Index(
+            "idx_ats_ts_brin",
+            "timestamp",
+            postgresql_using="brin",
+            postgresql_with={"pages_per_range": 32, "autosummarize": True},
+        ),
+        {"postgresql_partition_by": "RANGE (timestamp)"},
     )
 
 

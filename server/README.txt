@@ -87,7 +87,7 @@ HUB_KEY=rahasia_hub_01_xyz
    [Service]
    User=caslie
    WorkingDirectory=/home/caslie/SMRS/backend/v5
-   ExecStart=/home/caslie/SMRS/backend/v5/venv/bin/uvicorn hubgatev5:api --host 127.0.0.1 --port 8000 --workers 4
+   ExecStart=/home/caslie/SMRS/backend/v5/venv/bin/uvicorn hubgatev5:api --host 127.0.0.1 --port 8000 --workers 1 --limit-concurrency 50
    Restart=always
    RestartSec=5
    EnvironmentFile=/home/caslie/SMRS/backend/v5/.env

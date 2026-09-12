@@ -409,6 +409,18 @@ async def scheduler_lifespan(app):
         misfire_grace_time=300,
     )
 
+    # Register daily 02:15 AM partition maintenance job
+    from app.services.partition_manager import run_partition_maintenance
+    scheduler.add_job(
+        run_partition_maintenance,
+        trigger=CronTrigger(hour=2, minute=15, timezone=CANONICAL_TZ),
+        id="engine-partition-maintenance",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+
     try:
         scheduler.start()
         logger.info("APScheduler started")

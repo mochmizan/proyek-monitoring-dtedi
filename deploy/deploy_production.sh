@@ -195,16 +195,19 @@ if [[ -d "/etc/systemd/system" ]] && [[ "${RELOAD_SERVICE}" = true ]]; then
     cat << EOF > "${SYSTEMD_SERVICE_DEST}"
 [Unit]
 Description=HubGate V5 Central Server API (FastAPI/Uvicorn)
-After=network.target postgresql.service
+After=network-online.target postgresql.service
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=${SUDO_USER:-$(whoami)}
 WorkingDirectory=${SERVER_DIR}
 Environment="PATH=${SERVER_DIR}/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=${SERVER_DIR}/venv/bin/uvicorn app.main:api --host 127.0.0.1 --port 8000 --workers 4
+ExecStart=${SERVER_DIR}/venv/bin/python -m uvicorn app.main:api --host 127.0.0.1 --port 8000 --workers 1 --limit-concurrency 50 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=always
-RestartSec=3
+RestartSec=5
+MemoryHigh=650M
+MemoryMax=800M
 KillSignal=SIGTERM
 TimeoutStopSec=10
 LimitNOFILE=65536

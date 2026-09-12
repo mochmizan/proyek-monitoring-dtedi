@@ -16,18 +16,18 @@ All ORM entities live in `server/modelsv5.py`. The database architecture targets
   - Columns: `hub_id` (PK, String), `hub_name` (String, nullable=False), `hub_key` (String, nullable=False), `room` (String, nullable=True), `is_active` (Boolean, default=True), `created_at` (UTC datetime), `last_seen` (UTC datetime, nullable), `status` (String, default="offline").
 - `rooms`: Physical facility spaces mapped to floor plans.
   - Columns: `id` (PK, String), `name` (String, unique, nullable=False), `hub_id` (FK `hub_table.hub_id`, nullable), `floor_plan_image_path` (String, nullable), `created_at` (UTC datetime).
-- `temperature_data`: High-volume typed environmental readings (temperature and humidity) from TS and AC sensors.
-  - Columns: `data_id` (PK, deterministic UUID), `dev_id` (FK `dev_table.dev_id`, `nullable=False`), `timestamp` (UTC datetime, `nullable=False`), `temp` (Float, `nullable=True`), `humid` (Float, `nullable=True`).
-  - Indexing: Composite index `idx_temp_dev_timestamp(dev_id, timestamp DESC)` for fast history scanning.
-  - Constraints: `UniqueConstraint("dev_id", "timestamp", name="uq_temp_dev_timestamp")` for ingestion idempotency.
-- `ats_data`: High-volume typed electrical readings from Automatic Transfer Switch controllers.
-  - Columns: `data_id` (PK, deterministic UUID), `dev_id` (FK `dev_table.dev_id`, `nullable=False`), `timestamp` (UTC datetime, `nullable=False`), `state` (String), `pln` (Float), `genset` (Float), `aki` (Float starter battery DC), `rem_hour`, `rem_min`, `rem_sec`, `auto_mode` (Boolean), `emergency` (Boolean).
-  - Indexing: Composite index `idx_ats_dev_timestamp(dev_id, timestamp DESC)`.
-  - Constraints: `UniqueConstraint("dev_id", "timestamp", name="uq_ats_dev_timestamp")`.
-- `data_table`: Legacy raw-JSON telemetry ingest path.
-  - Columns: `data_id` (PK), `dev_id` (FK `dev_table.dev_id`), `dev_name`, `timestamp` (UTC datetime), `payload` (JSON).
-  - Indexing: `ix_data_table_dev_ts_desc(dev_id, timestamp DESC)`.
-  - Constraints: `UniqueConstraint("dev_id", "timestamp", name="uq_data_dev_timestamp")`.
+- `temperature_data`: High-volume typed environmental readings (temperature and humidity) from TS and AC sensors. Partitioned by `RANGE (timestamp)` in PostgreSQL 16.
+  - Columns: `data_id` (Composite PK, deterministic UUID), `dev_id` (FK `dev_table.dev_id`, `nullable=False`), `timestamp` (Composite PK, UTC datetime, `nullable=False`), `temp` (Float, `nullable=True`), `humid` (Float, `nullable=True`).
+  - Indexing: Composite index `idx_temp_dev_timestamp(dev_id, timestamp DESC)` for fast history scanning, and BRIN index `idx_temp_ts_brin(timestamp)` (`pages_per_range=32, autosummarize=True`).
+  - Constraints: `PRIMARY KEY (data_id, timestamp)`, `UniqueConstraint("dev_id", "timestamp", name="uq_temp_dev_timestamp")` for ingestion idempotency.
+- `ats_data`: High-volume typed electrical readings from Automatic Transfer Switch controllers. Partitioned by `RANGE (timestamp)` in PostgreSQL 16.
+  - Columns: `data_id` (Composite PK, deterministic UUID), `dev_id` (FK `dev_table.dev_id`, `nullable=False`), `timestamp` (Composite PK, UTC datetime, `nullable=False`), `state` (String), `pln` (Float), `genset` (Float), `aki` (Float starter battery DC), `rem_hour`, `rem_min`, `rem_sec`, `auto_mode` (Boolean), `emergency` (Boolean).
+  - Indexing: Composite index `idx_ats_dev_timestamp(dev_id, timestamp DESC)`, and BRIN index `idx_ats_ts_brin(timestamp)` (`pages_per_range=32, autosummarize=True`).
+  - Constraints: `PRIMARY KEY (data_id, timestamp)`, `UniqueConstraint("dev_id", "timestamp", name="uq_ats_dev_timestamp")`.
+- `data_table`: Legacy raw-JSON telemetry ingest path. Partitioned by `RANGE (timestamp)` in PostgreSQL 16.
+  - Columns: `data_id` (Composite PK), `dev_id` (FK `dev_table.dev_id`), `dev_name`, `timestamp` (Composite PK, UTC datetime), `payload` (JSON).
+  - Indexing: `ix_data_table_dev_ts_desc(dev_id, timestamp DESC)`, and BRIN index `idx_data_table_ts_brin(timestamp)` (`pages_per_range=32, autosummarize=True`).
+  - Constraints: `PRIMARY KEY (data_id, timestamp)`, `UniqueConstraint("dev_id", "timestamp", name="uq_data_dev_timestamp")`.
 - `dev_table`: Hardware inventory registering paired IoT nodes.
   - Columns: `dev_id` (PK), `dev_name`, `dev_type` (`TS`, `ATS`, `AC`), `hub_id` (FK `hub_table.hub_id`), `room_id` (FK `rooms.id`), `marker_x`, `marker_y`, `is_active` (Boolean), `last_seen` (UTC datetime), `last_status` (`online`/`offline`).
   - Indexing: `ix_dev_table_hub_id`, `ix_dev_table_room_id`, `ix_dev_table_dev_name`.

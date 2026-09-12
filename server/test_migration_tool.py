@@ -23,6 +23,12 @@ from migrate_sqlite_to_postgres import (
     sanitize_json,
     get_column_sanitizer_type,
     sanitize_row,
+    format_csv_value,
+    stream_copy_chunk,
+    ensure_if_not_exists,
+    drop_telemetry_secondary_indexes,
+    rebuild_telemetry_secondary_indexes,
+    TELEMETRY_SECONDARY_INDEXES,
     get_sqlite_tables,
     get_sqlite_columns,
     resync_postgres_sequences,
@@ -142,6 +148,61 @@ def test_sanitize_row():
     assert isinstance(sanitized[2], datetime.datetime)
     assert sanitized[2].tzinfo == datetime.timezone.utc
     assert json.loads(sanitized[3]) == {"temp": 25.0}
+
+
+# --- 3b. CSV Value and Chunk Streaming Tests ---
+
+def test_format_csv_value():
+    assert format_csv_value(None) == r"\N"
+    assert format_csv_value(True) == "true"
+    assert format_csv_value(False) == "false"
+    assert format_csv_value(123) == "123"
+    assert format_csv_value(45.67) == "45.67"
+    assert format_csv_value("simple") == "simple"
+    assert format_csv_value("") == ""
+
+    dt = datetime.datetime(2026, 9, 2, 10, 0, 0, tzinfo=datetime.timezone.utc)
+    assert format_csv_value(dt) == "2026-09-02T10:00:00+00:00"
+
+
+def test_stream_copy_chunk():
+    mock_cur = MagicMock()
+    batch = [
+        ("dev-01", 1, "2026-09-02 11:00:00", '{"temp": 25.0}'),
+        ("dev-02", 0, None, None),
+    ]
+    col_types = ["raw", "bool", "datetime", "json"]
+    copy_sql = 'COPY "data_table" ("dev_id", "is_active", "timestamp", "payload") FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL \'\\N\')'
+
+    captured_data = []
+
+    def mock_copy_expert(sql, buf):
+        assert sql == copy_sql
+        captured_data.append(buf.read())
+
+    mock_cur.copy_expert.side_effect = mock_copy_expert
+
+    stream_copy_chunk(mock_cur, copy_sql, batch, col_types)
+
+    assert mock_cur.copy_expert.call_count == 1
+    content = captured_data[0]
+    lines = content.strip().split("\n")
+    assert len(lines) == 2
+    # Row 1: dev-01, true, ISO timestamp, escaped JSON
+    assert lines[0].startswith('dev-01,true,2026-09-02T11:00:00+00:00,"{""temp"": 25.0}"')
+    # Row 2: dev-02, false, \N, \N
+    assert lines[1] == r"dev-02,false,\N,\N"
+
+
+def test_ensure_if_not_exists():
+    ddl1 = "CREATE INDEX ix_test ON tbl (col);"
+    assert ensure_if_not_exists(ddl1) == "CREATE INDEX IF NOT EXISTS ix_test ON tbl (col);"
+
+    ddl2 = "CREATE UNIQUE INDEX uq_test ON tbl (col);"
+    assert ensure_if_not_exists(ddl2) == "CREATE UNIQUE INDEX IF NOT EXISTS uq_test ON tbl (col);"
+
+    ddl3 = "CREATE INDEX IF NOT EXISTS ix_already ON tbl (col);"
+    assert ensure_if_not_exists(ddl3) == ddl3
 
 
 # --- 4. SQLite Schema & Dry-Run Integration Tests ---
@@ -306,25 +367,21 @@ def test_execute_migration_replication_role_lifecycle(sample_sqlite_db):
     mock_cursor = MagicMock()
     mock_pg_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
-    # Simulate get_pg_columns and counts matching exactly
-    def cursor_execute(query, params=None):
-        pass
-
-    mock_cursor.execute = MagicMock(side_effect=cursor_execute)
+    mock_cursor.execute = MagicMock()
     # Whenever COUNT(*) is queried, return the expected row count so parity passes
-    mock_cursor.fetchone.side_effect = [(1,), (2,), (1,), (1,), (1,)]
+    mock_cursor.fetchone.side_effect = [(1,), (1,), (2,), (1,), (1,)]
+    mock_cursor.fetchall.return_value = []
 
     with patch("psycopg2.connect", return_value=mock_pg_conn):
-        with patch("psycopg2.extras.execute_values"):
-            with patch("migrate_sqlite_to_postgres.get_pg_columns", side_effect=lambda conn, tbl: ["hub_id", "hub_name", "hub_key", "is_active", "created_at"]):
-                with patch("migrate_sqlite_to_postgres.resync_postgres_sequences", return_value=0):
-                    success = execute_migration(
-                        sqlite_path=sample_sqlite_db,
-                        pg_url="postgresql://user:pass@127.0.0.1:5432/testdb",
-                        batch_size=10,
-                        dry_run=False,
-                        truncate=False,
-                    )
+        with patch("migrate_sqlite_to_postgres.get_pg_columns", side_effect=lambda conn, tbl: ["hub_id", "hub_name", "hub_key", "is_active", "created_at", "dev_id", "timestamp", "state", "pln", "genset", "aki", "rem_hour", "rem_min", "rem_sec", "auto_mode", "emergency", "data_id", "version_num", "payload", "dev_type", "last_seen", "last_status", "room_id", "marker_x", "marker_y"]):
+            with patch("migrate_sqlite_to_postgres.resync_postgres_sequences", return_value=0):
+                success = execute_migration(
+                    sqlite_path=sample_sqlite_db,
+                    pg_url="postgresql://user:pass@127.0.0.1:5432/testdb",
+                    batch_size=10,
+                    dry_run=False,
+                    truncate=False,
+                )
 
     assert success is True
     # Verify SET session_replication_role = 'replica' and 'origin' were executed
@@ -332,6 +389,9 @@ def test_execute_migration_replication_role_lifecycle(sample_sqlite_db):
     assert any("session_replication_role = 'replica'" in c for c in calls)
     assert any("session_replication_role = 'origin'" in c for c in calls)
     assert any("synchronous_commit = off" in c for c in calls)
+    assert any("synchronous_commit = on" in c for c in calls)
+    assert any("maintenance_work_mem = '256MB'" in c for c in calls)
+    assert mock_cursor.copy_expert.call_count == 5
 
 
 def test_execute_migration_replication_role_restored_on_exception(sample_sqlite_db):
@@ -340,6 +400,7 @@ def test_execute_migration_replication_role_restored_on_exception(sample_sqlite_
     mock_cursor = MagicMock()
     mock_pg_conn.cursor.return_value.__enter__.return_value = mock_cursor
     mock_pg_conn.closed = False
+    mock_cursor.fetchall.return_value = []
 
     # Simulate get_pg_columns raising an error to abort migration during ingestion
     with patch("psycopg2.connect", return_value=mock_pg_conn):
@@ -356,4 +417,151 @@ def test_execute_migration_replication_role_restored_on_exception(sample_sqlite_
     calls = [str(call) for call in mock_cursor.execute.call_args_list]
     assert any("session_replication_role = 'replica'" in c for c in calls)
     assert any("session_replication_role = 'origin'" in c for c in calls)
+    assert any("synchronous_commit = on" in c for c in calls)
+
+
+def test_drop_and_rebuild_telemetry_secondary_indexes():
+    """Verify drop and rebuild of secondary B-Tree and BRIN indexes on telemetry tables."""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+    # Simulate one index returned from pg_index, others using canonical definitions
+    mock_cursor.fetchall.side_effect = [
+        [("ix_data_table_dev_ts_desc", 'CREATE INDEX ix_data_table_dev_ts_desc ON public.data_table USING btree (dev_id, "timestamp" DESC)')],
+        [],
+        [],
+    ]
+
+    deferred = drop_telemetry_secondary_indexes(mock_conn)
+
+    assert "data_table" in deferred
+    assert "temperature_data" in deferred
+    assert "ats_data" in deferred
+
+    drop_calls = [str(call) for call in mock_cursor.execute.call_args_list]
+    assert any('DROP INDEX IF EXISTS "ix_data_table_dev_ts_desc"' in c for c in drop_calls)
+    assert any('DROP INDEX IF EXISTS "idx_data_table_ts_brin"' in c for c in drop_calls)
+    assert any('DROP INDEX IF EXISTS "idx_temp_dev_timestamp"' in c for c in drop_calls)
+    assert any('DROP INDEX IF EXISTS "idx_temp_ts_brin"' in c for c in drop_calls)
+    assert any('DROP INDEX IF EXISTS "idx_ats_dev_timestamp"' in c for c in drop_calls)
+    assert any('DROP INDEX IF EXISTS "idx_ats_ts_brin"' in c for c in drop_calls)
+
+    # Rebuild
+    mock_cursor.execute.reset_mock()
+    rebuilt = rebuild_telemetry_secondary_indexes(mock_conn, deferred)
+    assert rebuilt >= 6
+
+    rebuild_calls = [str(call) for call in mock_cursor.execute.call_args_list]
+    assert any("ix_data_table_dev_ts_desc" in c for c in rebuild_calls)
+    assert any("idx_data_table_ts_brin" in c for c in rebuild_calls)
+    assert any("idx_temp_dev_timestamp" in c for c in rebuild_calls)
+    assert any("idx_temp_ts_brin" in c for c in rebuild_calls)
+    assert any("idx_ats_dev_timestamp" in c for c in rebuild_calls)
+    assert any("idx_ats_ts_brin" in c for c in rebuild_calls)
+
+
+def test_execute_migration_copy_and_index_deferral_lifecycle(sample_sqlite_db):
+    """Verify COPY FROM STDIN streaming, index deferral, sequence resync, and session restoration."""
+    mock_pg_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_pg_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+    # Whenever COUNT(*) is queried, return the expected row count so parity passes
+    mock_cursor.fetchone.side_effect = [(1,), (1,), (2,), (1,), (1,)]
+    mock_cursor.fetchall.return_value = []
+
+    with patch("psycopg2.connect", return_value=mock_pg_conn):
+        with patch("migrate_sqlite_to_postgres.get_pg_columns", side_effect=lambda conn, tbl: ["hub_id", "hub_name", "hub_key", "is_active", "created_at", "dev_id", "timestamp", "state", "pln", "genset", "aki", "rem_hour", "rem_min", "rem_sec", "auto_mode", "emergency", "data_id", "version_num", "payload", "dev_type", "last_seen", "last_status", "room_id", "marker_x", "marker_y"]):
+            with patch("migrate_sqlite_to_postgres.resync_postgres_sequences", return_value=3):
+                success = execute_migration(
+                    sqlite_path=sample_sqlite_db,
+                    pg_url="postgresql://user:pass@127.0.0.1:5432/testdb",
+                    batch_size=10,
+                    dry_run=False,
+                    truncate=False,
+                )
+
+    assert success is True
+
+    # Check session optimizations
+    calls = [str(call) for call in mock_cursor.execute.call_args_list]
+    assert any("session_replication_role = 'replica'" in c for c in calls)
+    assert any("synchronous_commit = off" in c for c in calls)
+    assert any("maintenance_work_mem = '256MB'" in c for c in calls)
+
+    # Check copy_expert was used instead of execute_values
+    assert mock_cursor.copy_expert.call_count == 5
+    copy_sqls = [call.args[0] for call in mock_cursor.copy_expert.call_args_list]
+    assert all("COPY" in s and "FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL '\\N')" in s for s in copy_sqls)
+
+    # Check secondary indexes were dropped and rebuilt
+    assert any('DROP INDEX IF EXISTS "ix_data_table_dev_ts_desc"' in c for c in calls)
+    assert any('DROP INDEX IF EXISTS "idx_data_table_ts_brin"' in c for c in calls)
+    assert any("CREATE INDEX IF NOT EXISTS ix_data_table_dev_ts_desc" in c for c in calls)
+    assert any("CREATE INDEX IF NOT EXISTS idx_data_table_ts_brin" in c for c in calls)
+
+    # Check session restored
+    assert any("session_replication_role = 'origin'" in c for c in calls)
+    assert any("synchronous_commit = on" in c for c in calls)
+
+    # Check VACUUM ANALYZE ran
+    assert any("VACUUM ANALYZE" in c for c in calls)
+
+
+def test_execute_migration_rebuild_indexes_on_failure(sample_sqlite_db):
+    """Verify secondary indexes are rebuilt even if streaming fails midway."""
+    mock_pg_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_pg_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    mock_cursor.fetchall.return_value = []
+
+    # Fail during copy_expert
+    mock_cursor.copy_expert.side_effect = RuntimeError("Disk full during COPY")
+
+    with patch("psycopg2.connect", return_value=mock_pg_conn):
+        with patch("migrate_sqlite_to_postgres.get_pg_columns", side_effect=lambda conn, tbl: ["hub_id", "hub_name", "hub_key", "is_active", "created_at", "dev_id", "timestamp", "state", "pln", "genset", "aki", "rem_hour", "rem_min", "rem_sec", "auto_mode", "emergency", "data_id", "version_num", "payload", "dev_type", "last_seen", "last_status", "room_id", "marker_x", "marker_y"]):
+            success = execute_migration(
+                sqlite_path=sample_sqlite_db,
+                pg_url="postgresql://user:pass@127.0.0.1:5432/testdb",
+                batch_size=10,
+                dry_run=False,
+                truncate=False,
+            )
+
+    assert success is False
+    calls = [str(call) for call in mock_cursor.execute.call_args_list]
+    # Check that cleanup rebuilt indexes
+    assert any("CREATE INDEX IF NOT EXISTS ix_data_table_dev_ts_desc" in c for c in calls)
+    # Check that session role was restored to origin
+    assert any("session_replication_role = 'origin'" in c for c in calls)
+    assert any("synchronous_commit = on" in c for c in calls)
+
+
+def test_vacuum_analyze_and_autocommit(sample_sqlite_db):
+    """Verify VACUUM ANALYZE is called on all migrated tables under autocommit."""
+    mock_pg_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_pg_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    mock_pg_conn.autocommit = False
+    mock_cursor.fetchone.side_effect = [(1,), (1,), (2,), (1,), (1,)]
+    mock_cursor.fetchall.return_value = []
+
+    with patch("psycopg2.connect", return_value=mock_pg_conn):
+        with patch("migrate_sqlite_to_postgres.get_pg_columns", side_effect=lambda conn, tbl: ["hub_id", "hub_name", "hub_key", "is_active", "created_at", "dev_id", "timestamp", "state", "pln", "genset", "aki", "rem_hour", "rem_min", "rem_sec", "auto_mode", "emergency", "data_id", "version_num", "payload", "dev_type", "last_seen", "last_status", "room_id", "marker_x", "marker_y"]):
+            with patch("migrate_sqlite_to_postgres.resync_postgres_sequences", return_value=0):
+                success = execute_migration(
+                    sqlite_path=sample_sqlite_db,
+                    pg_url="postgresql://user:pass@127.0.0.1:5432/testdb",
+                    batch_size=10,
+                    dry_run=False,
+                    truncate=False,
+                )
+
+    assert success is True
+    # Verify autocommit was restored back to False
+    assert mock_pg_conn.autocommit is False
+    calls = [str(call) for call in mock_cursor.execute.call_args_list]
+    assert any('VACUUM ANALYZE "hub_table"' in c for c in calls)
+    assert any('VACUUM ANALYZE "data_table"' in c for c in calls)
 

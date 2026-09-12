@@ -11,3 +11,4 @@ argon2-cffi==25.1.0
 python-multipart==0.0.27
 apscheduler==3.10.4
 tzdata==2025.2
+python-json-logger==2.0.7

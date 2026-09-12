@@ -425,11 +425,12 @@ def test_models_relationship_cascade_deletion():
         try:
             hub = hub_table(hub_id="HUB_CAS_01", hub_name="Cas Hub", hub_key="k", is_active=True)
             dev = dev_table(dev_id="DEV_CAS_01", dev_name="Cas Dev", hub_id="HUB_CAS_01", is_active=True)
-            temp = temperature_data(data_id="TEMP_CAS_01", dev_id="DEV_CAS_01", timestamp=datetime.now(UTC), temp=20.0, humid=50.0)
+            now_ts = datetime.now(UTC)
+            temp = temperature_data(data_id="TEMP_CAS_01", dev_id="DEV_CAS_01", timestamp=now_ts, temp=20.0, humid=50.0)
             ats = ats_data(
                 data_id="ATS_CAS_01",
                 dev_id="DEV_CAS_01",
-                timestamp=datetime.now(UTC),
+                timestamp=now_ts,
                 state="PLN_ON",
                 pln=220.0,
                 genset=0.0,
@@ -448,8 +449,8 @@ def test_models_relationship_cascade_deletion():
             db.commit()
 
             # Verify child telemetry records were cascaded
-            assert db.get(temperature_data, "TEMP_CAS_01") is None
-            assert db.get(ats_data, "ATS_CAS_01") is None
+            assert db.get(temperature_data, ("TEMP_CAS_01", now_ts)) is None
+            assert db.get(ats_data, ("ATS_CAS_01", now_ts)) is None
 
         finally:
             db.close()

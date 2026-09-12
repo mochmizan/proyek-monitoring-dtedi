@@ -1,5 +1,5 @@
 # app/routers/iot.py
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any, Union
 import uuid
@@ -28,7 +28,11 @@ router = APIRouter(tags=["iot"])
 
 def _parse_event_time(item: Any, fallback_utc: datetime) -> datetime:
     """Extract event timestamp from payload (HUB_TS, _hub_created_at, or timestamp).
-    Preserves microsecond precision and ensures UTC timezone."""
+    Preserves microsecond precision and ensures UTC timezone.
+    Applies boundary protection [-35 days, +24 hours] to protect partitioned tables without DEFAULT."""
+    if fallback_utc.tzinfo is None:
+        fallback_utc = fallback_utc.replace(tzinfo=UTC)
+
     hub_ts_raw = None
     try:
         if hasattr(item, "HUB_TS") and getattr(item, "HUB_TS") is not None:
@@ -49,22 +53,41 @@ def _parse_event_time(item: Any, fallback_utc: datetime) -> datetime:
     except Exception:
         hub_ts_raw = None
 
+    parsed_dt = None
     if hub_ts_raw is not None:
         try:
             if isinstance(hub_ts_raw, (int, float)):
-                return datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
+                parsed_dt = datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
             elif isinstance(hub_ts_raw, str):
                 try:
                     dt = datetime.fromisoformat(hub_ts_raw)
-                    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+                    parsed_dt = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
                 except ValueError:
-                    return datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
+                    parsed_dt = datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
             elif isinstance(hub_ts_raw, datetime):
-                return hub_ts_raw if hub_ts_raw.tzinfo is not None else hub_ts_raw.replace(tzinfo=UTC)
+                parsed_dt = hub_ts_raw if hub_ts_raw.tzinfo is not None else hub_ts_raw.replace(tzinfo=UTC)
         except Exception:
-            pass
+            parsed_dt = None
 
-    return fallback_utc
+    if parsed_dt is None:
+        return fallback_utc
+
+    # Ensure parsed_dt is timezone-aware UTC for safe comparisons
+    if parsed_dt.tzinfo is None:
+        parsed_dt = parsed_dt.replace(tzinfo=UTC)
+
+    # Ingestion boundary clamping: [-35 days, +24 hours] relative to fallback_utc (now_utc)
+    min_bound = fallback_utc - timedelta(days=35)
+    max_bound = fallback_utc + timedelta(hours=24)
+
+    if parsed_dt < min_bound or parsed_dt > max_bound:
+        logging.warning(
+            f"Event timestamp {parsed_dt.isoformat()} is out of valid ingestion bounds "
+            f"[{min_bound.isoformat()} to {max_bound.isoformat()}]. Clamping to fallback_utc={fallback_utc.isoformat()}."
+        )
+        return fallback_utc
+
+    return parsed_dt
 
 
 def _generate_deterministic_id(dev_id: str, ts: datetime) -> str:
