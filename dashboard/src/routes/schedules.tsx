@@ -236,7 +236,9 @@ function SchedulesPage() {
                 </TableHeader>
                 <TableBody>
                   {schedules.map((s) => {
-                    const human = s.human ?? describeCron(s.cron_expr)
+                    const human = (s.human && s.human !== s.cron_expr && !s.human.includes("AM") && !s.human.includes("PM"))
+                      ? s.human
+                      : describeCron(s.cron_expr)
                     const nextLocal = s.next_run_at ? formatNextRun(new Date(s.next_run_at)).jakarta : "—"
                     return (
                       <TableRow key={s.id} className="border-zinc-800">

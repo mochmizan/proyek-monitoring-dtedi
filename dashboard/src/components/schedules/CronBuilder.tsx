@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { queryKeys } from "@/lib/queryKeys"
 import { previewScheduleCron } from "@/lib/api"
@@ -101,7 +101,9 @@ export default function CronBuilder({ value, onChange, disabled }: CronBuilderPr
     gcTime: 60000,
   })
 
-  const human = preview?.human ?? (isValid ? describeCron(cronForPreview) : null)
+  const human = (preview?.human && preview.human !== cronForPreview && !preview.human.includes("AM") && !preview.human.includes("PM"))
+    ? preview.human
+    : (isValid ? describeCron(cronForPreview) : null)
   const nextRuns = preview?.next_runs ?? null
 
   return (

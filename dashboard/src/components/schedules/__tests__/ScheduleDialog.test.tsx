@@ -12,7 +12,7 @@ vi.mock('@/lib/api', async () => {
     ...actual,
     createSchedule: vi.fn().mockResolvedValue({ id: 'new-1' }),
     updateSchedule: vi.fn().mockResolvedValue({ id: '42' }),
-    previewScheduleCron: vi.fn().mockResolvedValue({ cron_expr: '0 18 * * 0', valid: true, human: 'At 6:00 PM, only on Sunday', next_runs: [] }),
+    previewScheduleCron: vi.fn().mockResolvedValue({ cron_expr: '0 18 * * 0', valid: true, human: 'At 18:00, only on Sunday', next_runs: [] }),
   };
 });
 

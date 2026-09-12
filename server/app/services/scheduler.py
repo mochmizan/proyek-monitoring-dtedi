@@ -82,17 +82,89 @@ def get_next_runs(cron_expr: str, tz: str = CANONICAL_TZ, count: int = 3) -> lis
 
 
 def human_cron(cron_expr: str) -> str:
-    """Lightweight human preview without cronstrue (py). Provide basic mapping for common patterns."""
-    # Try cron_descriptor if available (not required)
+    """Lightweight human preview using 24-hour time format (HH:MM)."""
+    expr = cron_expr.strip()
+    if not expr:
+        return ""
+
+    parts = expr.split()
+    if len(parts) != 5:
+        return expr
+
+    minute, hour, dom, month, dow = parts
+    dow_names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    month_names = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+    # Special well-known phrases
+    if expr == "* * * * *":
+        return "Every minute"
+    if minute.startswith("*/") and minute[2:].isdigit() and hour == "*" and dom == "*" and month == "*" and dow == "*":
+        return f"Every {minute[2:]} minutes"
+    if minute == "0" and hour == "*" and dom == "*" and month == "*" and dow == "*":
+        return "Every hour, at minute 0"
+    if minute == "0" and hour.startswith("*/") and hour[2:].isdigit() and dom == "*" and month == "*" and dow == "*":
+        return f"Every {hour[2:]} hours, at minute 0"
+
+    # Specific minute and hour (e.g. "0 0 * * *", "40 11 * * *", "0 18 * * 0")
+    if minute.isdigit() and hour.isdigit():
+        m = int(minute)
+        h = int(hour)
+        if 0 <= m <= 59 and 0 <= h <= 23:
+            time_str = f"{h:02d}:{m:02d}"
+
+            # Daily: "0 0 * * *", "40 11 * * *"
+            if dom == "*" and month == "*" and dow == "*":
+                return f"At {time_str}, every day"
+
+            # Weekdays: "0 18 * * 1-5"
+            if dom == "*" and month == "*" and dow in ("1-5", "1,2,3,4,5"):
+                return f"At {time_str}, Monday through Friday"
+
+            # Weekends: "0 18 * * 0,6"
+            if dom == "*" and month == "*" and dow in ("0,6", "6,0", "0,7", "7,6", "6,7"):
+                return f"At {time_str}, only on weekends"
+
+            # Specific day(s) of week: "0 18 * * 0", "0 18 * * 1,4"
+            if dom == "*" and month == "*":
+                dow_items = dow.split(",")
+                valid_dows = []
+                for d in dow_items:
+                    if d.isdigit() and 0 <= int(d) <= 7:
+                        val = int(d)
+                        if val == 7:
+                            val = 0
+                        valid_dows.append(dow_names[val])
+                    else:
+                        valid_dows = []
+                        break
+                if valid_dows:
+                    if len(valid_dows) == 1:
+                        return f"At {time_str}, only on {valid_dows[0]}"
+                    elif len(valid_dows) == 2:
+                        return f"At {time_str}, only on {valid_dows[0]} and {valid_dows[1]}"
+                    else:
+                        return f"At {time_str}, only on {', '.join(valid_dows[:-1])}, and {valid_dows[-1]}"
+
+            # Day of month: "0 18 1 * *"
+            if dom.isdigit() and month == "*" and dow == "*":
+                return f"At {time_str}, on day {dom} of every month"
+
+            # Specific month & day: "0 18 1 1 *"
+            if dom.isdigit() and month.isdigit() and dow == "*":
+                mn = int(month)
+                if 1 <= mn <= 12:
+                    return f"At {time_str}, on {month_names[mn]} {dom}"
+
+    # Fallback to cron_descriptor if installed with 24-hour option
     try:
-        from cron_descriptor import get_description  # type: ignore
-        return get_description(cron_expr)
+        from cron_descriptor import Options, get_description  # type: ignore
+        opt = Options()
+        opt.use_24hour_time_format = True
+        return get_description(cron_expr, opt)
     except Exception:
         pass
-    # Fallback: return cron with simple annotation for known pattern
-    if cron_expr.strip() == "0 18 * * 0":
-        return "At 06:00 PM, only on Sunday"
-    return cron_expr.strip()
+
+    return expr
 
 
 def fire_schedule(schedule_id: str) -> None:

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Lightweight cron helpers — avoids external cron-parser/cronstrue deps.
  * 5-field standard cron (minute hour dom month dow), Asia/Jakarta canonical.
  * Server GET /api/schedules/preview is source of truth for next_runs;
@@ -128,50 +128,74 @@ export function describeCron(expr: string): string {
   const [minute, hour, dom, month, dow] = expr.trim().split(/\s+/) as [string, string, string, string, string]
   const dowNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
   const monthNames = ["","January","February","March","April","May","June","July","August","September","October","November","December"]
-  if (expr.trim() === "0 18 * * 0") return "At 6:00 PM, only on Sunday"
-  if (expr.trim() === "0 18 * * 1,4") return "At 6:00 PM, only on Monday and Thursday"
+
+  // Well-known frequency phrases
   if (expr.trim() === "* * * * *") return "Every minute"
-  if (/^0 18 \* \* 1-5$/.test(expr.trim())) return "At 6:00 PM, Monday through Friday"
-  if (dom === "*" && month === "*" && dow === "*") {
-    const m = parseInt(minute, 10)
-    const h = parseInt(hour, 10)
-    if (!Number.isNaN(m) && !Number.isNaN(h) && String(m) === minute && String(h) === hour) {
-      const ampm = h >= 12 ? "PM" : "AM"
-      const h12 = h % 12 === 0 ? 12 : h % 12
-      const mm = String(m).padStart(2, "0")
-      return `At ${h12}:${mm} ${ampm}, every day`
+  if (/^\*\/(\d+)$/.test(minute) && hour === "*" && dom === "*" && month === "*" && dow === "*") {
+    return `Every ${minute.slice(2)} minutes`
+  }
+  if (minute === "0" && hour === "*" && dom === "*" && month === "*" && dow === "*") {
+    return "Every hour, at minute 0"
+  }
+  if (minute === "0" && /^\*\/(\d+)$/.test(hour) && dom === "*" && month === "*" && dow === "*") {
+    return `Every ${hour.slice(2)} hours, at minute 0`
+  }
+
+  const m = parseInt(minute, 10)
+  const h = parseInt(hour, 10)
+  const hasExactTime = !Number.isNaN(m) && !Number.isNaN(h) && String(m) === minute && String(h) === hour && m >= 0 && m <= 59 && h >= 0 && h <= 23
+
+  if (hasExactTime) {
+    const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+
+    // Daily: e.g. "0 0 * * *", "40 11 * * *"
+    if (dom === "*" && month === "*" && dow === "*") {
+      return `At ${timeStr}, every day`
+    }
+
+    // Weekdays: "0 18 * * 1-5"
+    if (dom === "*" && month === "*" && (dow === "1-5" || dow === "1,2,3,4,5")) {
+      return `At ${timeStr}, Monday through Friday`
+    }
+
+    // Weekends: "0 18 * * 0,6"
+    if (dom === "*" && month === "*" && (dow === "0,6" || dow === "6,0" || dow === "0,7" || dow === "7,6" || dow === "6,7")) {
+      return `At ${timeStr}, only on weekends`
+    }
+
+    // Specific weekdays: "0 18 * * 0", "0 18 * * 1,4"
+    if (dom === "*" && month === "*" && dow !== "*") {
+      const parts = dow.split(",")
+      const validDows: string[] = []
+      let ok = true
+      for (const p of parts) {
+        let n = parseInt(p, 10)
+        if (Number.isNaN(n) || n < 0 || n > 7) { ok = false; break }
+        if (n === 7) n = 0
+        validDows.push(dowNames[n] ?? p)
+      }
+      if (ok && validDows.length > 0) {
+        const dayStr = validDows.length === 2 ? `${validDows[0]} and ${validDows[1]}` : (validDows.length === 1 ? validDows[0] : `${validDows.slice(0, -1).join(", ")}, and ${validDows[validDows.length - 1]}`)
+        return `At ${timeStr}, only on ${dayStr}`
+      }
+    }
+
+    // Day of month: "0 18 1 * *"
+    if (dom !== "*" && month === "*" && dow === "*") {
+      return `At ${timeStr}, on day ${dom} of every month`
+    }
+
+    // Month & Day: "0 18 1 1 *"
+    if (dom !== "*" && month !== "*" && dow === "*") {
+      const mn = parseInt(month, 10)
+      if (mn >= 1 && mn <= 12) {
+        return `At ${timeStr}, on ${monthNames[mn]} ${dom}`
+      }
     }
   }
-  if (dow === "1-5" && dom === "*" && month === "*") {
-    const m = parseInt(minute, 10)
-    const h = parseInt(hour, 10)
-    if (!Number.isNaN(m) && !Number.isNaN(h) && String(m) === minute && String(h) === hour) {
-      const ampm = h >= 12 ? "PM" : "AM"
-      const h12 = h % 12 === 0 ? 12 : h % 12
-      const mm = String(m).padStart(2, "0")
-      return `At ${h12}:${mm} ${ampm}, Monday through Friday`
-    }
-  }
-  if (dom === "*" && month === "*") {
-    const m = parseInt(minute, 10)
-    const h = parseInt(hour, 10)
-    if (!Number.isNaN(m) && !Number.isNaN(h) && String(m) === minute && String(h) === hour && dow !== "*") {
-      const dows = dow.split(",").map((d) => { let n = parseInt(d, 10); if (n === 7) n = 0; return dowNames[n] ?? d })
-      const ampm = h >= 12 ? "PM" : "AM"
-      const h12 = h % 12 === 0 ? 12 : h % 12
-      const mm = String(m).padStart(2, "0")
-      return `At ${h12}:${mm} ${ampm}, only on ${dows.join(", ")}`
-    }
-  }
+
   if (/^\*\/\d+/.test(minute) || /^\*\/\d+/.test(hour)) {
     return `Every ${minute} minute(s), every ${hour} hour(s) — ${expr}`
-  }
-  if (month === "*" && dow === "*" && dom !== "*") {
-    return `At ${hour}:${minute.padStart(2, "0")}, on day ${dom} of the month`
-  }
-  if (month !== "*" && /^\d+$/.test(month)) {
-    const mn = parseInt(month, 10)
-    return `At ${hour}:${minute.padStart(2, "0")}, in ${monthNames[mn] ?? month} (day ${dom}, dow ${dow})`
   }
   return `Cron ${expr} — every ${minute !== "*" ? `minute ${minute}` : "minute"}, hour ${hour}, day ${dom}, month ${month}, weekday ${dow}`
 }

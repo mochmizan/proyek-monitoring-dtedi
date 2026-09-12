@@ -188,10 +188,14 @@ def test_get_next_runs():
 
 
 def test_human_cron():
-    assert human_cron("0 18 * * 0") == "At 06:00 PM, only on Sunday"
-    # Fallback to trimmed expression if no custom mapping / cron_descriptor
-    fallback = human_cron("*/10 * * * *")
-    assert fallback in ("*/10 * * * *", "Every 10 minutes")
+    assert human_cron("0 18 * * 0") == "At 18:00, only on Sunday"
+    assert human_cron("0 0 * * *") == "At 00:00, every day"
+    assert human_cron("40 11 * * *") == "At 11:40, every day"
+    assert human_cron("0 18 * * 1-5") == "At 18:00, Monday through Friday"
+    assert human_cron("0 18 * * 1,4") == "At 18:00, only on Monday and Thursday"
+    assert human_cron("* * * * *") == "Every minute"
+    assert human_cron("*/10 * * * *") == "Every 10 minutes"
+    assert human_cron("0 * * * *") == "Every hour, at minute 0"
 
 
 def test_fire_schedule_and_hub_resolution():

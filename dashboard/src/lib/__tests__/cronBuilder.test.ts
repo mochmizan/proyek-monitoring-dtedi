@@ -1,5 +1,5 @@
-﻿import { describe, it, expect } from "vitest"
-import { buildCron, parseCronToBuilderState } from "../cron"
+import { describe, it, expect } from "vitest"
+import { buildCron, parseCronToBuilderState, describeCron } from "../cron"
 
 describe("buildCron", () => {
   it("daily 07:30 -> 30 7 * * *", () => {
@@ -53,3 +53,31 @@ describe("parseCronToBuilderState round-trip", () => {
     expect(s.weekdays).toEqual([0])
   })
 })
+
+describe("describeCron 24-hour descriptions", () => {
+  it("formats daily 00:00 correctly", () => {
+    expect(describeCron("0 0 * * *")).toBe("At 00:00, every day")
+  })
+  it("formats daily 11:40 correctly", () => {
+    expect(describeCron("40 11 * * *")).toBe("At 11:40, every day")
+  })
+  it("formats weekly Sunday 18:00 correctly", () => {
+    expect(describeCron("0 18 * * 0")).toBe("At 18:00, only on Sunday")
+  })
+  it("formats weekly Mon,Thu 18:00 correctly", () => {
+    expect(describeCron("0 18 * * 1,4")).toBe("At 18:00, only on Monday and Thursday")
+  })
+  it("formats weekdays 18:00 correctly", () => {
+    expect(describeCron("0 18 * * 1-5")).toBe("At 18:00, Monday through Friday")
+  })
+  it("formats every minute correctly", () => {
+    expect(describeCron("* * * * *")).toBe("Every minute")
+  })
+  it("formats every 10 minutes correctly", () => {
+    expect(describeCron("*/10 * * * *")).toBe("Every 10 minutes")
+  })
+  it("formats every hour correctly", () => {
+    expect(describeCron("0 * * * *")).toBe("Every hour, at minute 0")
+  })
+})
+
