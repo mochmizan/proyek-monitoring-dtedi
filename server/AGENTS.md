@@ -32,7 +32,7 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 - Entry: `app.main:api` is the canonical entrypoint; run via `uvicorn app.main:api --host 127.0.0.1 --port 8000 --workers 1` (prod behind Nginx 443 with systemd `MemoryMax=800M`, `MemoryHigh=650M`). `hubgatev5.py` is a 20-line backward-compatibility stub re-exporting `api` from `app.main`. Canonical assembly at `app/main.py` (CORS with exposed `X-Request-ID`, rate limiter, scheduler `lifespan`, presence worker lifespan, `GET /health` + `/api/health` unauthenticated DB `SELECT 1` check, static mount).
 - Observability: `StructuredLoggingMiddleware` in `app/core/logging.py` mounted in `app/main.py` emits single-line JSON request logs (`timestamp`, `request_id`, `method`, `path`, `status_code`, `latency_ms`, `client_ip`) via dedicated `smsb.access` logger, attaching `X-Request-ID` tracing header to all HTTP responses.
 - Routers: `app/routers/` — `auth`, `hubs`, `rooms` (single SQL outerjoin list; indexed room map with AC operational state merging), `devices` (downsampling v2 history; idempotent read-only single/list detail with `selectinload`), `alerts`, `iot` (single & batch ingestion with deterministic UUIDs, auth double-commit elimination, lock-free auth cache, SEC-06 device ownership verification, and dialect-specific ON CONFLICT DO NOTHING), `commands` (`GET /api/commands/{command_id}` delivery status check), `schedules`.
-- Core: `app/core/config`, `app/core/rate_limit`, `app/core/logging`.
+- Core: `app/core/config`, `app/core/rate_limit`, `app/core/logging`, `app/core/csrf`. `CSRF_SECRET` is mandatory in every environment and must contain at least 32 UTF-8 bytes. Session-bound HMAC-SHA256 tokens protect every cookie-authenticated mutation; hub-header routes remain exempt. Login accepts JSON only, validates browser `Origin`, creates the session without a CSRF token, and exposes the authenticated no-store token endpoint at `GET /api/auth/csrf-token`.
 - Services: `app/services/alert_engine`, `app/services/presence` (15s background presence worker `evaluate_device_presence_batch` with `PRESENCE_INTERVAL_SECONDS = 15`), `app/services/scheduler` (APScheduler `BackgroundScheduler` `Asia/Jakarta` cron → `pending_commands`, plus hourly WAL truncation).
 - DB: `app/modelsv5.py`; Alembic at `alembic/`; `init_sqlv5.py` is idempotent additive migration for fallback.
 
@@ -85,11 +85,11 @@ Composite SARGable performance indexes:
 - New device types: extend discriminated union in `schemasv5.py` (`DEV_TYPE` literal + new model), keep `model_validator` + `ValidationInfo` pattern for DB-aware validation.
 - New endpoints: add SlowAPI `limiter` decorator + auth dependency (`require_role` or hub header).
 - Keep `JSONB().with_variant(JSON, "sqlite")` for Postgres/SQLite compat.
-- Keep tests green: all 217 tests run cleanly via `pytest server/ -q`.
+- Test clients model dashboard CSRF headers through `server/conftest.py`, with explicit missing/invalid/cross-session token regression tests bypassing that convenience behavior. Several legacy modules mutate `DATABASE_URL` at import time and reuse relative SQLite filenames, so run affected modules independently when the combined process corrupts their shared test database.
 
 ## Verification
 
-- `pytest server/ -q` — runs all 217 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
+- `pytest server/ -q` — runs all 226 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC/CSRF, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
 - `python tools/seed_benchmark_telemetry.py --total-rows 1000000 --days 30 --clean --verify` — seeds 1,000,000 synthetic rows in ~60s and verifies composite index query plans.
 - `python tools/benchmark_concurrency_stress.py` — executes 15s multi-worker stress test validating all read, write, throughput, and zero-lock SLAs.
 

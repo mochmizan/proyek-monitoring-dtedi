@@ -4,6 +4,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, logoutUser, fetchAlerts } from '../lib/api';
+import { toast } from '../lib/toast';
 import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS } from '../lib/constants';
 import { getJitteredInterval } from '../lib/jitter';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -88,9 +89,11 @@ function RootLayout() {
   const logoutMutation = useMutation({
     mutationFn: logoutUser,
     onSuccess: async () => {
-      queryClient.setQueryData(queryKeys.auth.me(), null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
-      router.navigate({ to: '/login' });
+      queryClient.clear();
+      await router.navigate({ to: '/login' });
+    },
+    onError: (error: Error) => {
+      toast.error('Logout server gagal', { description: error.message });
     },
   });
 

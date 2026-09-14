@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: []
 sources: [AGENTS.md]
-updated: 2026-09-04
+updated: 2026-09-14
 ---
 
 # smsb wiki index
@@ -17,7 +17,7 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 - [entity-dashboard-spa.md](entity-dashboard-spa.md) — React 19 SPA (dashboard/): routes, flex-sibling inset canvas, floating AppSidebar, TanStack Query polling, WIB rendering, custom SVG charts
 - [entity-ats-firmware-chain.md](entity-ats-firmware-chain.md) — Two-MCU ATS controller: PROMINI FSM + WEMOS_ATS bridge, serial framing
 - [entity-firmware-fleet.md](entity-firmware-fleet.md) — Fleet node specifications: WEMOS_TS, WEMOS_AC, WEMOS_ATS, PROMINI pinouts, I2C addresses, EEPROM layouts
-- [entity-security-auth.md](entity-security-auth.md) — Authentication & authorization model: RBAC matrix, Argon2id, session cookies, SlowAPI rate limiting, security remediations (SEC-01, SEC-03, SEC-06, SEC-10)
+- [entity-security-auth.md](entity-security-auth.md) — Authentication & authorization model: RBAC matrix, Argon2id, session cookies, HMAC CSRF, SlowAPI rate limiting, security remediations (SEC-01, SEC-02, SEC-03, SEC-06, SEC-10)
 - [entity-deploy-pipeline.md](entity-deploy-pipeline.md) — Push-deploy to VPS via post-receive hook; normalized server runtime path
 - [entity-devops-infrastructure.md](entity-devops-infrastructure.md) — VPS topology, Nginx reverse proxy, TLS termination, systemd isolation (--workers 1, MemoryMax=800M), push-deploy pre-flight gating, backup & cutover runbook
 - [entity-data-model.md](entity-data-model.md) — HubGate V5 tables, composite indexes, unique constraints, and schema nullability

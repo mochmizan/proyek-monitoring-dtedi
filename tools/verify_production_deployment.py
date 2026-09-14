@@ -418,7 +418,17 @@ class ProductionVerifier:
         name = "Logout & Session Invalidation (POST /api/auth/logout)"
         t0 = time.perf_counter()
         try:
-            code, body, _ = self._request("POST", "/api/auth/logout")
+            token_code, token_body, _ = self._request("GET", "/api/auth/csrf-token")
+            csrf_token = token_body.get("csrf_token") if isinstance(token_body, dict) else None
+            if token_code != 200 or not csrf_token:
+                raise RuntimeError(
+                    f"CSRF token bootstrap failed (HTTP {token_code}): {token_body}"
+                )
+            code, body, _ = self._request(
+                "POST",
+                "/api/auth/logout",
+                headers={"X-CSRF-Token": csrf_token},
+            )
             elapsed = (time.perf_counter() - t0) * 1000
             if code == 200:
                 # Confirm me now fails

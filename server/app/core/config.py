@@ -47,3 +47,9 @@ ALLOWED_FLOORPLAN_TYPES = {
 }
 ALLOWED_FLOORPLAN_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
 MAX_FLOORPLAN_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+# --- CSRF ---
+CSRF_SECRET = os.getenv("CSRF_SECRET", "").strip()
+
+if len(CSRF_SECRET.encode("utf-8")) < 32:
+    raise RuntimeError("CSRF_SECRET must contain at least 32 bytes")

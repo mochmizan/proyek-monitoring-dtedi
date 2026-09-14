@@ -5,6 +5,7 @@
 import json
 import os
 import sys
+import tempfile
 import time
 from unittest.mock import MagicMock, patch
 
@@ -23,7 +24,7 @@ for p in (server_v5_path, hub_v5_path, tools_path):
         sys.path.insert(0, p)
 
 # Set test environment variables
-TEST_DB_FILE = os.path.join(repo_root, "test_hubgatev5.db")
+TEST_DB_FILE = os.path.join(tempfile.mkdtemp(prefix="smsb-e2e-"), "test_hubgatev5.db")
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_FILE}"
 os.environ["MQTT_PASS"] = "strong_test_mqtt_pass_1234567890abcdef"
 os.environ["HUB_KEY"] = "strong_test_hub_key_1234567890abcdef"

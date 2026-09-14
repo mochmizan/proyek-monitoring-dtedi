@@ -15,14 +15,16 @@ from schemas_auth import (
     UserUpdate,
     UserStatusUpdate,
     UserResponse,
-    UserWithTempPasswordResponse,
+    UserWithTempPasswordResponse,   
     UserListResponse,
     AuditLogResponse
 )
+from app.core.csrf import validate_csrf_request
 
 router = APIRouter(
     prefix="/api/admin/users",
-    tags=["admin-users"]
+    tags=["admin-users"],
+    dependencies=[Depends(validate_csrf_request)],
 )
 
 # Helper function untuk mencatat Audit Log

@@ -64,6 +64,7 @@ def test_verify_server_env_valid():
     valid_env = {
         "DATABASE_URL": "postgresql://smsb_admin:StrongSecretPass987%21@db.internal:5432/smsb_prod",
         "HUB_KEY": "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0",
+        "CSRF_SECRET": "c4f2e6a8b0d193857462abcdef0123456789abcdef0123456789abcdef012345",
         "CORS_ALLOWED_ORIGINS": "https://smsb.internal",
     }
     verify_server_env(valid_env, report, mode="prod")
@@ -76,6 +77,7 @@ def test_verify_server_env_weak_defaults():
     weak_env = {
         "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/database",
         "HUB_KEY": "strong_local_hub_key_1234567890abcdef",
+        "CSRF_SECRET": "short",
         "CORS_ALLOWED_ORIGINS": "*",
     }
     verify_server_env(weak_env, report, mode="prod", allow_localhost=False)

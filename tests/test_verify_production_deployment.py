@@ -39,7 +39,7 @@ def test_verifier_flow_mocked():
         hub_key="test_hub_key_1234567890abcdef1234567890abcdef",
     )
 
-    state = {"logged_in": False}
+    state = {"logged_in": False, "csrf_token": "verifier-csrf-token"}
 
     def mock_request(method, endpoint, data=None, headers=None):
         if endpoint == "/api/auth/me":
@@ -51,6 +51,10 @@ def test_verifier_flow_mocked():
         elif endpoint == "/api/auth/login":
             state["logged_in"] = True
             return 200, {"username": "admin", "role": "admin", "id": "u1"}, {}
+        elif endpoint == "/api/auth/csrf-token":
+            if state["logged_in"]:
+                return 200, {"csrf_token": state["csrf_token"]}, {"cache-control": "no-store"}
+            return 401, {"detail": "Unauthorized"}, {}
         elif endpoint == "/api/rooms":
             return 200, [{"id": "r1", "name": "Room 101"}], {}
         elif endpoint == "/api/devices":
@@ -60,6 +64,7 @@ def test_verifier_flow_mocked():
         elif endpoint == "/api/iot":
             return 200, {"status": "success"}, {}
         elif endpoint == "/api/auth/logout":
+            assert headers == {"X-CSRF-Token": state["csrf_token"]}
             state["logged_in"] = False
             return 200, {"status": "logged out"}, {}
         return 404, {"detail": "Not found"}, {}

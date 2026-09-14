@@ -17,11 +17,12 @@ from schemasv5 import (
 )
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
+from app.core.csrf import validate_csrf_request
 from app.core.config import FLOORPLAN_UPLOAD_DIR, STATIC_DIR, ALLOWED_FLOORPLAN_TYPES, ALLOWED_FLOORPLAN_EXTENSIONS, MAX_FLOORPLAN_FILE_SIZE
 from app.routers.devices import _build_epoch_bucket_expr
 from app.services.telemetry import get_latest_readings_for_devices
 
-router = APIRouter(tags=["rooms"])
+router = APIRouter(tags=["rooms"], dependencies=[Depends(validate_csrf_request)])
 
 
 def resolve_static_disk_path(path_or_url: str) -> str:

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Cpu, ShieldAlert, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchCurrentUser, loginUser } from '../lib/api';
+import { ensureCsrfToken, fetchCurrentUser, loginUser } from '../lib/api';
 
 const loginSearchSchema = z.object({
   redirect: z.string().optional(),
@@ -44,9 +44,13 @@ function LoginPage() {
     mutationFn: loginUser,
     onSuccess: async (data) => {
       queryClient.setQueryData(queryKeys.auth.me(), data);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
-      await router.invalidate();
-      router.navigate({ to: search.redirect || '/' });
+      try {
+        await ensureCsrfToken();
+        await router.invalidate();
+        await router.navigate({ to: search.redirect || '/' });
+      } catch {
+        setError('Login berhasil, tetapi sesi keamanan gagal disiapkan. Silakan coba lagi atau muat ulang halaman.');
+      }
     },
     onError: (err: Error) => {
       setError(err.message || 'Invalid username or password');

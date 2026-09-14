@@ -127,6 +127,66 @@ def test_auth_me_authorized():
     assert data["username"] == "operator_test"
     assert data["role"] == "operator"
 
+
+def test_csrf_token_endpoint_is_authenticated_and_not_cached():
+    client.cookies.clear()
+    unauthorized = client.get("/api/auth/csrf-token")
+    assert unauthorized.status_code == 401
+
+    login_res = client.post(
+        "/api/auth/login",
+        json={"username": "operator_test", "password": "operator123"},
+    )
+    session_id = login_res.cookies.get("session_id")
+    token_res = client.get("/api/auth/csrf-token", cookies={"session_id": session_id})
+
+    assert token_res.status_code == 200
+    assert len(token_res.json()["csrf_token"]) == 64
+    assert token_res.headers["cache-control"] == "no-store"
+    assert token_res.headers["pragma"] == "no-cache"
+
+
+def test_csrf_token_from_another_session_is_rejected():
+    first_login = client.post(
+        "/api/auth/login",
+        json={"username": "operator_test", "password": "operator123"},
+    )
+    first_session = first_login.cookies.get("session_id")
+    first_token = client.get(
+        "/api/auth/csrf-token",
+        cookies={"session_id": first_session},
+    ).json()["csrf_token"]
+
+    second_login = client.post(
+        "/api/auth/login",
+        json={"username": "operator_test", "password": "operator123"},
+    )
+    second_session = second_login.cookies.get("session_id")
+    response = client.post(
+        "/api/auth/logout",
+        cookies={"session_id": second_session},
+        headers={"X-CSRF-Token": first_token},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "CSRF_TOKEN_INVALID"
+
+
+def test_authenticated_mutation_without_csrf_token_is_rejected():
+    login_res = client.post(
+        "/api/auth/login",
+        json={"username": "operator_test", "password": "operator123"},
+    )
+    session_id = login_res.cookies.get("session_id")
+    response = client.post(
+        "/api/auth/logout",
+        cookies={"session_id": session_id},
+        headers={"X-CSRF-Token": ""},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "CSRF_TOKEN_MISSING"
+
 def test_logout():
     # Login first
     login_res = client.post("/api/auth/login", json={"username": "operator_test", "password": "operator123"})

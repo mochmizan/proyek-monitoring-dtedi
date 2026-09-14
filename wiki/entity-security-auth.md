@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-database-lifecycle.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/auth.py, server/app/routers/auth.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/iot.py, server/app/dependencies.py, server/app/core/rate_limit.py, server/app/core/config.py, server/modelsv5.py, tools/rotate_credentials.py, docs/CREDENTIAL_ROTATION_GUIDE.md]
-updated: 2026-09-03
+sources: [server/auth.py, server/app/routers/auth.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/iot.py, server/app/dependencies.py, server/app/core/rate_limit.py, server/app/core/config.py, server/app/core/csrf.py, dashboard/src/lib/api.ts, dashboard/src/routes/login.tsx, server/modelsv5.py, tools/verify_prod_env.py, tools/rotate_credentials.py, docs/CREDENTIAL_ROTATION_GUIDE.md]
+updated: 2026-09-14
 ---
 
 # HubGate V5 Security & Authentication Architecture
@@ -227,12 +227,11 @@ A comprehensive architectural security audit reveals ten critical vulnerabilitie
 - **Mechanism**: The helper originally extracted `X-Real-IP` or the first component of `X-Forwarded-For` without validating proxy origin.
 - **Resolution**: Hardened in `server/app/core/rate_limit.py` to validate `request.client.host in TRUSTED_PROXIES` before parsing `X-Real-IP` or `X-Forwarded-For`. If untrusted, it strictly falls back to `request.client.host`, preventing spoofing against SlowAPI rate limits.
 
-### SEC-02: Missing Explicit CSRF Tokens for Mutating Endpoints
-- **Status**: Open
-- **Location**: `server/app/routers/` (all state-changing `POST`, `PUT`, `PATCH`, `DELETE` routes).
-- **Mechanism**: Protection relies exclusively on cookie `SameSite="lax"`. While this blocks cross-origin subresource requests, top-level window navigations and legacy browser quirks can still transmit cookies.
-- **Impact**: Potential CSRF exposure on state-changing endpoints if the frontend SPA is hosted across divergent subdomain origins.
-- **Remediation**: Implement double-submit CSRF cookie verification or require custom headers (`X-Requested-With` or `X-CSRF-Token`) on all mutating endpoints.
+### SEC-02: Missing Explicit CSRF Tokens for Mutating Endpoints [RESOLVED]
+- **Status**: **RESOLVED**
+- **Location**: `server/app/core/csrf.py`, cookie-authenticated routers, and `dashboard/src/lib/api.ts`.
+- **Resolution**: A stable mandatory `CSRF_SECRET` signs session-bound HMAC-SHA256 tokens returned only by authenticated `GET /api/auth/csrf-token` responses with `Cache-Control: no-store`. Every cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` validates `X-CSRF-Token`; edge routes authenticated by `X-Hub-ID`/`X-Hub-Key` remain exempt. Login is token-exempt but accepts JSON only, retains the 5/minute rate limit, validates browser `Origin`, and creates a fresh server session.
+- **Client lifecycle**: The SPA keeps the token in memory, performs single-flight token loading, separates successful login from token bootstrap failure, and retries a rejected mutation once only for machine-readable `CSRF_TOKEN_MISSING` or `CSRF_TOKEN_INVALID` errors. Role and business-rule 403 responses are not retried.
 
 ### SEC-03: Inconsistent RBAC Enforcement Mechanisms [RESOLVED]
 - **Status**: **RESOLVED**

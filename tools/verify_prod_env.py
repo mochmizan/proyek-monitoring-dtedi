@@ -247,7 +247,42 @@ def verify_server_env(
             message="No CORS origins configured (strict same-origin mode).",
         ))
 
-    # 3. Seed / Gateway credentials if present
+    # 3. CSRF signing secret
+    csrf_secret = env_vars.get("CSRF_SECRET", "").strip()
+    csrf_banned_reason = check_is_banned(csrf_secret) if csrf_secret else None
+    if not csrf_secret:
+        report.results.append(CheckResult(
+            target=target,
+            variable="CSRF_SECRET",
+            status="FAIL",
+            message="CSRF_SECRET is missing or empty.",
+        ))
+    elif csrf_banned_reason:
+        report.results.append(CheckResult(
+            target=target,
+            variable="CSRF_SECRET",
+            status="FAIL",
+            message=f"CSRF_SECRET: {csrf_banned_reason}",
+            value_preview=mask_secret(csrf_secret),
+        ))
+    elif len(csrf_secret.encode("utf-8")) < 32:
+        report.results.append(CheckResult(
+            target=target,
+            variable="CSRF_SECRET",
+            status="FAIL",
+            message="CSRF_SECRET must contain at least 32 bytes.",
+            value_preview=mask_secret(csrf_secret),
+        ))
+    else:
+        report.results.append(CheckResult(
+            target=target,
+            variable="CSRF_SECRET",
+            status="PASS",
+            message="CSRF_SECRET meets the minimum 32-byte requirement.",
+            value_preview=mask_secret(csrf_secret),
+        ))
+
+    # 4. Seed / Gateway credentials if present
     if "HUB_KEY" in env_vars:
         hk = env_vars["HUB_KEY"].strip()
         banned_reason = check_is_banned(hk)

@@ -18,10 +18,10 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 | **DB & Credential Admin** | `migrate_sqlite_to_postgres.py`, `init_postgres_db.py`, `setup_postgres_wsl.sh`, `reset_sqlite_users.py`, `rotate_credentials.py`, `purge_dummy_data.py` | Streaming SQLite-to-PostgreSQL 16 migration, schema init + seeding, SQLite user reset, production credential / HUB_KEY rotation CLI, mock-data purge |
 | **Seeding / simulation** | `seed_demo_data.py`, `seed_rich_history.py`, `mock_publishers.py`, `stream_live_telemetry.py`, `seed_benchmark_telemetry.py` | Demo rooms/devices, 30-day synthetic history, MQTT node simulators (`hs109rs/{ts,ats,ac}/data`), live TS streaming, 1M row chunked benchmark seeder with index EXPLAIN verification |
 | **Sniffing / debug** | `sniff_pi.py`, `sniff_pi_mqtt.py`, `send_ac_command.py` | Remote MQTT sniff via SSH, AC command injection, auth debugging |
-| **Verification & Benchmarking** | `verify_production_deployment.py`, `verify_prod_env.py`, `benchmark_concurrency_stress.py` | 7-step production smoke test; `.env` auditor; async high-concurrency stress test evaluating 5 hard invariants (read/write/throughput/zero-lock) with Markdown/JSON report export |
+| **Verification & Benchmarking** | `verify_production_deployment.py`, `verify_prod_env.py`, `benchmark_concurrency_stress.py` | 7-step production smoke test with authenticated CSRF logout; `.env` auditor; async high-concurrency stress test evaluating 5 hard invariants (read/write/throughput/zero-lock) with Markdown/JSON report export |
 | **Misc** | `browser_test.mjs`, `generate_mosquitto_passwd.py` | Playwright headless login→dashboard (needs Vite `:5173`); Mosquitto PBKDF2 passwd |
 
-- Env-driven credentials: `MQTT_PASS`/`HUB_KEY`/`PI_PASSWORD` via env/args, error if missing, no hardcoded live defaults (since `afb9c46`); `verify_prod_env.py` banned-value literals are verifier fixtures only
+- Env-driven credentials: `MQTT_PASS`/`HUB_KEY`/`PI_PASSWORD` via env/args, error if missing, no hardcoded live defaults (since `afb9c46`); `verify_prod_env.py` also rejects missing, placeholder, or sub-32-byte `CSRF_SECRET`; banned-value literals are verifier fixtures only
 - Pi tooling defaults to `10.33.36.81` / `hubadmin` — override via args where provided
 - `setup_postgres_wsl.sh` opens `pg_hba.conf` to `0.0.0.0/0 md5` — WSL dev bootstrap only, never production
 

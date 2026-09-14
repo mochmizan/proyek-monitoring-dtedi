@@ -56,7 +56,12 @@ HUB_KEY=strong_local_hub_key_1234567890abcdef
 
 # CORS configuration for Vite Frontend Dev Server
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Required stable CSRF signing key; paste output from the command below
+CSRF_SECRET=
 ```
+
+Generate `CSRF_SECRET` once with `python -c "import secrets; print(secrets.token_hex(32))"` and store the output in `server/.env`. HubGate refuses to start when the value contains fewer than 32 UTF-8 bytes.
 
 ### B. Edge Gateway (`hub/.env`)
 Create or update `hub/.env`:

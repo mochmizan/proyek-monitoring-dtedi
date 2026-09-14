@@ -15,6 +15,7 @@ from schemasv5 import HubRegisterPayload, HubResponse, HubDeviceSummary, HubPair
 from modelsv5 import User, rooms
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
+from app.core.csrf import validate_csrf_request
 from app.dependencies import hub_auth_cache
 
 router = APIRouter(tags=["hubs"])
@@ -22,7 +23,7 @@ router = APIRouter(tags=["hubs"])
 HUB_ONLINE_WINDOW_SECONDS = 60
 
 
-@router.post("/api/admin/hubs")
+@router.post("/api/admin/hubs", dependencies=[Depends(validate_csrf_request)])
 @limiter.limit("10/minute")
 def register_new_hub(
     request: Request,
@@ -162,7 +163,7 @@ def pair_hub(
     return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "pending_approval", "hub_id": payload.hub_id})
 
 
-@router.post("/api/hubs/{hub_id}/approve")
+@router.post("/api/hubs/{hub_id}/approve", dependencies=[Depends(validate_csrf_request)])
 @limiter.limit("30/minute")
 def approve_hub(
     request: Request,
@@ -180,7 +181,7 @@ def approve_hub(
     return {"status": "approved", "hub_id": hub_id}
 
 
-@router.post("/api/hubs/{hub_id}/revoke")
+@router.post("/api/hubs/{hub_id}/revoke", dependencies=[Depends(validate_csrf_request)])
 @limiter.limit("30/minute")
 def revoke_hub(
     request: Request,
@@ -199,7 +200,7 @@ def revoke_hub(
     return {"status": "revoked", "hub_id": hub_id}
 
 
-@router.post("/api/gateways/{hub_id}/room")
+@router.post("/api/gateways/{hub_id}/room", dependencies=[Depends(validate_csrf_request)])
 @limiter.limit("30/minute")
 def assign_gateway_room(
     request: Request,
@@ -228,7 +229,7 @@ def assign_gateway_room(
     return {"status": "assigned", "hub_id": hub_id, "room_id": payload.room_id}
 
 
-@router.delete("/api/hubs/{hub_id}")
+@router.delete("/api/hubs/{hub_id}", dependencies=[Depends(validate_csrf_request)])
 @limiter.limit("30/minute")
 def delete_hub(
     request: Request,

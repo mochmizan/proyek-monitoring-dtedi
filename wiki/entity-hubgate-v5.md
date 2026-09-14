@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-data-model.md, wiki/entity-security-auth.md, wiki/concept-database-lifecycle.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/concept-command-path.md, wiki/concept-alert-engine.md, wiki/concept-time-conventions.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/app/main.py, server/databasev5.py, server/modelsv5.py, server/auth.py, server/app/dependencies.py, server/app/core/config.py, server/app/core/logging.py, server/app/core/rate_limit.py, server/app/routers/auth.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/alerts.py, server/app/services/alert_engine.py, server/app/services/presence.py, server/app/services/scheduler.py, server/app/services/telemetry.py, server/schemasv5.py, server/init_sqlv5.py, server/alembic/env.py]
-updated: 2026-09-03
+sources: [server/app/main.py, server/databasev5.py, server/modelsv5.py, server/auth.py, server/app/dependencies.py, server/app/core/config.py, server/app/core/csrf.py, server/app/core/logging.py, server/app/core/rate_limit.py, server/app/routers/auth.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/alerts.py, server/app/services/alert_engine.py, server/app/services/presence.py, server/app/services/scheduler.py, server/app/services/telemetry.py, server/schemasv5.py, server/init_sqlv5.py, server/alembic/env.py]
+updated: 2026-09-14
 ---
 
 # HubGate V5 (server/)
@@ -212,7 +212,7 @@ A deep architectural review of the `server/` subsystem reveals the following gap
 
 ### Pillar 5: Security Architecture & Attack Surface
 - **Gap 5.1 (Client IP Spoofing SEC-01 [RESOLVED])**: Resolved. `get_forwarded_address` validates `request.client.host in TRUSTED_PROXIES` before parsing `X-Real-IP` and `X-Forwarded-For`, falling back to client host if untrusted.
-- **Gap 5.2 (Missing CSRF Tokens SEC-02)**: Mutating state endpoints rely solely on `SameSite=Lax` cookies without explicit anti-CSRF tokens.
+- **Gap 5.2 (Missing CSRF Tokens SEC-02 [RESOLVED])**: Cookie-authenticated mutations validate session-bound HMAC-SHA256 tokens from `X-CSRF-Token`; login uses JSON/origin checks and hub-header routes remain exempt.
 - **Gap 5.3 (Inconsistent RBAC Declarations SEC-03 [RESOLVED])**: Resolved. Privileged endpoints in `schedules.py` and `commands.py` now use declarative `current_user: User = Depends(require_role("admin"))`.
 - **Gap 5.4 (Plaintext Hub Keys SEC-04)**: `hub_table.hub_key` is stored as plaintext in the database.
 - **Gap 5.5 (Missing Ingestion Hub-Device Ownership SEC-06 [RESOLVED])**: Resolved. Telemetry ingestion in `receive_iot` and `receive_iot_batch` strictly verifies `device.hub_id == hub.hub_id`, preventing cross-hub telemetry injection.

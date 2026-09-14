@@ -12,6 +12,7 @@ from modelsv5 import User, dev_table, hub_table, schedules
 from schemasv5 import ACCommand, ATSCommand
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
+from app.core.csrf import validate_csrf_request
 from app.services.scheduler import (
     CANONICAL_TZ,
     fire_schedule,
@@ -22,7 +23,11 @@ from app.services.scheduler import (
     _validate_cron_expr,
 )
 
-router = APIRouter(prefix="/api/schedules", tags=["schedules"])
+router = APIRouter(
+    prefix="/api/schedules",
+    tags=["schedules"],
+    dependencies=[Depends(validate_csrf_request)],
+)
 
 
 # Schemas

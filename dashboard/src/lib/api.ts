@@ -26,27 +26,139 @@
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
     Object.setPrototypeOf(this, ApiError.prototype);
   }
 }
 
 const BASE = import.meta.env.VITE_API_BASE || '';
 
+// ----------------------------------------------------
+// CSRF Helper & Handler
+// ----------------------------------------------------
+
+let csrfToken: string | null = null;
+let csrfTokenPromise: Promise<string> | null = null;
+let csrfGeneration = 0;
+
+export function ensureCsrfToken(): Promise<string> {
+  if (csrfToken) {
+    return Promise.resolve(csrfToken);
+  }
+
+  if (!csrfTokenPromise) {
+    const generation = csrfGeneration;
+    const request = (async () => {
+      const res = await fetch(`${BASE}/api/auth/csrf-token`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Cache-Control': 'no-store' },
+      });
+      const data = await handleResponse<{ csrf_token: string }>(res);
+      if (generation !== csrfGeneration) {
+        throw new Error('CSRF token request was superseded');
+      }
+      csrfToken = data.csrf_token;
+      return csrfToken;
+    })();
+    csrfTokenPromise = request;
+    request.then(
+      () => {
+        if (csrfTokenPromise === request) csrfTokenPromise = null;
+      },
+      () => {
+        if (csrfTokenPromise === request) csrfTokenPromise = null;
+      },
+    );
+  }
+
+  return csrfTokenPromise;
+}
+
+export function clearCsrfToken(): void {
+  csrfGeneration += 1;
+  csrfToken = null;
+  csrfTokenPromise = null;
+}
+
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const RETRYABLE_CSRF_CODES = new Set(['CSRF_TOKEN_INVALID', 'CSRF_TOKEN_MISSING']);
+
+function requestPath(input: string | URL): string {
+  return new URL(String(input), 'http://localhost').pathname;
+}
+
+function hasReplayableBody(body: BodyInit | null | undefined): boolean {
+  return typeof ReadableStream === 'undefined' || !(body instanceof ReadableStream);
+}
+
+async function responseErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const data = (await res.clone().json()) as { detail?: { code?: string } };
+    return data.detail?.code;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function apiFetch(
+  input: string | URL,
+  init: RequestInit = {}
+): Promise<Response> {
+  const method = (init.method ?? 'GET').toUpperCase();
+  const headers = new Headers(init.headers);
+  const requiresCsrf = UNSAFE_METHODS.has(method) && requestPath(input) !== '/api/auth/login';
+
+  if (requiresCsrf) {
+    headers.set('X-CSRF-Token', await ensureCsrfToken());
+  }
+
+  let response = await fetch(input, {
+    ...init,
+    headers,
+    credentials: 'same-origin',
+  });
+
+  if (requiresCsrf && response.status === 403 && hasReplayableBody(init.body)) {
+    const code = await responseErrorCode(response);
+    if (code && RETRYABLE_CSRF_CODES.has(code)) {
+      const rejectedToken = headers.get('X-CSRF-Token');
+      if (csrfToken === rejectedToken) {
+        clearCsrfToken();
+      }
+      headers.set('X-CSRF-Token', await ensureCsrfToken());
+      response = await fetch(input, {
+        ...init,
+        headers,
+        credentials: 'same-origin',
+      });
+    }
+  }
+
+  return response;
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     if (res.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      clearCsrfToken();
       window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
     }
     let errorMessage = `HTTP Error ${res.status}: ${res.statusText}`;
+    let errorCode: string | undefined;
     try {
       const errorData = await res.json();
       if (typeof errorData?.detail === 'string') {
         errorMessage = errorData.detail;
+      } else if (errorData?.detail && typeof errorData.detail === 'object' && !Array.isArray(errorData.detail)) {
+        errorCode = typeof errorData.detail.code === 'string' ? errorData.detail.code : undefined;
+        errorMessage = typeof errorData.detail.message === 'string' ? errorData.detail.message : errorMessage;
       } else if (Array.isArray(errorData?.detail)) {
         errorMessage = errorData.detail
           .map((item: { msg?: string; loc?: string[] }) => item.msg || JSON.stringify(item))
@@ -57,7 +169,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     } catch {
       // Ignore JSON parsing fallback
     }
-    throw new ApiError(res.status, errorMessage);
+    throw new ApiError(res.status, errorMessage, errorCode);
   }
   return res.json() as Promise<T>;
 }
@@ -70,25 +182,27 @@ export async function loginUser(payload: UserLoginPayload): Promise<UserResponse
   const res = await fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
     credentials: 'same-origin',
+    body: JSON.stringify(payload),
   });
   return handleResponse<UserResponse>(res);
 }
 
 export async function logoutUser(): Promise<{ status: string }> {
-  const res = await fetch(`${BASE}/api/auth/logout`, {
-    method: 'POST',
-    credentials: 'same-origin',
-  });
-  return handleResponse<{ status: string }>(res);
+  try {
+    const res = await apiFetch(`${BASE}/api/auth/logout`, {
+      method: 'POST',
+    });
+    return await handleResponse<{ status: string }>(res);
+  } finally {
+    clearCsrfToken();
+  }
 }
 
 export async function fetchCurrentUser(): Promise<UserResponse | null> {
-  const res = await fetch(`${BASE}/api/auth/me`, {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(`${BASE}/api/auth/me`);
   if (res.status === 401) {
+    clearCsrfToken();
     return null;
   }
   return handleResponse<UserResponse>(res);
@@ -99,36 +213,31 @@ export async function fetchCurrentUser(): Promise<UserResponse | null> {
 // ----------------------------------------------------
 
 export async function fetchRooms(): Promise<RoomResponse[]> {
-  const res = await fetch(`${BASE}/api/rooms`, {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(`${BASE}/api/rooms`);
   return handleResponse<RoomResponse[]>(res);
 }
 
 export async function createRoom(payload: RoomCreate): Promise<RoomResponse> {
-  const res = await fetch(`${BASE}/api/rooms`, {
+  const res = await apiFetch(`${BASE}/api/rooms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'same-origin',
   });
   return handleResponse<RoomResponse>(res);
 }
 
 export async function updateRoom(roomId: string, payload: RoomUpdate): Promise<RoomResponse> {
-  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
+  const res = await apiFetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'same-origin',
   });
   return handleResponse<RoomResponse>(res);
 }
 
 export async function deleteRoom(roomId: string): Promise<{ status: string; room_id: string }> {
-  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
+  const res = await apiFetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}`, {
     method: 'DELETE',
-    credentials: 'same-origin',
   });
   return handleResponse<{ status: string; room_id: string }>(res);
 }
@@ -137,18 +246,15 @@ export async function uploadFloorPlan(roomId: string, file: File): Promise<Floor
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}/floor-plan`, {
+  const res = await apiFetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}/floor-plan`, {
     method: 'POST',
     body: formData,
-    credentials: 'same-origin',
   });
   return handleResponse<FloorPlanUploadResponse>(res);
 }
 
 export async function fetchRoomMap(roomId: string): Promise<RoomMapResponse> {
-  const res = await fetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}/map`, {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(`${BASE}/api/rooms/${encodeURIComponent(roomId)}/map`);
   return handleResponse<RoomMapResponse>(res);
 }
 
@@ -156,9 +262,7 @@ export async function fetchRoomSparklines(range = '6h', maxPoints = 24): Promise
   const url = new URL(`${BASE}/api/rooms/sparklines`, window.location.origin);
   url.searchParams.set('range', range);
   url.searchParams.set('max_points', String(maxPoints));
-  const res = await fetch(url.toString(), {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(url.toString());
   return handleResponse<RoomSparklinesResponse>(res);
 }
 
@@ -174,33 +278,27 @@ export async function fetchDevices(status?: 'pending' | 'active' | 'all', dev_ty
   if (dev_type) {
     url.searchParams.set('dev_type', dev_type);
   }
-  const res = await fetch(url.toString(), {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(url.toString());
   return handleResponse<DeviceResponse[]>(res);
 }
 
 export async function fetchDevice(devId: string): Promise<DeviceResponse> {
-  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}`, {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(`${BASE}/api/devices/${encodeURIComponent(devId)}`);
   return handleResponse<DeviceResponse>(res);
 }
 
 export async function pairDevice(devId: string, payload: DevicePairRequest): Promise<DeviceResponse> {
-  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/pair`, {
+  const res = await apiFetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/pair`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'same-origin',
   });
   return handleResponse<DeviceResponse>(res);
 }
 
 export async function unpairDevice(devId: string): Promise<{ status: string; dev_id: string; is_active: boolean }> {
-  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/unpair`, {
+  const res = await apiFetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/unpair`, {
     method: 'POST',
-    credentials: 'same-origin',
   });
   return handleResponse<{ status: string; dev_id: string; is_active: boolean }>(res);
 }
@@ -209,11 +307,10 @@ export async function updateThresholds(
   devId: string,
   payload: ThresholdUpdateRequest
 ): Promise<ThresholdConfig> {
-  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/thresholds`, {
+  const res = await apiFetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/thresholds`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'same-origin',
   });
   return handleResponse<ThresholdConfig>(res);
 }
@@ -222,19 +319,16 @@ export async function sendDeviceCommand(
   devId: string,
   command: DeviceCommand
 ): Promise<{ status: string; command_id: string }> {
-  const res = await fetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/command`, {
+  const res = await apiFetch(`${BASE}/api/devices/${encodeURIComponent(devId)}/command`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
-    credentials: 'same-origin',
   });
   return handleResponse<{ status: string; command_id: string }>(res);
 }
 
 export async function fetchCommandStatus(commandId: string): Promise<CommandStatusResponse> {
-  const res = await fetch(`${BASE}/api/commands/${encodeURIComponent(commandId)}`, {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(`${BASE}/api/commands/${encodeURIComponent(commandId)}`);
   return handleResponse<CommandStatusResponse>(res);
 }
 
@@ -277,9 +371,7 @@ export async function fetchAlerts(params?: AlertFilterParams): Promise<AlertList
     }
   }
 
-  const res = await fetch(url.toString(), {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(url.toString());
   return handleResponse<AlertListResponse>(res);
 }
 
@@ -292,9 +384,7 @@ export async function fetchDeviceHistory(deviceId: string, range = '24h'): Promi
   if (range) {
     url.searchParams.set('range', range);
   }
-  const res = await fetch(url.toString(), {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(url.toString());
   return handleResponse<DeviceHistoryResponse>(res);
 }
 
@@ -303,30 +393,26 @@ export async function fetchDeviceHistory(deviceId: string, range = '24h'): Promi
 // ----------------------------------------------------
 
 export async function fetchHubs(): Promise<HubResponse[]> {
-  const res = await fetch(`${BASE}/api/hubs`, {
-    credentials: 'same-origin',
-  });
+  const res = await apiFetch(`${BASE}/api/hubs`);
   return handleResponse<HubResponse[]>(res);
 }
 
 export async function approveHub(hubId: string): Promise<HubActionResponse> {
-  const res = await fetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/approve`, {
+  const res = await apiFetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/approve`, {
     method: 'POST',
-    credentials: 'same-origin',
   });
   return handleResponse<HubActionResponse>(res);
 }
 
 export async function revokeHub(hubId: string): Promise<HubActionResponse> {
-  const res = await fetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/revoke`, {
+  const res = await apiFetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/revoke`, {
     method: 'POST',
-    credentials: 'same-origin',
   });
   return handleResponse<HubActionResponse>(res);
 }
 
 // ----------------------------------------------------
-// Schedules API â€” ATS flexible cron (server-scheduler)
+// Schedules API
 // ----------------------------------------------------
 
 export async function fetchSchedules(params?: { hub_id?: string; dev_id?: string; enabled?: boolean }): Promise<ScheduleResponse[]> {
@@ -334,47 +420,43 @@ export async function fetchSchedules(params?: { hub_id?: string; dev_id?: string
   if (params?.hub_id) url.searchParams.set('hub_id', params.hub_id);
   if (params?.dev_id) url.searchParams.set('dev_id', params.dev_id);
   if (typeof params?.enabled === 'boolean') url.searchParams.set('enabled', String(params.enabled));
-  const res = await fetch(url.toString(), { credentials: 'same-origin' });
+  const res = await apiFetch(url.toString());
   return handleResponse<ScheduleResponse[]>(res);
 }
 
 export async function fetchSchedule(id: string): Promise<ScheduleResponse> {
-  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+  const res = await apiFetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`);
   return handleResponse<ScheduleResponse>(res);
 }
 
 export async function createSchedule(payload: ScheduleCreate): Promise<ScheduleResponse> {
-  const res = await fetch(`${BASE}/api/schedules`, {
+  const res = await apiFetch(`${BASE}/api/schedules`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'same-origin',
   });
   return handleResponse<ScheduleResponse>(res);
 }
 
 export async function updateSchedule(id: string, payload: ScheduleUpdate): Promise<ScheduleResponse> {
-  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'same-origin',
   });
   return handleResponse<ScheduleResponse>(res);
 }
 
 export async function deleteSchedule(id: string): Promise<{ status: string; id: string }> {
-  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${BASE}/api/schedules/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    credentials: 'same-origin',
   });
   return handleResponse<{ status: string; id: string }>(res);
 }
 
 export async function runNowSchedule(id: string): Promise<{ status: string; command_id: string }> {
-  const res = await fetch(`${BASE}/api/schedules/${encodeURIComponent(id)}/run-now`, {
+  const res = await apiFetch(`${BASE}/api/schedules/${encodeURIComponent(id)}/run-now`, {
     method: 'POST',
-    credentials: 'same-origin',
   });
   return handleResponse<{ status: string; command_id: string }>(res);
 }
@@ -383,8 +465,6 @@ export async function previewScheduleCron(cronExpr: string, tz?: string): Promis
   const url = new URL(`${BASE}/api/schedules/preview`, window.location.origin);
   url.searchParams.set('cron_expr', cronExpr);
   if (tz) url.searchParams.set('tz', tz);
-  const res = await fetch(url.toString(), { credentials: 'same-origin' });
+  const res = await apiFetch(url.toString());
   return handleResponse<SchedulePreviewResponse>(res);
 }
-
-

@@ -79,11 +79,12 @@ Create and edit `/opt/smsb/server/.env`:
 DATABASE_URL=postgresql://smsb_admin:<STRONG_DB_PASSWORD>@127.0.0.1:5432/smsb_prod
 HUB_NAME=hs109rs-hub-01
 HUB_KEY=<64_CHAR_HEX_KEY>
+# Required; paste a different `openssl rand -hex 32` result than HUB_KEY
+CSRF_SECRET=
 ```
 
 > [!TIP]
-> Generate cryptographically secure keys with:
-> `openssl rand -hex 32`
+> Generate `HUB_KEY` and `CSRF_SECRET` separately with `openssl rand -hex 32`. HubGate and the production environment verifier reject an empty or sub-32-byte `CSRF_SECRET`.
 
 ### Step 1.4: Run Automated Production Deployment Script
 Execute the orchestration deployment script:

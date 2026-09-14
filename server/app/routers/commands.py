@@ -13,11 +13,12 @@ from schemasv5 import ACCommand, ATSCommand, CommandStatusResponse
 from auth import get_current_user, require_role
 from app.dependencies import verify_hub_identity
 from app.core.rate_limit import limiter
+from app.core.csrf import validate_csrf_request
 
 router = APIRouter(tags=["commands"])
 
 
-@router.post("/api/devices/{dev_id}/command")
+@router.post("/api/devices/{dev_id}/command", dependencies=[Depends(validate_csrf_request)])
 @limiter.limit("30/minute")
 def send_device_command(
     request: Request,

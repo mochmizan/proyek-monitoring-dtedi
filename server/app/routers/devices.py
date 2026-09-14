@@ -12,12 +12,13 @@ from modelsv5 import dev_table, hub_table, rooms, device_threshold_config, tempe
 from schemasv5 import DevicePairRequest, DeviceResponse, ThresholdConfigSchema, ThresholdUpdateRequest, TelemetryHistoryPoint, DeviceHistoryResponse
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
+from app.core.csrf import validate_csrf_request
 from app.routers.alerts import parse_datetime_param
 from app.dependencies import hub_auth_cache, stage_hub_heartbeat
 from app.services.telemetry import get_latest_readings_for_devices
 from app.services.presence import DEVICE_OFFLINE_WINDOW_SECONDS
 
-router = APIRouter(tags=["devices"])
+router = APIRouter(tags=["devices"], dependencies=[Depends(validate_csrf_request)])
 
 
 @router.post("/api/devices/{dev_id}/approve")

@@ -15,11 +15,16 @@ from auth import (
 )
 from schemas_auth import UserLoginPayload, UserResponse, ChangePasswordRequest
 from app.core.rate_limit import limiter
+from app.core.csrf import create_csrf_token, require_csrf, validate_login_request
 
 router = APIRouter(tags=["auth"])
 
 
-@router.post("/api/auth/login", response_model=UserResponse)
+@router.post(
+    "/api/auth/login",
+    response_model=UserResponse,
+    dependencies=[Depends(validate_login_request)],
+)
 @limiter.limit("5/minute")
 def login(
     request: Request,
@@ -80,13 +85,7 @@ def login(
         max_age=7200,
     )
 
-    return UserResponse(
-        username=user.username,
-        display_name=user.display_name,
-        role=user.role,
-        is_active=user.is_active,
-        must_change_password=user.must_change_password,
-    )
+    return UserResponse.model_validate(user)
 
 
 @router.post("/api/auth/logout")
@@ -94,6 +93,7 @@ def logout(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_csrf),
 ):
     session_id = request.cookies.get("session_id")
     if session_id:
@@ -103,17 +103,34 @@ def logout(
     return {"status": "logged_out"}
 
 
+@router.get("/api/auth/csrf-token")
+def get_csrf_token(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+):
+    session_id = request.cookies.get("session_id")
+
+    if not session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session tidak ditemukan, silakan login kembali",
+        )
+
+    token = create_csrf_token(session_id)
+
+    # Mencegah browser/proxy menyimpan cache response token ini
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+
+    return {"csrf_token": token}
+
+
 @router.get("/api/auth/me", response_model=UserResponse)
 def get_me(
     current_user: User = Depends(get_current_user),
 ):
-    return UserResponse(
-        username=current_user.username,
-        display_name=current_user.display_name,
-        role=current_user.role,
-        is_active=current_user.is_active,
-        must_change_password=current_user.must_change_password,
-    )
+    return UserResponse.model_validate(current_user)
 
 
 # Tambahan: Endpoint Ganti Password Mandiri
@@ -123,7 +140,7 @@ def change_password(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_csrf)
 ):
     # 1. Verifikasi password lama
     if not verify_password_safe(current_user.password_hash, req.old_password):
