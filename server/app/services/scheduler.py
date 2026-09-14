@@ -270,6 +270,7 @@ async def scheduler_lifespan(app):
     from modelsv5 import schedules
     from sqlalchemy import select
     from app.services.presence import evaluate_device_presence_batch, PRESENCE_INTERVAL_SECONDS
+    from app.services.telemetry_retention import run_telemetry_retention
 
     db = SessionLocal()
     try:
@@ -335,6 +336,16 @@ async def scheduler_lifespan(app):
         coalesce=True,
         max_instances=1,
         misfire_grace_time=300,
+    )
+
+    scheduler.add_job(
+        run_telemetry_retention,
+        trigger=CronTrigger(hour=2, minute=15, timezone="UTC"),
+        id="engine-telemetry-retention",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
     )
 
     try:

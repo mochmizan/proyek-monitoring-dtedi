@@ -25,6 +25,7 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
   - `PRAGMA cache_size = -8000;` (8MB memory page cache, tuned for 1GB VPS memory envelope)
   - `PRAGMA mmap_size = 67108864;` (64MB memory-mapped I/O, tuned for 1GB VPS memory envelope)
 - **Hourly WAL Maintenance Job**: APScheduler registers `engine-sqlite-wal-checkpoint` in `app/services/scheduler.py` executing `checkpoint_sqlite_wal` (`PRAGMA wal_checkpoint(TRUNCATE);`) every hour when running on SQLite, actively preventing unbounded WAL disk bloat.
+- **Tiered Telemetry Retention**: APScheduler runs `engine-telemetry-retention` daily at 02:15 UTC. `app/services/telemetry_retention.py` compacts raw telemetry older than 31 days into hourly rows, hourly rows older than 3 calendar months into daily rows, and daily rows older than 1 calendar year into monthly rows. Rollups preserve per-metric SUM/count/AVG/MIN/MAX; ATS rollups also preserve first/last state, state-change count, and emergency-event count. Each source bucket is deleted only in the same successful transaction as its idempotent upsert; PostgreSQL uses an advisory lock and SQLite uses a process lock.
 - **Session Management (`get_db` & `verify_session`)**: FastAPI dependency generator in `databasev5.py` providing request-scoped sessions with automatic `db.rollback()` on exceptions and guaranteed `db.close()` in `finally`. `verify_session` in `server/auth.py` enforces `SEC-10` session window throttling: only executes an `UPDATE sessions` write transaction if remaining validity is `< 90 minutes` (`remaining_validity < timedelta(minutes=90)`). Fresh sessions skip DB writes completely, eliminating write-on-read lock serialization.
 
 ### Entry & Architecture
@@ -38,7 +39,7 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 
 ### Tables & Composite Indexes
 
-`hub_table`, `rooms`, `dev_table`, `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `pending_commands`, `schedules`, `users`, `sessions`, `login_attempts`.
+`hub_table`, `rooms`, `dev_table`, `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `temperature_hourly`, `temperature_daily`, `temperature_monthly`, `ats_hourly`, `ats_daily`, `ats_monthly`, `pending_commands`, `schedules`, `users`, `sessions`, `login_attempts`.
 
 Composite SARGable performance indexes:
 - `ix_event_log_dev_metric_ts`: `event_log(dev_id, metric, timestamp.desc())` (threshold debounce lookups)
@@ -49,7 +50,7 @@ Composite SARGable performance indexes:
 
 ### Downsampling V2 & Telemetry History Contract
 
-- Endpoint: `GET /api/devices/{id}/history` (`?range=6h,24h,7d,30d,all&max_points=1000`).
+- Endpoint: `GET /api/devices/{id}/history` (`?range=6h,24h,7d,30d,3m,1y,all&max_points=1000`). Short ranges query raw data; `3m`, `1y`, and `all` return uniform hourly, daily, and monthly resolution respectively by combining the retained tiers with weighted sums/counts.
 - Dynamic Bucket Resolution: Calculates bucket size in seconds dynamically based on requested time range and `max_points` parameter.
 - Single-Pass SQL Bucket Expression (`_build_epoch_bucket_expr`):
   - SQLite: `func.unixepoch(col)` integer seconds (~2x faster than strftime).
@@ -89,7 +90,7 @@ Composite SARGable performance indexes:
 
 ## Verification
 
-- `pytest server/ -q` — runs all 226 test cases covering engine hardening, downsampling v2, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC/CSRF, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
+- `pytest server/ -q` — runs 231 test cases covering engine hardening, downsampling v2, tiered telemetry retention, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC/CSRF, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
 - `python tools/seed_benchmark_telemetry.py --total-rows 1000000 --days 30 --clean --verify` — seeds 1,000,000 synthetic rows in ~60s and verifies composite index query plans.
 - `python tools/benchmark_concurrency_stress.py` — executes 15s multi-worker stress test validating all read, write, throughput, and zero-lock SLAs.
 

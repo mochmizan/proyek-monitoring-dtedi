@@ -399,6 +399,7 @@ class DeviceHistoryResponse(BaseModel):
     total_points: int
     points: list[TelemetryHistoryPoint] = Field(default_factory=list)
     bucket_seconds: Optional[int] = None
+    resolution: str = "raw"
 
     model_config = {"from_attributes": True}
 

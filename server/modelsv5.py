@@ -174,6 +174,77 @@ class ats_data(Base):
     )
 
 
+class _TemperatureRollup:
+    dev_id = Column(String, ForeignKey("dev_table.dev_id", ondelete="CASCADE"), primary_key=True)
+    bucket_start = Column(DateTime(timezone=True), primary_key=True)
+    temp_sum = Column(Float, nullable=False, default=0.0)
+    temp_count = Column(Integer, nullable=False, default=0)
+    temp_avg = Column(Float, nullable=True)
+    temp_min = Column(Float, nullable=True)
+    temp_max = Column(Float, nullable=True)
+    humid_sum = Column(Float, nullable=False, default=0.0)
+    humid_count = Column(Integer, nullable=False, default=0)
+    humid_avg = Column(Float, nullable=True)
+    humid_min = Column(Float, nullable=True)
+    humid_max = Column(Float, nullable=True)
+
+
+class temperature_hourly(_TemperatureRollup, Base):
+    __tablename__ = "temperature_hourly"
+    __table_args__ = (Index("ix_temperature_hourly_dev_bucket", "dev_id", "bucket_start", unique=True),)
+
+
+class temperature_daily(_TemperatureRollup, Base):
+    __tablename__ = "temperature_daily"
+    __table_args__ = (Index("ix_temperature_daily_dev_bucket", "dev_id", "bucket_start", unique=True),)
+
+
+class temperature_monthly(_TemperatureRollup, Base):
+    __tablename__ = "temperature_monthly"
+    __table_args__ = (Index("ix_temperature_monthly_dev_bucket", "dev_id", "bucket_start", unique=True),)
+
+
+class _ATSRollup:
+    dev_id = Column(String, ForeignKey("dev_table.dev_id", ondelete="CASCADE"), primary_key=True)
+    bucket_start = Column(DateTime(timezone=True), primary_key=True)
+    pln_sum = Column(Float, nullable=False, default=0.0)
+    pln_count = Column(Integer, nullable=False, default=0)
+    pln_avg = Column(Float, nullable=True)
+    pln_min = Column(Float, nullable=True)
+    pln_max = Column(Float, nullable=True)
+    genset_sum = Column(Float, nullable=False, default=0.0)
+    genset_count = Column(Integer, nullable=False, default=0)
+    genset_avg = Column(Float, nullable=True)
+    genset_min = Column(Float, nullable=True)
+    genset_max = Column(Float, nullable=True)
+    aki_sum = Column(Float, nullable=False, default=0.0)
+    aki_count = Column(Integer, nullable=False, default=0)
+    aki_avg = Column(Float, nullable=True)
+    aki_min = Column(Float, nullable=True)
+    aki_max = Column(Float, nullable=True)
+    first_state = Column(String, nullable=True)
+    last_state = Column(String, nullable=True)
+    first_emergency = Column(Boolean, nullable=True)
+    last_emergency = Column(Boolean, nullable=True)
+    state_change_count = Column(Integer, nullable=False, default=0)
+    emergency_event_count = Column(Integer, nullable=False, default=0)
+
+
+class ats_hourly(_ATSRollup, Base):
+    __tablename__ = "ats_hourly"
+    __table_args__ = (Index("ix_ats_hourly_dev_bucket", "dev_id", "bucket_start", unique=True),)
+
+
+class ats_daily(_ATSRollup, Base):
+    __tablename__ = "ats_daily"
+    __table_args__ = (Index("ix_ats_daily_dev_bucket", "dev_id", "bucket_start", unique=True),)
+
+
+class ats_monthly(_ATSRollup, Base):
+    __tablename__ = "ats_monthly"
+    __table_args__ = (Index("ix_ats_monthly_dev_bucket", "dev_id", "bucket_start", unique=True),)
+
+
 class pending_commands(Base):
     __tablename__ = "pending_commands"
 

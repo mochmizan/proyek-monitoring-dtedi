@@ -2,13 +2,15 @@
 type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-telemetry-pipeline.md, wiki/entity-dashboard-spa.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/app/routers/devices.py, server/test_device_history.py, server/test_phase2_downsampling.py, server/test_phase6_verification_benchmark.py, dashboard/src/hooks/useDeviceHistory.ts, commit:8f8f6cd]
-updated: 2026-09-02
+sources: [server/app/routers/devices.py, server/app/services/telemetry_retention.py, server/test_device_history.py, server/test_phase2_downsampling.py, server/test_telemetry_retention.py, dashboard/src/hooks/useDeviceHistory.ts, commit:8f8f6cd]
+updated: 2026-09-14
 ---
 
 # Downsampling V2
 
 Downsampling V2 provides single-pass, bounded-cardinality aggregation for device history queries (`GET /api/devices/{id}/history`). It guarantees consistent response times, exact envelope bounds, and constant memory overhead regardless of underlying dataset size across 30-day time ranges.
+
+Long-term history uses retained rollup tiers. Raw samples remain for 31 days, hourly aggregates cover data older than 31 days, daily aggregates replace hourly data older than three calendar months, and monthly aggregates replace daily data older than one calendar year. The `3m`, `1y`, and `all` API ranges return uniform hourly, daily, and monthly buckets. Tier merging uses stored sums and per-metric counts rather than averaging averages.
 
 ## 1. Grafana-Aligned Time-Bucket Architecture
 
@@ -72,4 +74,4 @@ The database engine navigates directly to the target device's time range via a B
 
 **Performance SLAs & Measured Baseline**:
 - PostgreSQL 16 (Production Target): 30-day history downsampling over 1,000,000 rows P95 < 300ms.
-- SQLite 3 WAL (Edge / Dev Target): 30-day history downsampling over 1,000,000 rows P95 < 1000ms (Measured baseline: 891.28ms P95).
+- SQLite 3 WAL (Edge / Dev Target): 30-day history downsampling over 1,000,000 rows P95 < 1000ms (Measured baseline: 891.28ms P95).

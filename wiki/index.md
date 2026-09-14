@@ -25,7 +25,7 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 ## Concepts
 
 - [concept-telemetry-pipeline.md](concept-telemetry-pipeline.md) — End-to-end data flow: ESP → MQTT → hub WAL → HTTPS → single-transaction DB ingest → dashboard
-- [concept-downsampling-v2.md](concept-downsampling-v2.md) — Single-pass SQL epoch bucketing, min/max envelopes, and sub-second 30d SLAs
+- [concept-downsampling-v2.md](concept-downsampling-v2.md) — Single-pass SQL bucketing plus hourly/daily/monthly retained telemetry tiers
 - [concept-presence-engine.md](concept-presence-engine.md) — Decoupled 15s background presence sweeper, detection lag SLA (<= 40s), and read-only query invariant
 - [concept-frontend-navigation.md](concept-frontend-navigation.md) — TanStack Router intent preloading, background idle route warmup, floating sidebar & drawer navigation, and 401 unauth handling
 - [concept-frontend-resilience.md](concept-frontend-resilience.md) — Active ErrorBoundary mounting hierarchy, query retry policies, 401 redirect interceptors, offline/reconnecting UX, scroll restoration

@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-alert-engine.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/modelsv5.py, server/init_sqlv5.py, server/alembic/versions/c1a8b9f0e2d3_schema_indexing_and_nullability.py, server/AGENTS.md, commit:8f8f6cd, commit:9961f5c]
-updated: 2026-09-02
+sources: [server/modelsv5.py, server/init_sqlv5.py, server/alembic/versions/c1a8b9f0e2d3_schema_indexing_and_nullability.py, server/alembic/versions/a9d4c2e7f601_add_tiered_telemetry_rollups.py, server/app/services/telemetry_retention.py, server/AGENTS.md, commit:8f8f6cd, commit:9961f5c]
+updated: 2026-09-14
 ---
 
 # HubGate V5 Data Model
@@ -20,6 +20,8 @@ All ORM entities live in `server/modelsv5.py`. The database architecture targets
   - Columns: `data_id` (PK, deterministic UUID), `dev_id` (FK `dev_table.dev_id`, `nullable=False`), `timestamp` (UTC datetime, `nullable=False`), `state` (String), `pln` (Float), `genset` (Float), `aki` (Float starter battery DC), `rem_hour`, `rem_min`, `rem_sec`, `auto_mode` (Boolean), `emergency` (Boolean).
   - Indexing: Composite index `idx_ats_dev_timestamp(dev_id, timestamp DESC)`.
   - Constraints: `UniqueConstraint("dev_id", "timestamp", name="uq_ats_dev_timestamp")`.
+- `temperature_hourly`, `temperature_daily`, `temperature_monthly`: Retained environmental aggregates keyed by `(dev_id, bucket_start)`. Each metric stores SUM, independent non-null count, AVG, MIN, and MAX so coarser tiers remain weighted and null-safe.
+- `ats_hourly`, `ats_daily`, `ats_monthly`: Retained electrical aggregates keyed by `(dev_id, bucket_start)`. PLN, genset, and battery metrics store SUM/count/AVG/MIN/MAX; state metadata stores first/last state, boundary emergency flags, state-change count, and emergency-event count.
 - `data_table`: Legacy raw-JSON telemetry ingest path.
   - Columns: `data_id` (PK), `dev_id` (FK `dev_table.dev_id`), `dev_name`, `timestamp` (UTC datetime), `payload` (JSON).
   - Indexing: `ix_data_table_dev_ts_desc(dev_id, timestamp DESC)`.

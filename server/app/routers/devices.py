@@ -8,7 +8,11 @@ from sqlalchemy import Integer, cast, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from databasev5 import get_db
-from modelsv5 import dev_table, hub_table, rooms, device_threshold_config, temperature_data, ats_data, User
+from modelsv5 import (
+    User, ats_data, ats_daily, ats_hourly, ats_monthly, device_threshold_config,
+    dev_table, hub_table, rooms, temperature_data, temperature_daily,
+    temperature_hourly, temperature_monthly,
+)
 from schemasv5 import DevicePairRequest, DeviceResponse, ThresholdConfigSchema, ThresholdUpdateRequest, TelemetryHistoryPoint, DeviceHistoryResponse
 from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
@@ -277,11 +281,11 @@ def _compute_time_window(
             if start_dt.tzinfo is None:
                 start_dt = start_dt.replace(tzinfo=UTC)
         else:
-            valid_ranges = {"6h", "24h", "7d", "30d", "all"}
+            valid_ranges = {"6h", "24h", "7d", "30d", "3m", "1y", "all"}
             if range_str not in valid_ranges:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, all",
+                    detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, 3m, 1y, all",
                 )
             if range_str == "6h":
                 start_dt = end_dt - timedelta(hours=6)
@@ -291,13 +295,17 @@ def _compute_time_window(
                 start_dt = end_dt - timedelta(days=7)
             elif range_str == "30d":
                 start_dt = end_dt - timedelta(days=30)
+            elif range_str == "3m":
+                from app.services.telemetry_retention import _shift_months
+                start_dt = _shift_months(end_dt, -3)
+            elif range_str == "1y":
+                from app.services.telemetry_retention import _shift_months
+                start_dt = _shift_months(end_dt, -12)
             elif range_str == "all":
-                table = temperature_data if dev_type in ("TS", "AC", "ACC") else ats_data
-                min_ts = (
-                    db.query(func.min(table.timestamp))
-                    .filter(table.dev_id == dev_id)
-                    .scalar()
-                )
+                tables = (temperature_data, temperature_hourly, temperature_daily, temperature_monthly) if dev_type in ("TS", "AC", "ACC") else (ats_data, ats_hourly, ats_daily, ats_monthly)
+                timestamps = [table.timestamp if table in (temperature_data, ats_data) else table.bucket_start for table in tables]
+                minima = [db.query(func.min(column)).filter(table.dev_id == dev_id).scalar() for table, column in zip(tables, timestamps)]
+                min_ts = min((value for value in minima if value is not None), default=None)
                 if min_ts is None:
                     return now, now, 1
                 start_dt = min_ts if min_ts.tzinfo is not None else min_ts.replace(tzinfo=UTC)
@@ -308,11 +316,11 @@ def _compute_time_window(
                 detail="start_time must be earlier than or equal to end_time",
             )
     else:
-        valid_ranges = {"6h", "24h", "7d", "30d", "all"}
+        valid_ranges = {"6h", "24h", "7d", "30d", "3m", "1y", "all"}
         if range_str not in valid_ranges:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, all",
+                detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, 3m, 1y, all",
             )
         end_dt = now
         if range_str == "6h":
@@ -323,13 +331,17 @@ def _compute_time_window(
             start_dt = now - timedelta(days=7)
         elif range_str == "30d":
             start_dt = now - timedelta(days=30)
+        elif range_str == "3m":
+            from app.services.telemetry_retention import _shift_months
+            start_dt = _shift_months(now, -3)
+        elif range_str == "1y":
+            from app.services.telemetry_retention import _shift_months
+            start_dt = _shift_months(now, -12)
         elif range_str == "all":
-            table = temperature_data if dev_type in ("TS", "AC", "ACC") else ats_data
-            min_ts = (
-                db.query(func.min(table.timestamp))
-                .filter(table.dev_id == dev_id)
-                .scalar()
-            )
+            tables = (temperature_data, temperature_hourly, temperature_daily, temperature_monthly) if dev_type in ("TS", "AC", "ACC") else (ats_data, ats_hourly, ats_daily, ats_monthly)
+            timestamps = [table.timestamp if table in (temperature_data, ats_data) else table.bucket_start for table in tables]
+            minima = [db.query(func.min(column)).filter(table.dev_id == dev_id).scalar() for table, column in zip(tables, timestamps)]
+            min_ts = min((value for value in minima if value is not None), default=None)
             if min_ts is None:
                 return now, now, 1
             start_dt = min_ts if min_ts.tzinfo is not None else min_ts.replace(tzinfo=UTC)
@@ -441,6 +453,62 @@ def _downsample_ats(
     return points
 
 
+def _calendar_bucket(dialect: str, column, resolution: str):
+    if dialect == "sqlite":
+        fmt = {"hour": "%Y-%m-%d %H:00:00", "day": "%Y-%m-%d 00:00:00", "month": "%Y-%m-01 00:00:00"}[resolution]
+        return func.strftime(fmt, column).label("bucket_start")
+    return func.date_trunc(resolution, column).label("bucket_start")
+
+
+def _tiered_history(db: Session, dev_id: str, kind: str, start_dt: datetime, end_dt: datetime, resolution: str) -> list[TelemetryHistoryPoint]:
+    raw = temperature_data if kind == "temperature" else ats_data
+    tiers = (temperature_hourly, temperature_daily, temperature_monthly) if kind == "temperature" else (ats_hourly, ats_daily, ats_monthly)
+    metrics = ("temp", "humid") if kind == "temperature" else ("pln", "genset", "aki")
+    combined: dict[datetime, dict] = {}
+    dialect = db.get_bind().dialect.name
+    for table in (raw, *tiers):
+        time_col = table.timestamp if table is raw else table.bucket_start
+        bucket = _calendar_bucket(dialect, time_col, resolution)
+        columns = [bucket]
+        for metric in metrics:
+            if table is raw:
+                columns.extend([func.sum(getattr(table, metric)), func.count(getattr(table, metric)), func.min(getattr(table, metric)), func.max(getattr(table, metric))])
+            else:
+                columns.extend([func.sum(getattr(table, f"{metric}_sum")), func.sum(getattr(table, f"{metric}_count")), func.min(getattr(table, f"{metric}_min")), func.max(getattr(table, f"{metric}_max"))])
+        if kind == "ats":
+            columns.append(func.max(table.state if table is raw else table.last_state))
+        rows = db.query(*columns).filter(table.dev_id == dev_id, time_col >= start_dt, time_col <= end_dt).group_by(bucket).all()
+        for row in rows:
+            timestamp = row[0]
+            if isinstance(timestamp, str):
+                timestamp = datetime.fromisoformat(timestamp).replace(tzinfo=UTC)
+            else:
+                timestamp = timestamp.astimezone(UTC) if timestamp.tzinfo else timestamp.replace(tzinfo=UTC)
+            item = combined.setdefault(timestamp, {"state": None})
+            offset = 1
+            for metric in metrics:
+                total, count, minimum, maximum = row[offset:offset + 4]
+                item[f"{metric}_sum"] = item.get(f"{metric}_sum", 0.0) + float(total or 0)
+                item[f"{metric}_count"] = item.get(f"{metric}_count", 0) + int(count or 0)
+                minima = [value for value in (item.get(f"{metric}_min"), minimum) if value is not None]
+                maxima = [value for value in (item.get(f"{metric}_max"), maximum) if value is not None]
+                item[f"{metric}_min"] = min(minima) if minima else None
+                item[f"{metric}_max"] = max(maxima) if maxima else None
+                offset += 4
+            if kind == "ats" and row[offset] is not None:
+                item["state"] = row[offset]
+    points = []
+    for timestamp, item in sorted(combined.items()):
+        values = {"timestamp": timestamp, "state": item["state"]}
+        for metric in metrics:
+            count = item.get(f"{metric}_count", 0)
+            values[metric] = round(item[f"{metric}_sum"] / count, 2) if count else None
+            values[f"{metric}_min"] = round(float(item[f"{metric}_min"]), 2) if item[f"{metric}_min"] is not None else None
+            values[f"{metric}_max"] = round(float(item[f"{metric}_max"]), 2) if item[f"{metric}_max"] is not None else None
+        points.append(TelemetryHistoryPoint(**values))
+    return points
+
+
 @router.get("/api/devices/{dev_id}/history", response_model=DeviceHistoryResponse)
 @limiter.limit("60/minute")
 def get_device_history(
@@ -485,7 +553,12 @@ def get_device_history(
             bucket_seconds=bucket_sec,
         )
 
-    if device.dev_type in ("TS", "AC", "ACC"):
+    resolution = {"3m": "hour", "1y": "day", "all": "month"}.get(range, "raw") if start_time is None and end_time is None else "raw"
+    if resolution != "raw":
+        kind = "temperature" if device.dev_type in ("TS", "AC", "ACC") else "ats"
+        points = _tiered_history(db, device.dev_id, kind, start_dt, end_dt, resolution) if device.dev_type in ("TS", "AC", "ACC", "ATS") else []
+        bucket_sec = {"hour": 3600, "day": 86400, "month": None}[resolution]
+    elif device.dev_type in ("TS", "AC", "ACC"):
         points = _downsample_ts(db, device.dev_id, start_dt, end_dt, bucket_sec)
     elif device.dev_type == "ATS":
         points = _downsample_ats(db, device.dev_id, start_dt, end_dt, bucket_sec)
@@ -501,6 +574,7 @@ def get_device_history(
         total_points=len(points),
         points=points,
         bucket_seconds=bucket_sec,
+        resolution=resolution,
     )
 
 
