@@ -1,6 +1,14 @@
 ﻿import type {
   UserResponse,
   UserLoginPayload,
+  ChangePasswordPayload,
+  UserWithTempPasswordResponse,
+  UserListResponse,
+  AdminUserCreatePayload,
+  AdminUserUpdatePayload,
+  AdminUserStatusPayload,
+  AdminUserListParams,
+  AuditLogResponse,
   RoomResponse,
   RoomCreate,
   RoomUpdate,
@@ -206,6 +214,85 @@ export async function fetchCurrentUser(): Promise<UserResponse | null> {
     return null;
   }
   return handleResponse<UserResponse>(res);
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<{ status: string; message: string }> {
+  const res = await apiFetch(`${BASE}/api/auth/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ status: string; message: string }>(res);
+}
+
+// ----------------------------------------------------
+// Admin: User Management API (/api/admin/users)
+// ----------------------------------------------------
+
+export async function fetchAdminUsers(params?: AdminUserListParams): Promise<UserListResponse> {
+  const url = new URL(`${BASE}/api/admin/users`, window.location.origin);
+  if (params?.search) url.searchParams.set('search', params.search);
+  if (params?.role) url.searchParams.set('role', params.role);
+  if (typeof params?.is_active === 'boolean') url.searchParams.set('is_active', String(params.is_active));
+  url.searchParams.set('page', String(params?.page ?? 1));
+  url.searchParams.set('page_size', String(params?.page_size ?? 10));
+  const res = await apiFetch(url.toString());
+  return handleResponse<UserListResponse>(res);
+}
+
+export async function createAdminUser(payload: AdminUserCreatePayload): Promise<UserWithTempPasswordResponse> {
+  const res = await apiFetch(`${BASE}/api/admin/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<UserWithTempPasswordResponse>(res);
+}
+
+export async function updateAdminUser(userId: string, payload: AdminUserUpdatePayload): Promise<UserResponse> {
+  const res = await apiFetch(`${BASE}/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<UserResponse>(res);
+}
+
+export async function updateAdminUserStatus(userId: string, payload: AdminUserStatusPayload): Promise<UserResponse> {
+  const res = await apiFetch(`${BASE}/api/admin/users/${encodeURIComponent(userId)}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<UserResponse>(res);
+}
+
+export async function resetAdminUserPassword(userId: string): Promise<UserWithTempPasswordResponse> {
+  const res = await apiFetch(`${BASE}/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+    method: 'POST',
+  });
+  return handleResponse<UserWithTempPasswordResponse>(res);
+}
+
+export async function revokeAdminUserSessions(userId: string): Promise<{ status: string; message: string }> {
+  const res = await apiFetch(`${BASE}/api/admin/users/${encodeURIComponent(userId)}/revoke-sessions`, {
+    method: 'POST',
+  });
+  return handleResponse<{ status: string; message: string }>(res);
+}
+
+export async function deleteAdminUser(userId: string): Promise<{ status: string; message: string }> {
+  const res = await apiFetch(`${BASE}/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  });
+  return handleResponse<{ status: string; message: string }>(res);
+}
+
+export async function fetchAdminAuditLogs(limit = 50): Promise<AuditLogResponse[]> {
+  const url = new URL(`${BASE}/api/admin/users/audit-logs`, window.location.origin);
+  url.searchParams.set('limit', String(limit));
+  const res = await apiFetch(url.toString());
+  return handleResponse<AuditLogResponse[]>(res);
 }
 
 // ----------------------------------------------------

@@ -19,6 +19,9 @@ export const Route = createFileRoute('/login')({
         queryFn: fetchCurrentUser,
       });
       if (user) {
+        if (user.must_change_password) {
+          throw redirect({ to: '/change-password' });
+        }
         throw redirect({ to: search.redirect || '/' });
       }
     } catch (err) {
@@ -47,6 +50,12 @@ function LoginPage() {
       try {
         await ensureCsrfToken();
         await router.invalidate();
+
+        if (data.must_change_password) {
+          await router.navigate({ to: '/change-password' });
+          return;
+        }
+
         await router.navigate({ to: search.redirect || '/' });
       } catch {
         setError('Login berhasil, tetapi sesi keamanan gagal disiapkan. Silakan coba lagi atau muat ulang halaman.');

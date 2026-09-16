@@ -1,14 +1,75 @@
 export type UserRole = 'admin' | 'operator' | 'viewer';
 
+// Bentuk asli sesuai schemas_auth.py (UserResponse kedua, yang dipakai
+// login/me/admin — Python override class pertama yang cuma 3 field).
 export interface UserResponse {
+  id: string;
   username: string;
   display_name: string;
   role: UserRole;
+  is_active: boolean;
+  must_change_password: boolean;
+  is_online: boolean;
+  last_login_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface UserWithTempPasswordResponse extends UserResponse {
+  temp_password: string;
+}
+
+export interface UserListResponse {
+  items: UserResponse[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface UserLoginPayload {
   username: string;
   password: string;
+}
+
+export interface ChangePasswordPayload {
+  old_password: string;
+  new_password: string;
+}
+
+// Payload admin — persis schemas_auth.py: UserCreate, UserUpdate, UserStatusUpdate
+export interface AdminUserCreatePayload {
+  username: string;
+  display_name: string;
+  role: UserRole;
+  temp_password?: string;
+}
+
+export interface AdminUserUpdatePayload {
+  display_name?: string;
+  role?: UserRole;
+}
+
+export interface AdminUserStatusPayload {
+  is_active: boolean;
+}
+
+export interface AdminUserListParams {
+  search?: string;
+  role?: UserRole;
+  is_active?: boolean;
+  page?: number;
+  page_size?: number;
+}
+
+export interface AuditLogResponse {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  target_user_id: string | null;
+  status: string;
+  ip_address: string | null;
+  details: string | null;
+  timestamp: string;
 }
 
 export interface RoomResponse {

@@ -1,7 +1,9 @@
-import { LogOut } from 'lucide-react'
+import { useState } from 'react'
+import { LogOut, KeyRound } from 'lucide-react'
 import { useSidebarStore } from '@/lib/sidebarStore'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import ChangePasswordDialog from '@/components/account/ChangePasswordDialog'
 
 export interface SidebarFooterProps {
   currentUser?: {
@@ -25,9 +27,16 @@ export function SidebarFooter({
 }: SidebarFooterProps) {
   const storeCollapsed = useSidebarStore((s) => s.isCollapsed)
   const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : storeCollapsed
+  const [showChangePassword, setShowChangePassword] = useState(false)
 
   const displayName = currentUser?.display_name || currentUser?.username || 'User'
   const initial = displayName.charAt(0).toUpperCase()
+
+  // Backend mencabut semua sesi setelah password diganti, jadi setelah
+  // sukses kita logout user seperti biasa lewat callback yang sudah ada.
+  const handlePasswordChanged = () => {
+    onLogout?.()
+  }
 
   if (isCollapsed) {
     return (
@@ -56,6 +65,23 @@ export function SidebarFooter({
           <TooltipTrigger asChild>
             <button
               type="button"
+              onClick={() => setShowChangePassword(true)}
+              aria-label="Ganti Password"
+              className="h-9 w-9 flex items-center justify-center rounded-none border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <KeyRound className="h-4 w-4" />
+              <span className="sr-only">Ganti Password</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={12}>
+            Ganti Password
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
               onClick={onLogout}
               disabled={isLoggingOut}
               aria-label="Sign Out"
@@ -69,6 +95,12 @@ export function SidebarFooter({
             Sign Out
           </TooltipContent>
         </Tooltip>
+
+        <ChangePasswordDialog
+          open={showChangePassword}
+          onOpenChange={setShowChangePassword}
+          onSuccess={handlePasswordChanged}
+        />
       </div>
     )
   }
@@ -91,15 +123,31 @@ export function SidebarFooter({
           </span>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onLogout}
-        disabled={isLoggingOut}
-        className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-zinc-800 rounded-none hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/50 transition-all text-xs text-zinc-400 font-medium cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-      >
-        <LogOut className="h-3.5 w-3.5" />
-        <span>Sign Out</span>
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowChangePassword(true)}
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-zinc-800 rounded-none hover:bg-zinc-800 hover:text-zinc-100 transition-all text-xs text-zinc-400 font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          <span>Ganti Password</span>
+        </button>
+        <button
+          type="button"
+          onClick={onLogout}
+          disabled={isLoggingOut}
+          aria-label="Sign Out"
+          className="flex items-center justify-center px-3 py-2 border border-zinc-800 rounded-none hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/50 transition-all text-xs text-zinc-400 font-medium cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <ChangePasswordDialog
+        open={showChangePassword}
+        onOpenChange={setShowChangePassword}
+        onSuccess={handlePasswordChanged}
+      />
     </div>
   )
 }

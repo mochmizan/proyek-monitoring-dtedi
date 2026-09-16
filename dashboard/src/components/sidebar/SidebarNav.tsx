@@ -6,6 +6,7 @@ import {
   Radio,
   CalendarClock,
   Settings as SettingsIcon,
+  Users as UsersIcon,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useSidebarStore } from '@/lib/sidebarStore'
@@ -71,6 +72,12 @@ export function SidebarNav({
       label: 'Schedules',
       icon: CalendarClock,
       visible: role === 'admin' || role === 'operator',
+    },
+    {
+      to: '/users',
+      label: 'User Management',
+      icon: UsersIcon,
+      visible: isAdmin,
     },
     {
       to: '/settings',
