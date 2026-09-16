@@ -287,3 +287,32 @@ A comprehensive architectural security audit reveals ten critical vulnerabilitie
 - **Location**: `server/auth.py` (`verify_session`).
 - **Mechanism**: Every request authenticated via session cookie previously executed `db_session.expires_at = min(now + 2h, absolute_expiry)` followed by `db.commit()`, forcing write transactions and exclusive locks on `GET` requests.
 - **Resolution**: Implemented sliding window throttling in `server/auth.py`. An `UPDATE sessions` write transaction and `db.commit()` are executed only when remaining validity is `< 90 minutes` (`remaining_validity < timedelta(minutes=90)`). Requests with fresh sessions (remaining validity $\ge 90\text{m}$) bypass database writes completely, eliminating write-on-read lock serialization and PostgreSQL update churn.
+
+---
+
+## 6. User Activity Logging (Audit Trail) Architecture
+
+HubGate V5 provides an audit logging subsystem (`server/app/services/activity_logger.py`) recording critical user actions into `activity_logs`. The engine applies strict Role-Based Access Control (RBAC) filtering rules:
+
+### RBAC Logging Rules Matrix
+1. **Global (All Roles - `admin`, `operator`, `viewer`)**:
+   - `LOGIN` and `LOGOUT` events are strictly logged for every role.
+2. **Admin**:
+   - Logs all configuration and management mutations: room management (create, update, delete, floor plan uploads), device lifecycle (approve, pair, unpair, threshold updates), edge hub operations (register, approve, revoke, assign room, delete), schedule operations (create, update, delete, manual execution trigger), user account management (create, update, status toggle, password reset, session revocation, delete), and device control commands.
+3. **Operator**:
+   - Exclusively logs hardware device control commands (`Turn on AC`, `Start/Stop Genset`, hardware reset). Configuration, user management, and passive viewing are excluded.
+4. **Viewer**:
+   - Strictly read-only role. Viewing endpoints (`GET` requests) are **never** logged. Only `LOGIN` and `LOGOUT` events are captured.
+
+### Activity Payload Format
+All events store structured data adhering to the schema:
+```json
+{
+  "action": "<Human Readable Action Description>",
+  "details": {
+    "<key>": "<contextual value>"
+  }
+}
+```
+
+Audit entries are persisted in `activity_logs` (`id`, `user_name`, `user_id`, `activity`, `ip_address`, `created_at`) with composite index `ix_activity_logs_user_created(user_name, created_at DESC)` and exposed to administrators via `GET /api/admin/users/activity-logs`.

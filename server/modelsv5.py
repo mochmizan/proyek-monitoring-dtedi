@@ -353,6 +353,21 @@ class UserAuditLog(Base):
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
 
 
+class ActivityLog(Base):
+    __tablename__ = "activity_logs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_name = Column(String, nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    role = Column(String, nullable=True, index=True)
+    activity = Column(JSON_TYPE, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_activity_logs_user_name_created", "user_name", "created_at"),
+    )
+
+
 # Standard PascalCase ORM Model Aliases
 Hub = hub_table
 Room = rooms
@@ -364,4 +379,6 @@ EventLog = event_log
 PendingCommand = pending_commands
 DeviceThresholdConfig = device_threshold_config
 Schedule = schedules
+activity_logs = ActivityLog
+
 

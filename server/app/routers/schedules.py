@@ -22,6 +22,7 @@ from app.services.scheduler import (
     sync_job,
     _validate_cron_expr,
 )
+from app.services.activity_logger import log_user_activity
 
 router = APIRouter(
     prefix="/api/schedules",
@@ -229,6 +230,15 @@ def create_schedule(
         next_run_at=next_run_at,
     )
     db.add(row)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Membuat jadwal otomatisasi (Schedule/Cron)",
+        category="config",
+        details={"schedule_id": sched_id, "dev_id": body.dev_id, "cron_expr": body.cron_expr.strip(), "enabled": body.enabled},
+        request=request,
+        commit=False,
+    )
     db.commit()
     db.refresh(row)
 
@@ -329,6 +339,16 @@ def update_schedule(
     nxt = get_next_runs(obj.cron_expr, obj.tz, 1)
     obj.next_run_at = nxt[0] if nxt else None
 
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mengubah jadwal otomatisasi",
+        category="config",
+        details={"schedule_id": schedule_id, "dev_id": obj.dev_id, "cron_expr": obj.cron_expr, "enabled": obj.enabled},
+        request=request,
+        commit=False,
+    )
+
     db.commit()
     db.refresh(obj)
 
@@ -352,7 +372,18 @@ def delete_schedule(
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    sched_dev_id = obj.dev_id
+    sched_cron = obj.cron_expr
     db.delete(obj)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menghapus jadwal otomatisasi",
+        category="config",
+        details={"schedule_id": schedule_id, "dev_id": sched_dev_id, "cron_expr": sched_cron},
+        request=request,
+        commit=False,
+    )
     db.commit()
     try:
         remove_job(schedule_id)
@@ -377,4 +408,15 @@ def run_schedule_now(
         fire_schedule(schedule_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fire schedule: {e}")
+
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menjalankan jadwal manual (Run Now)",
+        category="config",
+        details={"schedule_id": schedule_id, "dev_id": obj.dev_id, "cron_expr": obj.cron_expr},
+        request=request,
+        commit=True,
+    )
+
     return {"status": "fired", "id": schedule_id}

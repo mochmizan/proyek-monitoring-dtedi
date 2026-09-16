@@ -42,6 +42,9 @@ All ORM entities live in `server/modelsv5.py`. The database architecture targets
 - `schedules`: Warmup and generator maintenance cron jobs.
   - Columns: `id` (PK), `name`, `cron_expr`, `payload` (JSON), `tz` (default `Asia/Jakarta`), `enabled`, `last_run_at`, `next_run_at`.
 - `users`, `sessions`, `login_attempts`: Argon2id credential store, active user sessions (indexed by `ix_sessions_user_expires(user_id, expires_at)`), and brute-force lockout tracking.
+- `activity_logs`: RBAC-governed audit trail recording user administrative, device control, and authentication events.
+  - Columns: `id` (PK, Integer autoincrement), `user_name` (String, nullable, indexed), `user_id` (FK `users.id` with `ondelete="SET NULL"`, nullable), `activity` (JSONB / JSON with `{"action": "...", "details": {...}}`), `ip_address` (String, nullable), `created_at` (UTC datetime, indexed).
+  - Indexing: `ix_activity_logs_user_name`, `ix_activity_logs_created_at`, `ix_activity_logs_user_created(user_name, created_at DESC)`.
 
 ## Alembic Migration `c1a8b9f0e2d3` & Schema Hardening
 

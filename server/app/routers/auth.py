@@ -16,6 +16,7 @@ from auth import (
 from schemas_auth import UserLoginPayload, UserResponse, ChangePasswordRequest
 from app.core.rate_limit import limiter
 from app.core.csrf import create_csrf_token, require_csrf, validate_login_request
+from app.services.activity_logger import log_user_activity
 
 router = APIRouter(tags=["auth"])
 
@@ -74,6 +75,16 @@ def login(
 
     session = create_session(db, user.id)
 
+    # Activity Logging (Global: Admin, Operator, Viewer)
+    log_user_activity(
+        db,
+        user=user,
+        action="Login",
+        category="auth",
+        details={"username": user.username, "role": user.role},
+        request=request,
+    )
+
     is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(
         key="session_id",
@@ -98,6 +109,17 @@ def logout(
     session_id = request.cookies.get("session_id")
     if session_id:
         delete_session(db, session_id)
+
+    # Activity Logging (Global: Admin, Operator, Viewer)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Logout",
+        category="auth",
+        details={"username": current_user.username, "role": current_user.role},
+        request=request,
+    )
+
     is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.delete_cookie("session_id", httponly=True, secure=is_secure, samesite="lax", path="/")
     return {"status": "logged_out"}
@@ -182,6 +204,16 @@ def change_password(
         details="User changed password successfully"
     )
     db.add(audit)
+
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Ganti password mandiri",
+        category="account_management",
+        details={"username": current_user.username},
+        request=request,
+        commit=False,
+    )
 
     db.commit()
 

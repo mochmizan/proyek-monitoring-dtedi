@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
 from databasev5 import get_db
-from modelsv5 import User, UserSession, UserAuditLog
+from modelsv5 import User, UserSession, UserAuditLog, ActivityLog
 from auth import get_current_user, require_role, hash_password
 from schemas_auth import (
     UserCreate,
@@ -20,6 +20,7 @@ from schemas_auth import (
     AuditLogResponse
 )
 from app.core.csrf import validate_csrf_request
+from app.services.activity_logger import log_user_activity
 
 router = APIRouter(
     prefix="/api/admin/users",
@@ -143,6 +144,15 @@ def create_user(
     db.refresh(new_user)
 
     log_action(db, current_user.id, "CREATE_USER", new_user.id, "SUCCESS", request, f"Created user {new_user.username} with role {new_user.role}")
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menambahkan akun",
+        category="account_management",
+        details={"target_username": new_user.username, "role": new_user.role, "display_name": new_user.display_name},
+        request=request,
+        commit=True,
+    )
 
     resp = UserWithTempPasswordResponse.from_orm(new_user)
     resp.is_online = False
@@ -150,7 +160,53 @@ def create_user(
     return resp
 
 
-# 3. GET /api/admin/users/{user_id} - Detail User
+# 3. GET /api/admin/users/audit-logs - Melihat Riwayat Audit Log (Khusus Admin)
+@router.get("/audit-logs", response_model=List[AuditLogResponse])
+def get_audit_logs(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
+    logs = db.query(UserAuditLog).order_by(UserAuditLog.timestamp.desc()).limit(limit).all()
+    return logs
+
+
+# 4. GET /api/admin/users/activity-logs - Melihat Riwayat Aktivitas Pengguna (Khusus Admin)
+@router.get("/activity-logs")
+def get_user_activity_logs(
+    limit: int = Query(50, ge=1, le=200),
+    page: int = Query(1, ge=1),
+    username: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
+    q = db.query(ActivityLog)
+    if username:
+        q = q.filter(func.lower(ActivityLog.user_name) == username.strip().lower())
+    if role:
+        q = q.filter(ActivityLog.role == role.strip().lower())
+    total = q.count()
+    items = q.order_by(ActivityLog.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    return {
+        "items": [
+            {
+                "id": log.id,
+                "user_name": log.user_name,
+                "user_id": log.user_id,
+                "role": log.role,
+                "activity": log.activity,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in items
+        ],
+        "total": total,
+        "page": page,
+        "page_size": limit,
+    }
+
+
+# 5. GET /api/admin/users/{user_id} - Detail User
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user_detail(
     user_id: str,
@@ -199,6 +255,15 @@ def update_user(
     db.refresh(target_user)
 
     log_action(db, current_user.id, "UPDATE_USER", target_user.id, "SUCCESS", request, f"Updated profile/role for {target_user.username}")
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mengubah akun",
+        category="account_management",
+        details={"target_username": target_user.username, "role": target_user.role, "display_name": target_user.display_name},
+        request=request,
+        commit=True,
+    )
 
     resp = UserResponse.from_orm(target_user)
     resp.is_online = check_is_online(db, target_user.id)
@@ -240,6 +305,15 @@ def update_user_status(
 
     action_name = "ACTIVATE_USER" if req.is_active else "DEACTIVATE_USER"
     log_action(db, current_user.id, action_name, target_user.id, "SUCCESS", request)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mengubah status akun",
+        category="account_management",
+        details={"target_username": target_user.username, "is_active": req.is_active},
+        request=request,
+        commit=True,
+    )
 
     resp = UserResponse.from_orm(target_user)
     resp.is_online = check_is_online(db, target_user.id)
@@ -270,6 +344,15 @@ def reset_user_password(
     db.refresh(target_user)
 
     log_action(db, current_user.id, "RESET_PASSWORD", target_user.id, "SUCCESS", request)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Reset password akun",
+        category="account_management",
+        details={"target_username": target_user.username},
+        request=request,
+        commit=True,
+    )
 
     resp = UserWithTempPasswordResponse.from_orm(target_user)
     resp.is_online = False
@@ -293,6 +376,15 @@ def revoke_user_sessions(
     db.commit()
 
     log_action(db, current_user.id, "REVOKE_SESSIONS", target_user.id, "SUCCESS", request, f"Revoked {deleted_count} active sessions")
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mencabut sesi akun",
+        category="account_management",
+        details={"target_username": target_user.username, "revoked_count": deleted_count},
+        request=request,
+        commit=True,
+    )
     return {"status": "success", "message": f"Berhasil mencabut {deleted_count} sesi aktif."}
 
 
@@ -319,20 +411,19 @@ def delete_user(
             raise HTTPException(status_code=400, detail="Tidak dapat menghapus admin terakhir di sistem")
 
     # Hapus sesi & hapus user
+    target_username = target_user.username
     db.query(UserSession).filter(UserSession.user_id == target_user.id).delete()
     db.delete(target_user)
     db.commit()
 
-    log_action(db, current_user.id, "DELETE_USER", user_id, "SUCCESS", request, f"Deleted user {target_user.username}")
+    log_action(db, current_user.id, "DELETE_USER", user_id, "SUCCESS", request, f"Deleted user {target_username}")
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menghapus akun",
+        category="account_management",
+        details={"target_username": target_username},
+        request=request,
+        commit=True,
+    )
     return {"status": "success", "message": "Pengguna berhasil dihapus"}
-
-
-# 9. GET /api/admin/users/audit-logs - Melihat Riwayat Audit Log (Khusus Admin)
-@router.get("/audit-logs", response_model=List[AuditLogResponse])
-def get_audit_logs(
-    limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin"))
-):
-    logs = db.query(UserAuditLog).order_by(UserAuditLog.timestamp.desc()).limit(limit).all()
-    return logs

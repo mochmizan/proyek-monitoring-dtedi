@@ -16,7 +16,8 @@ from modelsv5 import (
     Base, hub_table, dev_table, data_table, event_log,
     temperature_data, ats_data, pending_commands,
     User, UserSession, LoginAttempt,
-    rooms, device_threshold_config, schedules
+    rooms, device_threshold_config, schedules,
+    ActivityLog
 )
 
 # Konfigurasi logging

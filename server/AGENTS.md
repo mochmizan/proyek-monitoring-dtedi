@@ -39,7 +39,7 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 
 ### Tables & Composite Indexes
 
-`hub_table`, `rooms`, `dev_table`, `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `temperature_hourly`, `temperature_daily`, `temperature_monthly`, `ats_hourly`, `ats_daily`, `ats_monthly`, `pending_commands`, `schedules`, `users`, `sessions`, `login_attempts`.
+`hub_table`, `rooms`, `dev_table`, `device_threshold_config`, `data_table`, `event_log`, `temperature_data`, `ats_data`, `temperature_hourly`, `temperature_daily`, `temperature_monthly`, `ats_hourly`, `ats_daily`, `ats_monthly`, `pending_commands`, `schedules`, `users`, `sessions`, `login_attempts`, `activity_logs`.
 
 Composite SARGable performance indexes:
 - `ix_event_log_dev_metric_ts`: `event_log(dev_id, metric, timestamp.desc())` (threshold debounce lookups)

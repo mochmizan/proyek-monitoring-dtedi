@@ -21,6 +21,7 @@ from app.core.csrf import validate_csrf_request
 from app.core.config import FLOORPLAN_UPLOAD_DIR, STATIC_DIR, ALLOWED_FLOORPLAN_TYPES, ALLOWED_FLOORPLAN_EXTENSIONS, MAX_FLOORPLAN_FILE_SIZE
 from app.routers.devices import _build_epoch_bucket_expr
 from app.services.telemetry import get_latest_readings_for_devices
+from app.services.activity_logger import log_user_activity
 
 router = APIRouter(tags=["rooms"], dependencies=[Depends(validate_csrf_request)])
 
@@ -231,6 +232,15 @@ def create_room(
         created_at=datetime.now(UTC),
     )
     db.add(new_room)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Membuat ruangan baru",
+        category="config",
+        details={"room_id": room_id, "name": clean_name, "hub_id": payload.hub_id},
+        request=request,
+        commit=False,
+    )
     db.commit()
     db.refresh(new_room)
 
@@ -299,6 +309,16 @@ def update_room(
     if payload.floor_plan_image_path is not None:
         room.floor_plan_image_path = payload.floor_plan_image_path
 
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mengubah konfigurasi ruangan",
+        category="config",
+        details={"room_id": room.id, "name": room.name, "hub_id": room.hub_id},
+        request=request,
+        commit=False,
+    )
+
     db.commit()
     db.refresh(room)
 
@@ -336,7 +356,17 @@ def delete_room(
         )
 
     remove_floor_plan_file(room.floor_plan_image_path)
+    deleted_room_name = room.name
     db.delete(room)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menghapus ruangan",
+        category="config",
+        details={"room_id": room_id, "name": deleted_room_name},
+        request=request,
+        commit=False,
+    )
     db.commit()
     return {"status": "deleted", "room_id": room_id}
 
@@ -409,6 +439,15 @@ def upload_floor_plan(
 
     public_url = f"/static/uploads/floorplans/{safe_filename}"
     room.floor_plan_image_path = public_url
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Upload denah ruangan (Floor Plan)",
+        category="config",
+        details={"room_id": room_id, "room_name": room.name, "filename": file.filename},
+        request=request,
+        commit=False,
+    )
     db.commit()
     db.refresh(room)
 

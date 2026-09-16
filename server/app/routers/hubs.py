@@ -17,6 +17,7 @@ from auth import get_current_user, require_role
 from app.core.rate_limit import limiter
 from app.core.csrf import validate_csrf_request
 from app.dependencies import hub_auth_cache
+from app.services.activity_logger import log_user_activity
 
 router = APIRouter(tags=["hubs"])
 
@@ -42,6 +43,15 @@ def register_new_hub(
         is_active=True,
     )
     db.add(new_hub)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mendaftarkan gateway hub baru",
+        category="config",
+        details={"hub_id": payload.HUB_ID, "hub_name": payload.HUB_NAME},
+        request=request,
+        commit=False,
+    )
     db.commit()
     hub_auth_cache.invalidate(payload.HUB_ID)
     return {"status": "hub_registered", "hub_id": payload.HUB_ID}
@@ -176,6 +186,15 @@ def approve_hub(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hub tidak ditemukan")
 
     hub.is_active = True
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menyetujui gateway hub (Approve)",
+        category="config",
+        details={"hub_id": hub_id, "hub_name": hub.hub_name},
+        request=request,
+        commit=False,
+    )
     db.commit()
     hub_auth_cache.invalidate(hub_id)
     return {"status": "approved", "hub_id": hub_id}
@@ -195,6 +214,15 @@ def revoke_hub(
 
     hub.is_active = False
     hub.status = "offline"
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mencabut akses gateway hub (Revoke)",
+        category="config",
+        details={"hub_id": hub_id, "hub_name": hub.hub_name},
+        request=request,
+        commit=False,
+    )
     db.commit()
     hub_auth_cache.invalidate(hub_id)
     return {"status": "revoked", "hub_id": hub_id}
@@ -225,6 +253,15 @@ def assign_gateway_room(
 
     room.hub_id = hub.hub_id
     hub.room = room.name
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menugaskan hub gateway ke ruangan",
+        category="config",
+        details={"hub_id": hub_id, "room_id": payload.room_id, "room_name": room.name},
+        request=request,
+        commit=False,
+    )
     db.commit()
     return {"status": "assigned", "hub_id": hub_id, "room_id": payload.room_id}
 
@@ -251,7 +288,17 @@ def delete_hub(
         )
 
     db.query(rooms).filter(rooms.hub_id == hub_id).update({"hub_id": None})
+    deleted_hub_name = hub.hub_name
     db.delete(hub)
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menghapus gateway hub",
+        category="config",
+        details={"hub_id": hub_id, "hub_name": deleted_hub_name},
+        request=request,
+        commit=False,
+    )
     db.commit()
     hub_auth_cache.invalidate(hub_id)
     return {"status": "deleted", "hub_id": hub_id}

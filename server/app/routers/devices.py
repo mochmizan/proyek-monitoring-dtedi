@@ -1,4 +1,4 @@
-﻿# app/routers/devices.py
+# app/routers/devices.py
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Optional
@@ -21,6 +21,7 @@ from app.routers.alerts import parse_datetime_param
 from app.dependencies import hub_auth_cache, stage_hub_heartbeat
 from app.services.telemetry import get_latest_readings_for_devices
 from app.services.presence import DEVICE_OFFLINE_WINDOW_SECONDS
+from app.services.activity_logger import log_user_activity
 
 router = APIRouter(tags=["devices"], dependencies=[Depends(validate_csrf_request)])
 
@@ -44,6 +45,15 @@ def approve_device(
         raise HTTPException(status_code=404, detail="Device not found")
 
     device.is_active = True
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menyetujui perangkat baru (Approve/Whitelist)",
+        category="config",
+        details={"dev_id": device.dev_id, "dev_name": device.dev_name, "dev_type": device.dev_type},
+        request=request,
+        commit=False,
+    )
     db.commit()
     return {"status": "approved", "dev_id": device.dev_id}
 
@@ -118,6 +128,22 @@ def pair_device(
             )
             db.add(thresh)
 
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Pairing perangkat ke ruangan",
+        category="config",
+        details={
+            "dev_id": device.dev_id,
+            "dev_name": device.dev_name,
+            "room_id": payload.room_id,
+            "marker_x": payload.marker_x,
+            "marker_y": payload.marker_y,
+        },
+        request=request,
+        commit=False,
+    )
+
     db.commit()
     db.refresh(device)
 
@@ -169,6 +195,16 @@ def unpair_device(
     device.marker_x = None
     device.marker_y = None
     device.is_active = False
+
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Unpair perangkat dari ruangan",
+        category="config",
+        details={"dev_id": device.dev_id, "dev_name": device.dev_name},
+        request=request,
+        commit=False,
+    )
 
     db.commit()
     return {"status": "unpaired", "dev_id": device.dev_id, "is_active": False}
@@ -224,6 +260,24 @@ def update_device_thresholds(
             debounce_seconds=payload.debounce_seconds,
         )
         db.add(thresh)
+
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Mengubah threshold alert perangkat",
+        category="config",
+        details={
+            "dev_id": device.dev_id,
+            "dev_name": device.dev_name,
+            "dev_type": device.dev_type,
+            "warning": payload.warning,
+            "critical": payload.critical,
+            "hysteresis": payload.hysteresis,
+            "debounce_seconds": payload.debounce_seconds,
+        },
+        request=request,
+        commit=False,
+    )
 
     db.commit()
     db.refresh(thresh)

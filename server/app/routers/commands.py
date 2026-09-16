@@ -14,6 +14,7 @@ from auth import get_current_user, require_role
 from app.dependencies import verify_hub_identity
 from app.core.rate_limit import limiter
 from app.core.csrf import validate_csrf_request
+from app.services.activity_logger import log_user_activity
 
 router = APIRouter(tags=["commands"])
 
@@ -55,6 +56,40 @@ def send_device_command(
         status="pending",
     )
     db.add(new_cmd)
+
+    # Activity Logging (Admin & Operator device controls)
+    if is_reset:
+        action_name = "Reset Hardware FSM"
+    elif device.dev_type in ("AC", "ACC") or "target" in body or "action" in body:
+        ac_action = body.get("action") or body.get("target") or "Setting"
+        action_name = f"Kontrol AC ({ac_action})"
+    else:
+        ats_mode = body.get("mode")
+        ats_genset = body.get("start_genset")
+        if ats_genset:
+            action_name = f"Kontrol Genset ({ats_genset})"
+        elif ats_mode:
+            action_name = f"Ubah Mode ATS ({ats_mode})"
+        else:
+            action_name = "Kontrol ATS"
+
+    log_user_activity(
+        db,
+        user=current_user,
+        action=action_name,
+        category="device_control",
+        details={
+            "dev_id": device.dev_id,
+            "dev_name": device.dev_name,
+            "dev_type": device.dev_type,
+            "command": new_cmd.payload,
+            "command_id": new_cmd.command_id,
+            "is_reset": is_reset,
+        },
+        request=request,
+        commit=False,
+    )
+
     db.commit()
     return {"status": "queued", "command_id": new_cmd.command_id}
 
