@@ -40,6 +40,8 @@ describe('SidebarNav Component', () => {
     expect(screen.getByText('Alert History')).toBeInTheDocument()
     expect(screen.getByText('Hubs')).toBeInTheDocument()
     expect(screen.queryByText('Schedules')).not.toBeInTheDocument()
+    expect(screen.queryByText('User Management')).not.toBeInTheDocument()
+    expect(screen.queryByText('Activity Logs')).not.toBeInTheDocument()
     expect(screen.queryByText('Settings')).not.toBeInTheDocument()
   })
 
@@ -51,10 +53,12 @@ describe('SidebarNav Component', () => {
     )
 
     expect(screen.getByText('Schedules')).toBeInTheDocument()
+    expect(screen.queryByText('User Management')).not.toBeInTheDocument()
+    expect(screen.queryByText('Activity Logs')).not.toBeInTheDocument()
     expect(screen.queryByText('Settings')).not.toBeInTheDocument()
   })
 
-  it('shows Schedules and Settings for admin role', () => {
+  it('shows Schedules, User Management, Activity Logs, and Settings for admin role', () => {
     render(
       <TooltipProvider>
         <SidebarNav role="admin" isAdmin={true} isCollapsed={false} />
@@ -62,6 +66,8 @@ describe('SidebarNav Component', () => {
     )
 
     expect(screen.getByText('Schedules')).toBeInTheDocument()
+    expect(screen.getByText('User Management')).toBeInTheDocument()
+    expect(screen.getByText('Activity Logs')).toBeInTheDocument()
     expect(screen.getByText('Settings')).toBeInTheDocument()
   })
 

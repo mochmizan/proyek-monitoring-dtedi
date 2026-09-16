@@ -72,6 +72,39 @@ export interface AuditLogResponse {
   timestamp: string;
 }
 
+export interface ActivityDetails {
+  [key: string]: unknown;
+}
+
+export interface ActivityLogItem {
+  id: string;
+  user_name: string;
+  user_id: string | null;
+  role: UserRole | string;
+  activity: {
+    action: string;
+    category: string;
+    details: ActivityDetails;
+    status: string;
+    ip_address?: string | null;
+  };
+  created_at: string;
+}
+
+export interface ActivityLogsResponse {
+  items: ActivityLogItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ActivityLogsParams {
+  page?: number;
+  limit?: number;
+  username?: string;
+  role?: string;
+}
+
 export interface RoomResponse {
   id: string;
   name: string;

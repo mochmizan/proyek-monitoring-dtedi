@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   UserResponse,
   UserLoginPayload,
   ChangePasswordPayload,
@@ -9,6 +9,8 @@
   AdminUserStatusPayload,
   AdminUserListParams,
   AuditLogResponse,
+  ActivityLogsResponse,
+  ActivityLogsParams,
   RoomResponse,
   RoomCreate,
   RoomUpdate,
@@ -293,6 +295,24 @@ export async function fetchAdminAuditLogs(limit = 50): Promise<AuditLogResponse[
   url.searchParams.set('limit', String(limit));
   const res = await apiFetch(url.toString());
   return handleResponse<AuditLogResponse[]>(res);
+}
+
+export async function getActivityLogs(params?: ActivityLogsParams): Promise<ActivityLogsResponse> {
+  const url = new URL(`${BASE}/api/admin/users/activity-logs`, window.location.origin);
+  if (params?.page !== undefined) {
+    url.searchParams.set('page', String(params.page));
+  }
+  if (params?.limit !== undefined) {
+    url.searchParams.set('limit', String(params.limit));
+  }
+  if (params?.username) {
+    url.searchParams.set('username', params.username);
+  }
+  if (params?.role) {
+    url.searchParams.set('role', params.role);
+  }
+  const res = await apiFetch(url.toString());
+  return handleResponse<ActivityLogsResponse>(res);
 }
 
 // ----------------------------------------------------

@@ -9,16 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UsersRouteImport } from './routes/users'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SchedulesRouteImport } from './routes/schedules'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HubsRouteImport } from './routes/hubs'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AlertsRouteImport } from './routes/alerts'
+import { Route as ActivityLogsRouteImport } from './routes/activity-logs'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RoomRoomIdRouteImport } from './routes/room.$roomId'
 import { Route as DeviceDeviceIdRouteImport } from './routes/device.$deviceId'
 
+const UsersRoute = UsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -44,9 +52,19 @@ const HubsRoute = HubsRouteImport.update({
   path: '/hubs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangePasswordRoute = ChangePasswordRouteImport.update({
+  id: '/change-password',
+  path: '/change-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AlertsRoute = AlertsRouteImport.update({
   id: '/alerts',
   path: '/alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ActivityLogsRoute = ActivityLogsRouteImport.update({
+  id: '/activity-logs',
+  path: '/activity-logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -67,35 +85,44 @@ const DeviceDeviceIdRoute = DeviceDeviceIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/activity-logs': typeof ActivityLogsRoute
   '/alerts': typeof AlertsRoute
+  '/change-password': typeof ChangePasswordRoute
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
   '/schedules': typeof SchedulesRoute
   '/settings': typeof SettingsRoute
+  '/users': typeof UsersRoute
   '/device/$deviceId': typeof DeviceDeviceIdRoute
   '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/activity-logs': typeof ActivityLogsRoute
   '/alerts': typeof AlertsRoute
+  '/change-password': typeof ChangePasswordRoute
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
   '/schedules': typeof SchedulesRoute
   '/settings': typeof SettingsRoute
+  '/users': typeof UsersRoute
   '/device/$deviceId': typeof DeviceDeviceIdRoute
   '/room/$roomId': typeof RoomRoomIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/activity-logs': typeof ActivityLogsRoute
   '/alerts': typeof AlertsRoute
+  '/change-password': typeof ChangePasswordRoute
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
   '/schedules': typeof SchedulesRoute
   '/settings': typeof SettingsRoute
+  '/users': typeof UsersRoute
   '/device/$deviceId': typeof DeviceDeviceIdRoute
   '/room/$roomId': typeof RoomRoomIdRoute
 }
@@ -103,52 +130,71 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/activity-logs'
     | '/alerts'
+    | '/change-password'
     | '/hubs'
     | '/login'
     | '/map'
     | '/schedules'
     | '/settings'
+    | '/users'
     | '/device/$deviceId'
     | '/room/$roomId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/activity-logs'
     | '/alerts'
+    | '/change-password'
     | '/hubs'
     | '/login'
     | '/map'
     | '/schedules'
     | '/settings'
+    | '/users'
     | '/device/$deviceId'
     | '/room/$roomId'
   id:
     | '__root__'
     | '/'
+    | '/activity-logs'
     | '/alerts'
+    | '/change-password'
     | '/hubs'
     | '/login'
     | '/map'
     | '/schedules'
     | '/settings'
+    | '/users'
     | '/device/$deviceId'
     | '/room/$roomId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ActivityLogsRoute: typeof ActivityLogsRoute
   AlertsRoute: typeof AlertsRoute
+  ChangePasswordRoute: typeof ChangePasswordRoute
   HubsRoute: typeof HubsRoute
   LoginRoute: typeof LoginRoute
   MapRoute: typeof MapRoute
   SchedulesRoute: typeof SchedulesRoute
   SettingsRoute: typeof SettingsRoute
+  UsersRoute: typeof UsersRoute
   DeviceDeviceIdRoute: typeof DeviceDeviceIdRoute
   RoomRoomIdRoute: typeof RoomRoomIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/users': {
+      id: '/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof UsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -184,11 +230,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HubsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/change-password': {
+      id: '/change-password'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/alerts': {
       id: '/alerts'
       path: '/alerts'
       fullPath: '/alerts'
       preLoaderRoute: typeof AlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activity-logs': {
+      id: '/activity-logs'
+      path: '/activity-logs'
+      fullPath: '/activity-logs'
+      preLoaderRoute: typeof ActivityLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -217,12 +277,15 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ActivityLogsRoute: ActivityLogsRoute,
   AlertsRoute: AlertsRoute,
+  ChangePasswordRoute: ChangePasswordRoute,
   HubsRoute: HubsRoute,
   LoginRoute: LoginRoute,
   MapRoute: MapRoute,
   SchedulesRoute: SchedulesRoute,
   SettingsRoute: SettingsRoute,
+  UsersRoute: UsersRoute,
   DeviceDeviceIdRoute: DeviceDeviceIdRoute,
   RoomRoomIdRoute: RoomRoomIdRoute,
 }

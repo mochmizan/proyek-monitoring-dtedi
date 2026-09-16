@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Settings as SettingsIcon,
   Users as UsersIcon,
+  ScrollText,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useSidebarStore } from '@/lib/sidebarStore'
@@ -77,6 +78,12 @@ export function SidebarNav({
       to: '/users',
       label: 'User Management',
       icon: UsersIcon,
+      visible: isAdmin,
+    },
+    {
+      to: '/activity-logs',
+      label: 'Activity Logs',
+      icon: ScrollText,
       visible: isAdmin,
     },
     {

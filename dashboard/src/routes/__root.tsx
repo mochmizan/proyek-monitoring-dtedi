@@ -146,7 +146,11 @@ function RootLayout() {
             <div className="flex items-center gap-3">
               <SidebarTrigger />
               <h2 className="text-lg font-semibold text-zinc-100 capitalize">
-                {location.pathname === '/' ? 'Dashboard Overview' : location.pathname.substring(1).replace('/', ' / ')}
+                {location.pathname === '/'
+                  ? 'Dashboard Overview'
+                  : location.pathname === '/activity-logs'
+                  ? 'Activity Logs'
+                  : location.pathname.substring(1).replace('/', ' / ').replace(/-/g, ' ')}
               </h2>
             </div>
 

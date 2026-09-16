@@ -1,4 +1,4 @@
-﻿export const queryKeys = {
+export const queryKeys = {
   auth: {
     all: ['auth'] as const,
     me: () => [...queryKeys.auth.all, 'me'] as const,
@@ -36,4 +36,14 @@
     all: ['commands'] as const,
     detail: (id: string) => [...queryKeys.commands.all, 'detail', id] as const,
   },
+  activityLogs: {
+    all: ['activityLogs'] as const,
+    list: (params?: Record<string, unknown>) => [...queryKeys.activityLogs.all, 'list', params] as const,
+  },
+  users: {
+    all: ['users'] as const,
+    list: (params?: Record<string, unknown>) => [...queryKeys.users.all, 'list', params] as const,
+    activityLogs: (params?: Record<string, unknown>) => [...queryKeys.users.all, 'activityLogs', params] as const,
+  },
 };
+
