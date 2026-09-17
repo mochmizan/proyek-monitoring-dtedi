@@ -118,4 +118,44 @@ describe('useDeviceHistory Hook', () => {
     expect(result.current.error).toBeInstanceOf(Error);
     expect(result.current.error?.message).toBe('Failed to load history');
   });
+
+  it('polls automatically in realtime ranges (~15s) even with periodic re-renders', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.fetchDeviceHistory).mockResolvedValue({
+      dev_id: 'DEV-01',
+      dev_type: 'ATS',
+      range: '24h',
+      total_points: 0,
+      points: [],
+    });
+
+    const { wrapper } = createWrapper();
+    const { rerender } = renderHook(() => useDeviceHistory('DEV-01', '24h'), { wrapper });
+
+    expect(api.fetchDeviceHistory).toHaveBeenCalledTimes(1);
+
+    // Simulate periodic sibling re-renders every 5s (e.g. alerts query polling at 6s)
+    await vi.advanceTimersByTimeAsync(5000);
+    rerender();
+    await vi.advanceTimersByTimeAsync(5000);
+    rerender();
+    await vi.advanceTimersByTimeAsync(5000);
+    rerender();
+    await vi.advanceTimersByTimeAsync(5000);
+    rerender();
+    await vi.advanceTimersByTimeAsync(5000);
+    rerender();
+
+    // After 25s with 5s re-renders, the ~15s timer should have fired at least once (total >= 2)
+    expect(vi.mocked(api.fetchDeviceHistory).mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    // Advance another 20s
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(vi.mocked(api.fetchDeviceHistory).mock.calls.length).toBeGreaterThanOrEqual(3);
+
+    vi.useRealTimers();
+  });
 });
+
+
+

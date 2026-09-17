@@ -10,10 +10,12 @@ import { fetchDevice, fetchRooms, fetchAlerts, fetchCurrentUser } from '../lib/a
 import {
   POLL_TIER2_ALERTS_MS,
   STALE_TIER2_ALERTS_MS,
+  POLL_TIER3_PRESENCE_MS,
+  STALE_TIER3_PRESENCE_MS,
   STALE_METADATA_MS,
   CADENCE_BY_TYPE,
 } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import { formatWIBDateTime, formatWIBDate } from '../lib/dateUtils';
 import { HistoryChart } from '../components/device/HistoryChart';
 import { DeviceControls } from '../components/device/Controls';
@@ -31,7 +33,7 @@ export const Route = createFileRoute('/device/$deviceId')({
 
 const DEVICE_ALERT_PAGE_SIZE = 10;
 
-function DeviceDetailPage() {
+export function DeviceDetailPage() {
   const { deviceId } = Route.useParams();
   const { range } = Route.useSearch();
   const router = useRouter();
@@ -39,13 +41,18 @@ function DeviceDetailPage() {
   const [alertPage, setAlertPage] = useState(1);
   const [copiedMac, setCopiedMac] = useState(false);
 
+  const devicePollInterval = useJitteredInterval(POLL_TIER3_PRESENCE_MS);
+  const alertsPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS);
+
   const { data: currentUser } = useQuery({ queryKey: queryKeys.auth.me(), queryFn: fetchCurrentUser });
   const { data: device, isLoading: isLoadingDevice, isFetching: isFetchingDevice } = useQuery({
     queryKey: queryKeys.devices.detail(deviceId),
     queryFn: () => fetchDevice(deviceId),
-    staleTime: STALE_METADATA_MS,
-    refetchInterval: false,
+    staleTime: STALE_TIER3_PRESENCE_MS,
+    refetchInterval: devicePollInterval,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
+    placeholderData: keepPreviousData,
   });
 
   const canonicalDevId = device?.dev_id || deviceId;
@@ -73,7 +80,7 @@ function DeviceDetailPage() {
         limit: DEVICE_ALERT_PAGE_SIZE,
         offset: (alertPage - 1) * DEVICE_ALERT_PAGE_SIZE,
       }),
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: alertsPollInterval,
     staleTime: STALE_TIER2_ALERTS_MS,
     placeholderData: keepPreviousData,
   });
@@ -206,10 +213,39 @@ function DeviceDetailPage() {
                 />
                 {isPending ? 'Pending Approval' : isOnline ? 'Online' : 'Offline'}
               </span>
+
+              {/* ATS State Badge if device is ATS */}
+              {device.dev_type === 'ATS' && (
+                (() => {
+                  const atsState = String(
+                    device.latest_reading?.state ||
+                    device.latest_reading?.STATE ||
+                    historyPoints[historyPoints.length - 1]?.state ||
+                    'STANDBY'
+                  ).toUpperCase();
+                  const isPln = atsState === 'PLN' || atsState.startsWith('PLN') || atsState.includes('PLN');
+                  const isEmergency = atsState.includes('EMERGENCY') || atsState.includes('GENSET') || atsState.includes('ALARM');
+                  return (
+                    <span
+                      data-testid="device-ats-state-badge"
+                      className={cn(
+                        "px-2.5 py-0.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5",
+                        isEmergency
+                          ? "bg-red-500/15 text-red-400 border-red-500/30 animate-pulse"
+                          : isPln
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : "bg-zinc-800 text-zinc-300 border-zinc-700"
+                      )}
+                    >
+                      <span>ATS: <strong className="font-mono font-semibold">{atsState}</strong></span>
+                    </span>
+                  );
+                })()
+              )}
             </div>
           </div>
         </div>
-        {isFetchingDevice && (
+        {(isFetchingDevice || isFetchingHistory) && (
           <div className="flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800">
             <RefreshCw className="h-3 w-3 animate-spin text-indigo-400" />
             <span>Refreshing</span>
@@ -226,6 +262,7 @@ function DeviceDetailPage() {
             setTimeRange={setTimeRange}
             warningThresholdVal={device.threshold_config ? device.threshold_config.warning : null}
             criticalThresholdVal={device.threshold_config ? device.threshold_config.critical : null}
+            latestReading={device.latest_reading}
             isFetching={isFetchingHistory}
             onRefresh={() => { void refetchHistory(); }}
             dataUpdatedAt={historyUpdatedAt}

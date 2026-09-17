@@ -4,11 +4,13 @@ import { Cpu, CheckCircle, AlertTriangle, RefreshCw, Loader2 } from 'lucide-reac
 import { queryKeys } from '../../lib/queryKeys';
 import { fetchRooms, fetchDevices, pairDevice, unpairDevice } from '../../lib/api';
 import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS, STALE_METADATA_MS } from '../../lib/constants';
-import { getJitteredInterval } from '../../lib/jitter';
+import { useJitteredInterval } from '../../lib/jitter';
 import type { DeviceResponse, DevicePairRequest } from '../../types/api';
 
 export function DevicesTab() {
   const queryClient = useQueryClient();
+  const devicesPollInterval = useJitteredInterval(POLL_TIER3_PRESENCE_MS);
+
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
@@ -17,7 +19,7 @@ export function DevicesTab() {
   const { data: allDevices = [], isFetching } = useQuery({
     queryKey: queryKeys.devices.list('all'),
     queryFn: () => fetchDevices('all'),
-    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    refetchInterval: devicesPollInterval,
     staleTime: STALE_TIER3_PRESENCE_MS,
   });
 

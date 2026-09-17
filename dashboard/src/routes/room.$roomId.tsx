@@ -18,7 +18,7 @@ import { fetchRooms, fetchRoomMap, fetchCurrentUser, fetchAlerts } from '../lib/
 import { useCommandLifecycle } from '../hooks/useCommandLifecycle';
 import { CommandStatusBadge } from '../components/device/CommandStatusBadge';
 import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS, STALE_METADATA_MS } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import type { RoomMapMarker, ATSCommand } from '../types/api';
 
 const roomSearchSchema = z.object({
@@ -46,10 +46,12 @@ function RoomDetailPage() {
     placeholderData: keepPreviousData,
   });
 
+  const alertsPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS);
+
   const { data: roomMap, isFetching: isFetchingMap } = useQuery({
     queryKey: queryKeys.rooms.map(roomId),
     queryFn: () => fetchRoomMap(roomId),
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: alertsPollInterval,
     staleTime: STALE_TIER2_ALERTS_MS,
     placeholderData: keepPreviousData,
   });
@@ -57,7 +59,7 @@ function RoomDetailPage() {
   const { data: roomAlertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ room: roomId }),
     queryFn: () => fetchAlerts({ room: roomId }),
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: alertsPollInterval,
     staleTime: STALE_TIER2_ALERTS_MS,
     placeholderData: keepPreviousData,
   });

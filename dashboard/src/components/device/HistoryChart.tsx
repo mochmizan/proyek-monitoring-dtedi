@@ -17,6 +17,7 @@ export interface HistoryChartProps {
   setTimeRange: (r: TimeRange) => void;
   warningThresholdVal?: number | null;
   criticalThresholdVal?: number | null;
+  latestReading?: Record<string, any> | null;
   isFetching?: boolean;
   onRefresh?: () => void;
   dataUpdatedAt?: number | Date | string | null;
@@ -32,6 +33,8 @@ export function HistoryChart({
   setTimeRange,
   warningThresholdVal,
   criticalThresholdVal,
+  latestReading,
+  isFetching,
 }: HistoryChartProps) {
   // Auto-scale toggles for ATS
   const [autoScalePln, setAutoScalePln] = useState(true);
@@ -52,24 +55,55 @@ export function HistoryChart({
   const gensetValues = points.map((p) => p.genset).filter((v): v is number => typeof v === 'number');
   const akiValues = points.map((p) => p.aki).filter((v): v is number => typeof v === 'number');
 
-  // Aggregates for TS
-  const currentTemp = tempValues.length > 0 ? tempValues[tempValues.length - 1] : null;
+  // Aggregates for TS (combining latest reading with historical extremes/averages)
+  const currentTemp =
+    typeof latestReading?.temp === 'number'
+      ? latestReading.temp
+      : tempValues.length > 0
+      ? tempValues[tempValues.length - 1]
+      : null;
   const minTemp = tempValues.length > 0 ? Math.min(...tempValues) : null;
   const maxTemp = tempValues.length > 0 ? Math.max(...tempValues) : null;
   const avgTemp = tempValues.length > 0 ? tempValues.reduce((a, b) => a + b, 0) / tempValues.length : null;
-  const currentHumid = humidValues.length > 0 ? humidValues[humidValues.length - 1] : null;
+  const currentHumid =
+    typeof latestReading?.humid === 'number'
+      ? latestReading.humid
+      : humidValues.length > 0
+      ? humidValues[humidValues.length - 1]
+      : null;
   const minHumid = humidValues.length > 0 ? Math.min(...humidValues) : null;
   const maxHumid = humidValues.length > 0 ? Math.max(...humidValues) : null;
   const avgHumid = humidValues.length > 0 ? humidValues.reduce((a, b) => a + b, 0) / humidValues.length : null;
 
   // Aggregates for ATS
-  const currentPln = plnValues.length > 0 ? plnValues[plnValues.length - 1] : null;
+  const currentPln =
+    typeof latestReading?.pln === 'number'
+      ? latestReading.pln
+      : plnValues.length > 0
+      ? plnValues[plnValues.length - 1]
+      : null;
   const avgPln = plnValues.length > 0 ? plnValues.reduce((a, b) => a + b, 0) / plnValues.length : null;
-  const currentGenset = gensetValues.length > 0 ? gensetValues[gensetValues.length - 1] : null;
+  const currentGenset =
+    typeof latestReading?.genset === 'number'
+      ? latestReading.genset
+      : gensetValues.length > 0
+      ? gensetValues[gensetValues.length - 1]
+      : null;
   const maxGenset = gensetValues.length > 0 ? Math.max(...gensetValues) : null;
-  const currentAki = akiValues.length > 0 ? akiValues[akiValues.length - 1] : null;
+  const rawAki = latestReading?.aki ?? latestReading?.battery;
+  const currentAki =
+    typeof rawAki === 'number'
+      ? rawAki
+      : typeof rawAki === 'string' && !isNaN(parseFloat(rawAki))
+      ? parseFloat(rawAki)
+      : akiValues.length > 0
+      ? akiValues[akiValues.length - 1]
+      : null;
   const avgAki = akiValues.length > 0 ? akiValues.reduce((a, b) => a + b, 0) / akiValues.length : null;
-  const currentState = points.length > 0 ? points[points.length - 1].state : null;
+  const currentState =
+    (latestReading?.state || latestReading?.STATE) ??
+    (points.length > 0 ? points[points.length - 1].state : null);
+
 
   // Toggle handlers
   const handleToggleSeries = (seriesId: string) => {
@@ -339,25 +373,33 @@ export function HistoryChart({
           <p className="text-xs text-zinc-500 mt-0.5">Real-time telemetry stream across selected monitoring timeframe</p>
         </div>
 
-        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 self-start sm:self-auto">
-          {(['6h', '24h', '7d', '30d'] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setTimeRange(r)}
-              className={cn(
-                "px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
-                timeRange === r ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-              )}
-            >
-              {r}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {isFetching && (
+            <span className="text-[11px] text-zinc-500 flex items-center gap-1 font-mono">
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" />
+              Syncing
+            </span>
+          )}
+          <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+            {(['6h', '24h', '7d', '30d'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setTimeRange(r)}
+                className={cn(
+                  "px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                  timeRange === r ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Summary Stat Cards */}
-      {points.length > 0 && (
+      {(points.length > 0 || latestReading) && (
         <>
           {isTS || (!isTS && !isATS) ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
@@ -440,7 +482,9 @@ export function HistoryChart({
                 <p className="text-sm font-mono font-bold text-zinc-200 mt-1.5 truncate">
                   {currentState || 'STANDBY'}
                 </p>
-                <span className="text-[10px] text-zinc-500">{points.length} samples</span>
+                <span className="text-[10px] text-zinc-500">
+                  {points.length > 0 ? `${points.length} samples` : 'Live reading'}
+                </span>
               </div>
             </div>
           )}

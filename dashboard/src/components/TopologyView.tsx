@@ -16,7 +16,7 @@ import { Cpu, HelpCircle, Server, Snowflake, Thermometer, Zap } from 'lucide-rea
 import { queryKeys } from '../lib/queryKeys';
 import { fetchDevices, fetchHubs, fetchRooms } from '../lib/api';
 import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS, STALE_METADATA_MS } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import { StatusDot } from './StatusDot';
 import type { StatusTone } from './StatusDot';
 import { cn } from '../lib/utils';
@@ -238,18 +238,19 @@ function computeLayout(
 
 export function TopologyView() {
   const router = useRouter();
+  const topologyPollInterval = useJitteredInterval(POLL_TIER3_PRESENCE_MS);
 
   const { data: hubs = [] } = useQuery({
     queryKey: queryKeys.hubs.list(),
     queryFn: fetchHubs,
-    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    refetchInterval: topologyPollInterval,
     staleTime: STALE_TIER3_PRESENCE_MS,
   });
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.active(),
     queryFn: () => fetchDevices('active'),
-    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    refetchInterval: topologyPollInterval,
     staleTime: STALE_TIER3_PRESENCE_MS,
   });
 

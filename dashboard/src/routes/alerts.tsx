@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchAlerts, fetchRooms, fetchDevices } from '../lib/api';
 import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS, STALE_METADATA_MS, STALE_TIER3_PRESENCE_MS } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import { computeStartTimeFromRange, formatWIBDateTime } from '../lib/dateUtils';
 import { formatAlertReading, formatAlertThreshold } from '../lib/formatAlert';
 import { Pagination } from '../components/ui/pagination';
@@ -155,6 +155,7 @@ function AlertsPage() {
   const normalizedStatus = selectedStatus.toLowerCase() === 'all' ? undefined : selectedStatus.toLowerCase();
 
   const offset = (searchPage - 1) * PAGE_SIZE;
+  const alertsPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS);
 
   const { data: alertsData, isFetching } = useQuery({
     queryKey: queryKeys.alerts.list({
@@ -179,7 +180,7 @@ function AlertsPage() {
         offset,
       });
     },
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: alertsPollInterval,
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
     staleTime: STALE_TIER2_ALERTS_MS,

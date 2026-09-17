@@ -7,7 +7,7 @@ import { queryKeys } from "@/lib/queryKeys"
 import { fetchCurrentUser, fetchDevices, fetchSchedules, updateSchedule, deleteSchedule, runNowSchedule } from "@/lib/api"
 import { describeCron, formatNextRun } from "@/lib/cron"
 import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS } from "@/lib/constants"
-import { getJitteredInterval } from "@/lib/jitter"
+import { useJitteredInterval } from "@/lib/jitter"
 import { toast, parseApiError } from "@/lib/toast"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -50,12 +50,13 @@ function SchedulesPage() {
   const isAdmin = role === "admin"
   const canWrite = isAdmin
   const canRead = role === "admin" || role === "operator"
+  const schedulesPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS)
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.list("all"),
     queryFn: () => fetchDevices("all"),
     staleTime: STALE_TIER2_ALERTS_MS,
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: schedulesPollInterval,
   })
   const schedulableDevices = devices.filter((d) => ["ATS", "AC", "ACC"].includes((d.dev_type ?? "").toUpperCase()))
 
@@ -68,7 +69,7 @@ function SchedulesPage() {
     queryFn: () => fetchSchedules({ dev_id: filterDevId || undefined, enabled: enabledParam }),
     enabled: canRead,
     staleTime: STALE_TIER2_ALERTS_MS,
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: schedulesPollInterval,
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: true,
   })

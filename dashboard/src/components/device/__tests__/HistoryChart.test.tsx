@@ -408,5 +408,49 @@ describe('HistoryChart Component', () => {
       const outageText = Array.from(outageTitles).map((t) => t.textContent);
       expect(outageText.some((text) => text?.includes('hub offline - no samples'))).toBe(true);
     });
+
+    it('renders ATS summary cards with latestReading live metrics even when points are empty', () => {
+      const latestReading = {
+        pln: 224.2,
+        genset: 0.0,
+        aki: 12.7,
+        state: 'PLN_ONLINE',
+      };
+
+      render(
+        <HistoryChart
+          points={[]}
+          devType="ATS"
+          timeRange="24h"
+          setTimeRange={vi.fn()}
+          latestReading={latestReading}
+        />
+      );
+
+      expect(screen.getByText('PLN Voltage')).toBeInTheDocument();
+      expect(screen.getByText('224.2 V')).toBeInTheDocument();
+      expect(screen.getByText('Genset Voltage')).toBeInTheDocument();
+      expect(screen.getByText('0.0 V')).toBeInTheDocument();
+      expect(screen.getByText('Battery (AKI)')).toBeInTheDocument();
+      expect(screen.getByText('12.7 V')).toBeInTheDocument();
+      expect(screen.getByText('Controller State')).toBeInTheDocument();
+      expect(screen.getByText('PLN_ONLINE')).toBeInTheDocument();
+      expect(screen.getByText('Live reading')).toBeInTheDocument();
+    });
+
+    it('displays syncing indicator when isFetching is true', () => {
+      render(
+        <HistoryChart
+          points={atsSamplePoints}
+          devType="ATS"
+          timeRange="24h"
+          setTimeRange={vi.fn()}
+          isFetching={true}
+        />
+      );
+
+      expect(screen.getByText('Syncing')).toBeInTheDocument();
+    });
   });
 });
+

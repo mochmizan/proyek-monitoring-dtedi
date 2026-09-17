@@ -23,7 +23,7 @@ import {
   POLL_TIER4_TRENDS_MS,
   STALE_TIER4_TRENDS_MS,
 } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import { formatWIBDateTime } from '../lib/dateUtils';
 import type { DeviceResponse } from '../types/api';
 import { RoomCard, RoomCardSkeleton } from '../components/RoomCard';
@@ -44,10 +44,15 @@ function DashboardPage() {
   const navigate = useNavigate();
   const { sortBy, sortOrder } = Route.useSearch();
 
+  const roomsPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS);
+  const devicesPollInterval = useJitteredInterval(POLL_TIER3_PRESENCE_MS);
+  const alertsPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS);
+  const sparklinesPollInterval = useJitteredInterval(POLL_TIER4_TRENDS_MS);
+
   const { data: rooms = [], status: roomsStatus } = useQuery({
     queryKey: queryKeys.rooms.list(),
     queryFn: fetchRooms,
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: roomsPollInterval,
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
     staleTime: STALE_TIER2_ALERTS_MS,
@@ -56,7 +61,7 @@ function DashboardPage() {
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.list('all'),
     queryFn: () => fetchDevices('all'),
-    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    refetchInterval: devicesPollInterval,
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
     staleTime: STALE_TIER3_PRESENCE_MS,
@@ -65,7 +70,7 @@ function DashboardPage() {
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: alertsPollInterval,
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
     staleTime: STALE_TIER2_ALERTS_MS,
@@ -76,7 +81,7 @@ function DashboardPage() {
   const { data: sparklinesData } = useQuery({
     queryKey: queryKeys.rooms.sparklines('6h', 24),
     queryFn: () => fetchRoomSparklines('6h', 24),
-    refetchInterval: () => getJitteredInterval(POLL_TIER4_TRENDS_MS),
+    refetchInterval: sparklinesPollInterval,
     refetchIntervalInBackground: false,
     staleTime: STALE_TIER4_TRENDS_MS,
   });

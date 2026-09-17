@@ -14,7 +14,7 @@ import {
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, fetchHubs, approveHub, revokeHub } from '../lib/api';
 import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import { cn } from '../lib/utils';
 import { StatusDot } from '../components/StatusDot';
 import { FreshnessBadge } from '../components/FreshnessBadge';
@@ -151,6 +151,7 @@ function HubsPage() {
     staleTime: 60000,
   });
   const isAdmin = (currentUser?.role || 'viewer') === 'admin';
+  const hubsPollInterval = useJitteredInterval(POLL_TIER3_PRESENCE_MS);
 
   const {
     data: hubs = [],
@@ -159,7 +160,7 @@ function HubsPage() {
   } = useQuery({
     queryKey: queryKeys.hubs.list(),
     queryFn: fetchHubs,
-    refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
+    refetchInterval: hubsPollInterval,
     refetchIntervalInBackground: false,
     staleTime: STALE_TIER3_PRESENCE_MS,
   });

@@ -5,7 +5,7 @@ import { Bell } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, logoutUser, fetchAlerts } from '../lib/api';
 import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { TooltipProvider } from '../components/ui/tooltip';
 import { AppSidebar } from '../components/sidebar/AppSidebar';
@@ -70,6 +70,8 @@ function RootLayout() {
 
   useSidebarKeyboard();
 
+  const alertsPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS);
+
   const { data: currentUser } = useQuery({
     queryKey: queryKeys.auth.me(),
     queryFn: fetchCurrentUser,
@@ -79,7 +81,7 @@ function RootLayout() {
   const { data: alertsData } = useQuery({
     queryKey: queryKeys.alerts.list({ limit: 100 }),
     queryFn: () => fetchAlerts({ limit: 100 }),
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: alertsPollInterval,
     refetchIntervalInBackground: false,
     staleTime: STALE_TIER2_ALERTS_MS,
     enabled: !isLoginPage && !!currentUser,

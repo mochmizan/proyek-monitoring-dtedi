@@ -8,7 +8,7 @@ import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchRooms, fetchRoomMap } from '../lib/api';
 import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS, STALE_METADATA_MS } from '../lib/constants';
-import { getJitteredInterval } from '../lib/jitter';
+import { useJitteredInterval } from '../lib/jitter';
 import type { RoomMapMarker } from '../types/api';
 
 const TopologyView = React.lazy(() =>
@@ -41,12 +41,13 @@ function MapPage() {
 
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
   const activeRoomId = selectedRoomId || rooms[0]?.id || '';
+  const roomMapPollInterval = useJitteredInterval(POLL_TIER2_ALERTS_MS);
 
   const { data: roomMap, isFetching } = useQuery({
     queryKey: queryKeys.rooms.map(activeRoomId),
     queryFn: () => fetchRoomMap(activeRoomId),
     enabled: !!activeRoomId,
-    refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
+    refetchInterval: roomMapPollInterval,
     refetchIntervalInBackground: false,
     staleTime: STALE_TIER2_ALERTS_MS,
   });
