@@ -490,12 +490,7 @@ export function HistoryChart({
                 </span>
               </div>
               <div className="bg-zinc-950 p-3 rounded-md border border-zinc-800/60">
-                <span className="text-[10px] uppercase font-semibold text-zinc-500 flex items-center justify-between">
-                  Controller State
-                  {isEmergency && <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" title="Emergency / Alarm" />}
-                  {isPln && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="PLN Grid Active" />}
-                  {isGenset && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Genset Active" />}
-                </span>
+                <span className="text-[10px] uppercase font-semibold text-zinc-500">Controller State</span>
                 <p className={cn("text-sm font-mono font-bold mt-1.5 truncate", stateColor)}>
                   {currentState || 'STANDBY'}
                 </p>
