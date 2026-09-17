@@ -110,11 +110,6 @@ describe('DeviceDetailPage Component Polling & ATS State', () => {
     // Check online status badge
     expect(screen.getByText('Online')).toBeInTheDocument();
 
-    // Check ATS State Badge in header chips
-    const atsBadge = screen.getByTestId('device-ats-state-badge');
-    expect(atsBadge).toBeInTheDocument();
-    expect(atsBadge).toHaveTextContent('ATS: PLN_ONLINE');
-
     // Check Controller State in summary cards
     expect(screen.getByText('Controller State')).toBeInTheDocument();
     expect(screen.getAllByText('PLN_ONLINE').length).toBeGreaterThanOrEqual(1);

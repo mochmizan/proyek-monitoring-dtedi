@@ -214,34 +214,7 @@ export function DeviceDetailPage() {
                 {isPending ? 'Pending Approval' : isOnline ? 'Online' : 'Offline'}
               </span>
 
-              {/* ATS State Badge if device is ATS */}
-              {device.dev_type === 'ATS' && (
-                (() => {
-                  const atsState = String(
-                    device.latest_reading?.state ||
-                    device.latest_reading?.STATE ||
-                    historyPoints[historyPoints.length - 1]?.state ||
-                    'STANDBY'
-                  ).toUpperCase();
-                  const isPln = atsState === 'PLN' || atsState.startsWith('PLN') || atsState.includes('PLN');
-                  const isEmergency = atsState.includes('EMERGENCY') || atsState.includes('GENSET') || atsState.includes('ALARM');
-                  return (
-                    <span
-                      data-testid="device-ats-state-badge"
-                      className={cn(
-                        "px-2.5 py-0.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5",
-                        isEmergency
-                          ? "bg-red-500/15 text-red-400 border-red-500/30 animate-pulse"
-                          : isPln
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                          : "bg-zinc-800 text-zinc-300 border-zinc-700"
-                      )}
-                    >
-                      <span>ATS: <strong className="font-mono font-semibold">{atsState}</strong></span>
-                    </span>
-                  );
-                })()
-              )}
+
             </div>
           </div>
         </div>
