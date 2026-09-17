@@ -123,6 +123,7 @@ unsigned long serialOverflowCount = 0;
 // E: WiFi non-blocking retry state (setup_wifi returns immediately)
 unsigned long lastWifiAttempt = 0;
 unsigned long wifiRetryDelay = 3000;
+const unsigned long WIFI_RETRY_MAX = 30000;
 // Forward declarations
 void setup_wifi();
 void connectMQTT();
