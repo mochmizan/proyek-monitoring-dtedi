@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-ats-firmware-chain.md, wiki/concept-edge-resilience.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/workstream-firmware-proofing.md]
-sources: [firmware/PROMINI/PROMINI.ino, firmware/WEMOS_ATS/WEMOS_ATS.ino, firmware/WEMOS_TS/WEMOS_TS.ino, firmware/WEMOS_AC/WEMOS_AC.ino, firmware/common/secrets.h.example, firmware/platformio.ini, git:docs/FIRMWARE_ALIGNMENT_REPORT.md (archived), git:docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md (archived)]
-updated: 2026-09-03
+sources: [firmware/PROMINI/PROMINI.ino, firmware/PROMINI/README.md, firmware/WEMOS_ATS/WEMOS_ATS.ino, firmware/WEMOS_ATS/README.md, firmware/WEMOS_TS/WEMOS_TS.ino, firmware/WEMOS_AC/WEMOS_AC.ino, firmware/common/secrets.h, firmware/common/secrets.h.example, firmware/platformio.ini, notes/firmware_toolchain_and_flashing.md, git:docs/FIRMWARE_ALIGNMENT_REPORT.md (archived), git:docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md (archived)]
+updated: 2026-09-16
 ---
 
 # Firmware Fleet Specifications
@@ -37,6 +37,12 @@ The `firmware/` subsystem encompasses embedded software for four hardware node t
 - **Microcontroller**: Microchip ATmega328P (Arduino Pro Mini 5V, 16 MHz external resonator).
 - **Memory**: 32 KB Flash, 2 KB SRAM, 1 KB internal EEPROM.
 - **Operating Voltage**: 5.0 V DC regulated.
+- **Toolchain Invariants (Arduino IDE)**:
+  - Board: `Arduino Pro or Pro Mini`
+  - Processor: **`ATmega328P (5V, 16 MHz)`** — selecting `3.3V, 8 MHz` corrupts hardware UART baud rate from 9600 to 4800, breaking telemetry exchange with WEMOS_ATS.
+  - Programmer: `AVRISP mkII` (default)
+  - Required Libraries: `ZMPT101B` (Abdurrahman Gök), `LiquidCrystal I2C` (Frank de Brabander), `RTClib` (Adafruit), built-in AVR (`Wire`, `EEPROM`, `avr/wdt.h`).
+- **Flashing Protocol Caution**: Hardware UART jumper wires between Pro Mini TX/RX and Wemos D1 Mini **must be disconnected** before connecting the FTDI programmer to prevent serial contention ('programmer is not responding' failure).
 - **Pin Map**:
   | Pin | Mode / Type | Signal / Identifier | Connected Component & Function |
   |---|---|---|---|
@@ -57,6 +63,10 @@ The `firmware/` subsystem encompasses embedded software for four hardware node t
 - **Microcontroller**: Espressif ESP8266EX (Wemos D1 Mini module, 80 MHz default / 160 MHz capable).
 - **Memory**: 4 MB SPI Flash (external Winbond), 80 KB internal SRAM (~35 KB free heap).
 - **Wireless**: 802.11 b/g/n Wi-Fi, Station mode connecting to hidden SSID `smsb-iot`.
+- **Toolchain Invariants (Arduino IDE)**:
+  - Board: `LOLIN(WEMOS) D1 R2 & mini`
+  - CPU Frequency: `80 MHz`, Flash Size: `4MB (FS: 2MB OTA:~1019KB)`
+  - Required Libraries: `PubSubClient` v2.8.0, `ArduinoJson` **strictly v6.21.5** (v7.x breaking/incompatible with document allocations), `Adafruit SSD1306` & `Adafruit GFX Library`.
 - **Pin Map**:
   | Pin | GPIO | Mode / Type | Connected Component & Function |
   |---|---|---|---|
@@ -356,3 +366,57 @@ To prevent contactor chatter and oscillation during brownouts:
 - **Defect**: Zero automated integration or unit tests exist for the Pro Mini FSM.
 - **Failure Mode**: Regressions in timing constants, voting filters, or relay sequencing cannot be caught in CI/CD.
 - **Remediation**: Implement a Python-based hardware-in-the-loop (HIL) or software-in-the-loop (SIL) test harness that drives the UART protocol and asserts relay states against simulated voltage inputs.
+
+---
+
+## 9. Toolchain, Build Sandbox & Hardware Flashing Invariants
+
+### 9.1 Arduino IDE 2.x Sandbox Compilation & Include Priority
+Arduino IDE 2.x performs sketch builds inside an isolated temporary sandbox (`/tmp` or `%TEMP%`). Monorepo relative includes such as `#include "../common/secrets.h"` fail to resolve in the sandbox because parent folders are not mirrored. All sketches implement inverted include priority:
+```cpp
+#if __has_include("secrets.h")
+#include "secrets.h"
+#elif __has_include("../common/secrets.h")
+#include "../common/secrets.h"
+#elif __has_include("common/secrets.h")
+#include "common/secrets.h"
+#else
+#error "secrets.h missing. Ensure secrets.h exists in this sketch folder or in firmware/common/."
+#endif
+```
+Sketch-local `secrets.h` files (`firmware/WEMOS_ATS/secrets.h`, `firmware/WEMOS_TS/secrets.h`, `firmware/WEMOS_AC/secrets.h`) are tracked in git with verified campus fleet credentials (`smsb-iot` / `192.168.72.242:1883`) for out-of-the-box Arduino IDE compilation. `firmware/common/secrets.h` is tracked as fallback for CLI and multi-sketch builds.
+
+### 9.2 Library Version Strict Invariants
+- **ArduinoJson MUST be v6.21.5**: ArduinoJson v7 introduces breaking changes to `StaticJsonDocument` and `DynamicJsonDocument` allocations and JSON serialization APIs. Flashing with ArduinoJson v7 causes compilation failure across `WEMOS_ATS`, `WEMOS_TS`, and `WEMOS_AC`.
+- **PubSubClient v2.8.0**: Canonical MQTT client across all ESP8266 nodes.
+- **AVR / Adafruit Dependencies**: `ZMPT101B`, `LiquidCrystal I2C`, `RTClib`, `Adafruit SSD1306`, `Adafruit GFX Library`, `Adafruit SHT31`.
+
+### 9.3 Hardware Flashing Protocol & UART Contention Prevention
+When flashing the ATmega328P Pro Mini using an external FTDI USB-UART adapter:
+1. **Disconnect TX/RX Jumpers**: The Pro Mini hardware UART (Pin 1 TXO, Pin 0 RXI) is bridged directly to Wemos D1 Mini (GPIO1 TX, GPIO3 RX). The FTDI adapter will fail to establish bootloader synchronization (`avrdude: stk500_recv(): programmer is not responding` / `not in sync: resp=0x00`) if the bridge lines remain connected due to bus contention.
+2. **Flash Pro Mini**: Connect FTDI (GND, 5V, RXD->TXO Pin 1, TXD->RXI Pin 0, DTR->DTR) and flash with board set to `Arduino Pro or Pro Mini` and processor set to `ATmega328P (5V, 16 MHz)`.
+3. **Flash Wemos D1 Mini**: Flash independently via its onboard micro-USB port (`LOLIN(WEMOS) D1 R2 & mini`).
+4. **Reconnect Jumpers**: Re-establish the TX-to-RX and RX-to-TX bridge between Pro Mini and Wemos D1 Mini before restoring operational power.
+
+---
+
+## 10. Telemetry Cadence, Report-by-Exception (RBE) & Deadbands (Phase 3)
+
+To drastically reduce SD card WAL wear on Edge Hubs, prevent false presence offline alerts, and unclog 2.4 GHz airtime, all ESP8266 nodes execute local microcontroller Report-by-Exception (RBE) delta deadbands and decoupled heartbeat publishing:
+
+| Node | Steady-State Heartbeat | Event / State Transition Trigger | Transient Dynamic Burst | Numeric Metric Deadbands | Min Publish Interval (Rate Limit) | Sensor Sampling & OLED Refresh |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **WEMOS_TS** | **300,000 ms** (5m / 300s) | Sensor error or recovery transition (`STATUS: SENSOR_ERROR` $\leftrightarrow$ `STATUS: OK`) | Immediate 0ms report on alarm/recovery | $\Delta T \ge 0.2^\circ\text{C}$<br>$\Delta\text{RH} \ge 2.0\%$ | **5,000 ms** (5s) | Sensor: 2,000 ms (2s)<br>OLED: 1,000 ms (1 Hz) |
+| **WEMOS_ATS** | **60,000 ms** (60s / 1m) | Discrete state change: `nowState`, `autoMode`, `emergency`, `pln_relay`, `gen_relay`, `alarm` | **Instant 0ms forward** on state shift, then **2.0s cadence for 60s** | $\Delta V_\text{PLN} \ge 1.0\text{V}$<br>$\Delta V_\text{GEN} \ge 1.0\text{V}$<br>$\Delta V_\text{AKI} \ge 0.1\text{V}$ | **2,000 ms** (2s) | Pro Mini UART Poll: 500 ms (connected) / 2000 ms (offline) |
+| **WEMOS_AC** | **120,000 ms** (120s / 2m) | Immediate report on AC command execution (relay toggle, IR command ACK / setpoint change) | Immediate 0ms publish on command | $\Delta T \ge 0.5^\circ\text{C}$<br>$\Delta\text{RH} \ge 2.0\%$ | **5,000 ms** (5s) | Sensor: 2,000 ms (2s)<br>OLED: 1,000 ms (1 Hz) |
+
+### 10.1 Microcontroller Implementation Details
+1. **Decoupled Sampling from Publishing**:
+   - `WEMOS_ATS` continuously polls Pro Mini at 500 ms over UART to track power transitions without latency, but publishes MQTT messages only on state transition, deadband exceedance, or 60s heartbeat.
+   - `WEMOS_TS` and `WEMOS_AC` sample the SHT30 sensor every 2,000 ms to maintain a responsive 1 Hz OLED display while publishing MQTT messages at the relaxed 300s or 120s cadence.
+2. **Instant Bypass for Critical Events**:
+   - Any state change (grid failure, generator start, emergency lockout, contactor toggle, AC command) triggers an immediate 0ms MQTT dispatch, bypassing steady-state rate limits.
+3. **Buffer Safety & Memory Conservation**:
+   - All payloads utilize bounded static buffers (`StaticJsonDocument<256>` or `<512>`, `char[512]`, `char[65]`) to guarantee zero dynamic heap fragmentation over long uptimes.
+
+

@@ -2,8 +2,8 @@
 type: workstream
 governed_by: AGENTS.md
 links: [wiki/concept-production-readiness.md, wiki/concept-observability-monitoring.md, wiki/entity-devops-infrastructure.md, wiki/entity-deploy-pipeline.md, wiki/entity-hubgate-v5.md]
-sources: [deploy/setup_push_deploy.sh, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md, server/databasev5.py, notes/field-ops.md, notes/benchmarks-baseline.md]
-updated: 2026-09-12
+sources: [deploy/setup_push_deploy.sh, tools/migrate_sqlite_to_postgres.py, docs/runbooks/postgres_cutover_runbook.md, server/databasev5.py, notes/field-ops.md, notes/benchmarks-baseline.md, dashboard/src/lib/chartUtils.ts, dashboard/src/lib/constants.ts]
+updated: 2026-09-17
 ---
 
 # Workstream: Production-Grade Refactoring Roadmap
@@ -26,6 +26,7 @@ Tasks are structured into **P0 Blockers** (mandatory pre-launch gates), **P1 Har
 | **P1** | `P1-2` | External Critical Alert Dispatcher | Alert Engine / Background Task | Zero notifications during power outages | Open |
 | **P1** | `P1-3` | Zero-Downtime Push Deploy & Pre-Flight Gating | Deploy Pipeline / Git Hook | 502 Bad Gateway downtime & broken builds | **Completed** |
 | **P1** | `P1-4` | Automated VPS Disaster Recovery Cron | Ops Tooling / Storage | Unbacked database on VPS | Open |
+| **P1** | `P1-5` | Telemetry Cadence, RBE Deadband & UI Harmonization | Edge / Server / Firmware / UI | SD card churn, presence flapping, false chart outage hatches | **Completed** |
 | **P2** | `P2-1` | Prometheus Metrics & Grafana APM | Server / Monitoring / Node Exporter | Blindness to latencies, RPS, and memory | Open |
 | **P2** | `P2-2` | Hardware Watchdog & OverlayFS | Edge Hardware / OS / Storage | SD card corruption & kernel freezes | Open |
 | **P2** | `P2-3` | Public Let's Encrypt TLS & HSTS | Nginx / Ingress / DNS | Self-signed browser security warnings | Open |
@@ -164,7 +165,28 @@ These items establish system stability, fault detection, and deployment safety.
   - Nightly cron produces verified `.dump` and `.sha256` files.
   - Disaster recovery restoration test successfully restores a database dump into a test instance in under 5 minutes.
 
+### Task P1-5: Telemetry Cadence, RBE Deadband & UI Harmonization [COMPLETED]
+- **Status**: **Completed (2026-09-17)**
+- **Context & Risk**:
+  - High-frequency telemetry (5s TS, 2s ATS) saturated 2.4 GHz Wi-Fi airtime, caused SQLite WAL churn on edge SD cards, and risked presence flapping false alarms.
+  - Transitioning nodes to relaxed Report-by-Exception (RBE) cadences (TS: 5m steady, AC: 2m steady, ATS: 1m steady) caused static chart gap thresholds (2-5m) to erroneously render dark outage hatches across healthy historical telemetry.
+- **Resolution & Architecture**:
+  1. **Phase 1: Edge Hub Deadband & Change-of-Value Filter (`hub/main.py`)**:
+     - Evaluates incoming telemetry against delta thresholds (TS: $\pm 0.5^\circ\text{C}$, $\pm 2.0\%\text{RH}$; ATS: $\pm 3.0\text{V}$; AC: $\pm 1.0^\circ\text{C}$).
+     - Bypasses filter instantly (<100ms) on discrete state transitions and triggers a 2.0s dynamic burst for 60s during electrical events.
+  2. **Phase 2: Central Backend Presence Engine Alignment (`server/app/services/presence.py`)**:
+     - Type-aware presence windows: ATS 180s (3m), AC 360s (6m), TS 900s (15m).
+     - Composite indexes on `dev_table` (`ix_dev_table_active_last_seen`, `ix_dev_table_dev_type`).
+  3. **Phase 3: Firmware Fleet Optimization (`firmware/`)**:
+     - ESP8266 nodes decoupled: 1 Hz local sensor oversampling and OLED refresh; steady publish interval set to 5m (TS), 2m (AC), 60s (ATS).
+  4. **Phase 4: Dashboard UI Harmonization & Chart Gap Alignment (`dashboard/`)**:
+     - Added `GAP_FLOOR_BY_TYPE_MIN` (`{ TS: 15, AC: 6, ACC: 6, ATS: 3, DEFAULT: 3 }` minutes) and `CADENCE_BY_TYPE` nominal cadence metadata in `src/lib/constants.ts`.
+     - Implemented pure functional `getGapThresholdMinutes(devType, rangeMinutes)` and updated `getGapThresholdMs` in `src/lib/chartUtils.ts` to prevent false outage hatches during normal RBE cadences and dynamically scale for extended historical windows (24h: 24m, 7d: 168m, 30d: 720m).
+     - Added subtle reporting cadence badge ("Cadence: 5m RBE", "1m RBE", "2m RBE") in device detail header (`src/routes/device.$deviceId.tsx`).
+     - Added comprehensive vitest suite in `src/lib/chartUtils.test.ts` (100% passing).
+
 ---
+
 
 ## 4. P2 Optimizations: Scale, Resilience & Hardware Hardening
 

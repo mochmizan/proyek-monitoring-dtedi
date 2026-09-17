@@ -171,7 +171,7 @@ def test_fresh_telemetry_recovers_offline_device(clean_db):
     """Fresh telemetry (within tolerance window) must resolve offline alerts and mark online."""
     db = SessionLocal()
     now_utc = datetime.now(UTC)
-    t_stale = now_utc - timedelta(seconds=120)
+    t_stale = now_utc - timedelta(seconds=1000)
 
     room = rooms(id="r-fresh-1", name="Server Room")
     dev = dev_table(

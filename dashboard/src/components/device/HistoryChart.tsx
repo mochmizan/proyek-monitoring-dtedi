@@ -461,6 +461,7 @@ export function HistoryChart({
           panels={panels}
           points={points}
           timeRange={timeRange}
+          devType={devType}
           onToggleSeries={handleToggleSeries}
           containerTestId={isATS ? 'ats-three-panel-container' : 'ts-single-panel-container'}
           tooltipTestId={isATS ? 'ats-hover-tooltip' : 'ts-hover-tooltip'}

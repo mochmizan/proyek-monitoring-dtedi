@@ -11,8 +11,27 @@ from modelsv5 import dev_table, event_log, rooms, data_table, temperature_data, 
 logger = logging.getLogger(__name__)
 
 HUB_ONLINE_WINDOW_SECONDS = 60
-DEVICE_OFFLINE_WINDOW_SECONDS = 60
+DEFAULT_DEVICE_OFFLINE_WINDOW_SECONDS = 180
+DEVICE_OFFLINE_WINDOW_SECONDS = 180
 PRESENCE_INTERVAL_SECONDS = 15
+PENDING_DEVICE_EXPIRY_SECONDS = 60
+
+DEVICE_OFFLINE_THRESHOLDS: dict[str, int] = {
+    "ATS": 180,    # 3 minutes (3x 60s heartbeat)
+    "AC": 360,     # 6 minutes (3x 120s heartbeat)
+    "ACC": 360,    # 6 minutes (alias)
+    "TS": 900,     # 15 minutes (3x 300s heartbeat)
+}
+
+
+def get_device_offline_window_seconds(dev_type: str | None) -> int:
+    """Returns the offline threshold in seconds for the given device type.
+    Normalizes string case and strips whitespace.
+    Falls back to DEFAULT_DEVICE_OFFLINE_WINDOW_SECONDS (180s) for None or unknown types.
+    """
+    if not dev_type or not isinstance(dev_type, str):
+        return DEFAULT_DEVICE_OFFLINE_WINDOW_SECONDS
+    return DEVICE_OFFLINE_THRESHOLDS.get(dev_type.strip().upper(), DEFAULT_DEVICE_OFFLINE_WINDOW_SECONDS)
 
 
 def evaluate_device_presence_batch() -> None:
@@ -24,7 +43,6 @@ def evaluate_device_presence_batch() -> None:
     db = SessionLocal()
     try:
         now_utc = datetime.now(UTC)
-        cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
 
         # 1. Bulk fetch all active devices eagerly loading room
         active_devices = (
@@ -60,6 +78,8 @@ def evaluate_device_presence_batch() -> None:
                 dev.last_seen if (dev.last_seen and dev.last_seen.tzinfo is not None)
                 else (dev.last_seen.replace(tzinfo=UTC) if dev.last_seen else None)
             )
+            threshold_seconds = get_device_offline_window_seconds(dev.dev_type)
+            cutoff = now_utc - timedelta(seconds=threshold_seconds)
             online = bool(d_seen and d_seen >= cutoff)
 
             # Online -> Offline transition
@@ -73,7 +93,7 @@ def evaluate_device_presence_batch() -> None:
                         event_id=uuid.uuid4().hex,
                         alarm="DEVICE_OFFLINE",
                         timestamp=now_utc,
-                        message=f"Device '{dev_label}' ({dev.dev_id}) in '{room_name}' went OFFLINE (No signal for > {DEVICE_OFFLINE_WINDOW_SECONDS}s).",
+                        message=f"Device '{dev_label}' ({dev.dev_id}) in '{room_name}' went OFFLINE (No signal for > {threshold_seconds}s).",
                         dev_id=dev.dev_id,
                         room_id=dev.room_id,
                         metric="connectivity",
@@ -96,10 +116,11 @@ def evaluate_device_presence_batch() -> None:
 
         # 3. Bulk prune stale unapproved/pending devices in a single core statement
         # Protect devices that have telemetry history or threshold configurations
+        prune_cutoff = now_utc - timedelta(seconds=PENDING_DEVICE_EXPIRY_SECONDS)
         prune_stmt = delete(dev_table).where(
             dev_table.is_active == False,  # noqa: E712
             dev_table.room_id.is_(None),
-            dev_table.created_at < cutoff,
+            dev_table.created_at < prune_cutoff,
             ~dev_table.dev_id.in_(select(data_table.dev_id)),
             ~dev_table.dev_id.in_(select(temperature_data.dev_id)),
             ~dev_table.dev_id.in_(select(ats_data.dev_id)),
@@ -118,24 +139,48 @@ def evaluate_device_presence_batch() -> None:
         db.close()
 
 
-def is_online(last_seen, cutoff) -> bool:
+def is_online(
+    last_seen,
+    cutoff: datetime | None = None,
+    dev_type: str | None = None,
+    now_utc: datetime | None = None,
+) -> bool:
     if not last_seen:
         return False
     ls = last_seen if last_seen.tzinfo is not None else last_seen.replace(tzinfo=UTC)
+    if cutoff is None:
+        if now_utc is None:
+            now_utc = datetime.now(UTC)
+        elif now_utc.tzinfo is None:
+            now_utc = now_utc.replace(tzinfo=UTC)
+        window = get_device_offline_window_seconds(dev_type)
+        cutoff = now_utc - timedelta(seconds=window)
     return ls >= cutoff
 
 
-def update_device_presence_on_list(db: Session, now_utc: datetime, cutoff: datetime):
+def update_device_presence_on_list(
+    db: Session,
+    now_utc: datetime | None = None,
+    cutoff: datetime | None = None,
+):
     """Scan active devices and generate DEVICE_OFFLINE alerts + update last_status.
     Returns True if any state changed.
     """
+    if now_utc is None:
+        now_utc = datetime.now(UTC)
+    elif now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=UTC)
+
     active_devices = db.query(dev_table).filter(dev_table.is_active == True).all()  # noqa: E712
     has_state_changes = False
     for d in active_devices:
         last_seen_dt = None
         if d.last_seen:
             last_seen_dt = d.last_seen if d.last_seen.tzinfo is not None else d.last_seen.replace(tzinfo=UTC)
-        online = bool(last_seen_dt and last_seen_dt >= cutoff)
+
+        threshold_seconds = get_device_offline_window_seconds(d.dev_type)
+        dev_cutoff = cutoff if cutoff is not None else (now_utc - timedelta(seconds=threshold_seconds))
+        online = bool(last_seen_dt and last_seen_dt >= dev_cutoff)
 
         if not online and d.last_status == "online":
             d.last_status = "offline"
@@ -157,7 +202,7 @@ def update_device_presence_on_list(db: Session, now_utc: datetime, cutoff: datet
                     event_id=uuid.uuid4().hex,
                     alarm="DEVICE_OFFLINE",
                     timestamp=now_utc,
-                    message=f"Device '{dev_label}' ({d.dev_id}) in '{room_name}' went OFFLINE (No signal for > {DEVICE_OFFLINE_WINDOW_SECONDS}s).",
+                    message=f"Device '{dev_label}' ({d.dev_id}) in '{room_name}' went OFFLINE (No signal for > {threshold_seconds}s).",
                     dev_id=d.dev_id,
                     room_id=d.room_id,
                     metric="connectivity",
@@ -198,8 +243,8 @@ def prune_stale_pending(db: Session, cutoff: datetime):
 def resolve_offline_on_telemetry(
     db: Session,
     device,
-    event_time: datetime = None,
-    now_utc: datetime = None,
+    event_time: datetime | None = None,
+    now_utc: datetime | None = None,
 ):
     """Called on successful telemetry: mark device online and resolve DEVICE_OFFLINE alerts.
     Preserves timestamp monotonicity: last_seen is only updated if event_time > last_seen.
@@ -223,8 +268,10 @@ def resolve_offline_on_telemetry(
     if d_seen is None or event_time > d_seen:
         device.last_seen = event_time
 
-    # 2. Freshness check: only mark online and resolve alerts if within offline window
-    cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
+    # 2. Freshness check: only mark online and resolve alerts if within type-aware offline window
+    dev_type = getattr(device, "dev_type", None)
+    threshold_seconds = get_device_offline_window_seconds(dev_type)
+    cutoff = now_utc - timedelta(seconds=threshold_seconds)
     effective_seen = (
         device.last_seen if (device.last_seen and device.last_seen.tzinfo is not None)
         else (device.last_seen.replace(tzinfo=UTC) if device.last_seen else None)
@@ -263,3 +310,4 @@ def resolve_offline_on_telemetry(
                     resolved_at=now_utc,
                 )
                 db.add(online_event)
+

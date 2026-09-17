@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-firmware-fleet.md, wiki/concept-edge-resilience.md, wiki/concept-command-path.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-ats-emergency-2026-08.md, wiki/workstream-firmware-proofing.md]
-sources: [firmware/PROMINI/PROMINI.ino, firmware/WEMOS_ATS/WEMOS_ATS.ino, commit:dcfeb84, commit:7bf3098, git:docs/FIRMWARE_ALIGNMENT_REPORT.md (archived), git:docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md (archived)]
-updated: 2026-09-03
+sources: [firmware/PROMINI/PROMINI.ino, firmware/PROMINI/README.md, firmware/WEMOS_ATS/WEMOS_ATS.ino, firmware/WEMOS_ATS/README.md, notes/firmware_toolchain_and_flashing.md, commit:dcfeb84, commit:7bf3098, git:docs/FIRMWARE_ALIGNMENT_REPORT.md (archived), git:docs/FIRMWARE_PROOFING_PLAN_2026-08-31.md (archived)]
+updated: 2026-09-16
 ---
 
 # ATS Firmware Chain
@@ -41,8 +41,10 @@ The Automatic Transfer Switch (ATS) subsystem is a dual-MCU hardware architectur
    - Reads analog signals from two ZMPT101B active AC voltage transformer modules (A1 = PLN, A0 = GENSET) and a DC voltage divider (A2 = AKI 12V starter battery).
    - Manages the DS3231 real-time clock over I2C (`0x68`) and displays local status on a 16x2 LCD (`0x27`).
    - Runs completely autonomously: if the network or bridge MCU crashes, the ATmega328P continues protecting facility power without interruption.
+   - **Toolchain & Flashing Invariant**: Target board `Arduino Pro or Pro Mini`, processor **MUST be `ATmega328P (5V, 16 MHz)`** (3.3V corrupts baud rate to 4800). When flashing via FTDI programmer, the TX/RX jumper wires between Pro Mini and Wemos D1 Mini **must be disconnected** to prevent bus contention and upload failure; see [notes/firmware_toolchain_and_flashing.md](../notes/firmware_toolchain_and_flashing.md).
 2. **ATS Network Bridge (`firmware/WEMOS_ATS/WEMOS_ATS.ino`)**:
    - Canonical bridge sketch since commit `7bf3098` (absorbed `fixed_wemos_mqtt_raspi/`).
+   - Target board: `LOLIN(WEMOS) D1 R2 & mini` (80MHz, 4MB Flash), libraries: `PubSubClient` v2.8.0, `ArduinoJson` **strictly v6.21.5** (v7.x incompatible).
    - Interacts with the local Mosquitto MQTT broker on the Raspberry Pi edge gateway (`192.168.72.242:1883`, credentials `hubadmin`).
    - Subscribes to downlink topic `hs109rs/ats/command` and publishes uplink telemetry to `hs109rs/ats/data`.
    - Polls the Pro Mini over UART using `<C,GET>` every 500 ms when MQTT is connected, throttled to every 2,000 ms when disconnected to avoid serial bus saturation.

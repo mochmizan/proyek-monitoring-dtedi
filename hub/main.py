@@ -93,6 +93,14 @@ WHITELIST_DEVICES = set()
 DEVICE_REGISTRY = {}
 DEVICE_REGISTRY_LOCK = threading.Lock()
 
+# Adaptive Telemetry Deadband & Cadence Filter (Phase 1)
+try:
+    from filter import AdaptiveTelemetryFilter, evaluate_telemetry_filter
+except ImportError:
+    from hub.filter import AdaptiveTelemetryFilter, evaluate_telemetry_filter
+
+TELEMETRY_FILTER = AdaptiveTelemetryFilter()
+
 
 @contextmanager
 def get_db_conn(db_path: str = None):
@@ -101,10 +109,12 @@ def get_db_conn(db_path: str = None):
     Prevents file descriptor leaks ('Too many open files').
     """
     target_path = db_path or EDGE_CACHE_DB_PATH
-    conn = sqlite3.connect(target_path, timeout=5.0)
-    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn = sqlite3.connect(target_path, timeout=10.0)
+    conn.execute("PRAGMA busy_timeout = 10000;")
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA wal_autocheckpoint = 1000;")
+    conn.execute("PRAGMA cache_size = -8000;")
     conn.execute("PRAGMA temp_store = MEMORY;")
     try:
         yield conn
@@ -117,10 +127,12 @@ def get_db_conn(db_path: str = None):
 
 def create_db_connection(db_path: str = None) -> sqlite3.Connection:
     target_path = db_path or EDGE_CACHE_DB_PATH
-    conn = sqlite3.connect(target_path, timeout=5.0)
-    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn = sqlite3.connect(target_path, timeout=10.0)
+    conn.execute("PRAGMA busy_timeout = 10000;")
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA wal_autocheckpoint = 1000;")
+    conn.execute("PRAGMA cache_size = -8000;")
     conn.execute("PRAGMA temp_store = MEMORY;")
     return conn
 
@@ -446,12 +458,19 @@ def on_connect(client, userdata, flags, rc, properties=None):
 
 def on_message(client, userdata, msg):
     try:
-        # Abaikan pesan command agar tidak memproses balik perintah sendiri
-        if msg.topic == AC_COMMAND_TOPIC or msg.topic.endswith("/command"):
+        # Abaikan pesan command & ack agar tidak memproses balik perintah sendiri
+        if msg.topic == AC_COMMAND_TOPIC or msg.topic.endswith("/command") or msg.topic.endswith("/ack") or msg.topic.endswith("/delivered"):
             return
 
         payload_str = msg.payload.decode('utf-8')
         data = json.loads(payload_str)
+
+        if not isinstance(data, dict):
+            return
+
+        # Abaikan payload bertipe command atau ack
+        if data.get("type") in ("command", "ack") or "command_id" in data:
+            return
 
         dev_id = str(data.get("DEV_ID", "")).strip().upper()
         if not dev_id:
@@ -487,7 +506,19 @@ def on_message(client, userdata, msg):
                     logging.warning(f"[UNAPPROVED REPORT ERROR] Gagal melaporkan {dev_id}: {e}")
             return
 
-        # 2. Forward Telemetri ke Central Server FastAPI
+        # 2. Adaptive Telemetry Deadband & Cadence Filtering (Phase 1)
+        if "DEV_TYPE" not in data and "dev_type" not in data:
+            with DEVICE_REGISTRY_LOCK:
+                dev_meta = DEVICE_REGISTRY.get(dev_id)
+                if dev_meta and dev_meta.get("dev_type"):
+                    data["DEV_TYPE"] = dev_meta["dev_type"]
+
+        should_forward, filter_reason = TELEMETRY_FILTER.evaluate(dev_id, data)
+        if not should_forward:
+            logging.debug(f"[FILTER SUPPRESSED] Telemetri {dev_id} diabaikan (alasan: {filter_reason})")
+            return
+
+        # 3. Forward Telemetri ke Central Server FastAPI
         forward_success = False
         try:
             response = requests.post(
@@ -500,13 +531,13 @@ def on_message(client, userdata, msg):
 
             if response.status_code in [200, 201]:
                 forward_success = True
-                logging.info(f"[POST SUCCESS] Telemetri {data.get('DEV_NAME')} ({dev_id}) berhasil diteruskan ke Server.")
+                logging.info(f"[POST SUCCESS] Telemetri {data.get('DEV_NAME')} ({dev_id}) berhasil diteruskan ke Server ({filter_reason}).")
             else:
                 logging.warning(f"[POST FAILED] Server merespon HTTP {response.status_code}: {response.text}")
         except Exception as e:
             logging.warning(f"[FORWARD FAILED] Kendala saat mengirim telemetri ke backend: {e}")
 
-        # 3. Offline Cache: Jika direct forward gagal, simpan ke cache SQLite WAL
+        # 4. Offline Cache: Jika direct forward gagal, simpan ke cache SQLite WAL
         if not forward_success:
             enqueue_pending_telemetry(data)
 

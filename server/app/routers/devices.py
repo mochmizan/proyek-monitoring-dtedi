@@ -1,4 +1,4 @@
-﻿# app/routers/devices.py
+# app/routers/devices.py
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Optional
@@ -15,7 +15,7 @@ from app.core.rate_limit import limiter
 from app.routers.alerts import parse_datetime_param
 from app.dependencies import hub_auth_cache, stage_hub_heartbeat
 from app.services.telemetry import get_latest_readings_for_devices
-from app.services.presence import DEVICE_OFFLINE_WINDOW_SECONDS
+from app.services.presence import DEVICE_OFFLINE_WINDOW_SECONDS, get_device_offline_window_seconds
 
 router = APIRouter(tags=["devices"])
 
@@ -527,7 +527,8 @@ def get_device(
         )
 
     now_utc = datetime.now(UTC)
-    cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
+    offline_window = get_device_offline_window_seconds(device.dev_type)
+    cutoff = now_utc - timedelta(seconds=offline_window)
     d_seen = device.last_seen if (device.last_seen and device.last_seen.tzinfo is not None) else (device.last_seen.replace(tzinfo=UTC) if device.last_seen else None)
     if not device.is_active:
         computed_status = "pending"
@@ -629,7 +630,6 @@ def get_devices(
         _user = get_current_user(request, db)
 
     now_utc = datetime.now(UTC)
-    cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
 
     stmt = (
         select(dev_table)
@@ -669,9 +669,11 @@ def get_devices(
             )
 
         d_seen = d.last_seen if (d.last_seen and d.last_seen.tzinfo is not None) else (d.last_seen.replace(tzinfo=UTC) if d.last_seen else None)
+        offline_window = get_device_offline_window_seconds(d.dev_type)
+        dev_cutoff = now_utc - timedelta(seconds=offline_window)
         if not d.is_active:
             computed_status = "pending"
-        elif d_seen and d_seen >= cutoff:
+        elif d_seen and d_seen >= dev_cutoff:
             computed_status = "online"
         else:
             computed_status = "offline"

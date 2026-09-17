@@ -244,6 +244,8 @@ def migrate_indexes(bind_engine=None):
         ("dev_table", "ix_dev_table_hub_id", "CREATE INDEX IF NOT EXISTS ix_dev_table_hub_id ON dev_table (hub_id)"),
         ("dev_table", "ix_dev_table_room_id", "CREATE INDEX IF NOT EXISTS ix_dev_table_room_id ON dev_table (room_id)"),
         ("dev_table", "ix_dev_table_dev_name", "CREATE INDEX IF NOT EXISTS ix_dev_table_dev_name ON dev_table (dev_name)"),
+        ("dev_table", "ix_dev_table_active_last_seen", "CREATE INDEX IF NOT EXISTS ix_dev_table_active_last_seen ON dev_table (is_active, last_seen)"),
+        ("dev_table", "ix_dev_table_dev_type", "CREATE INDEX IF NOT EXISTS ix_dev_table_dev_type ON dev_table (dev_type)"),
         ("pending_commands", "ix_pending_commands_hub_status_created", "CREATE INDEX IF NOT EXISTS ix_pending_commands_hub_status_created ON pending_commands (hub_id, status, created_at)"),
         ("data_table", "ix_data_table_dev_ts_desc", "CREATE INDEX IF NOT EXISTS ix_data_table_dev_ts_desc ON data_table (dev_id, timestamp DESC)"),
         ("sessions", "ix_sessions_user_expires", "CREATE INDEX IF NOT EXISTS ix_sessions_user_expires ON sessions (user_id, expires_at)"),

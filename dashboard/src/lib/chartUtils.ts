@@ -1,4 +1,4 @@
-import { GAP_FLOOR_MIN } from './constants';
+import { GAP_FLOOR_MIN, GAP_FLOOR_BY_TYPE_MIN } from './constants';
 import { parseToDate } from './dateUtils';
 
 export { parseToDate };
@@ -35,14 +35,31 @@ export function formatTooltipTime(isoStr: string): string {
   }) + ' WIB';
 }
 
-export function getMedianIntervalMs(pointTimes: (number | null)[]): number | null {
+/**
+ * Calculates the type-aware and range-scaled gap threshold in minutes.
+ * - Enforces minimum reporting floors by device type (TS: 15m, AC/ACC: 6m, ATS/DEFAULT: 3m).
+ * - Dynamically scales for extended historical ranges (> 6h / 360m) to accommodate downsampled intervals.
+ */
+export function getGapThresholdMinutes(devType?: string, rangeMinutes?: number): number {
+  const key = (devType ?? 'DEFAULT').toUpperCase();
+  const baseFloor = GAP_FLOOR_BY_TYPE_MIN[key] ?? GAP_FLOOR_BY_TYPE_MIN.DEFAULT;
+  if (!rangeMinutes || rangeMinutes <= 0) {
+    return baseFloor;
+  }
+  // Dynamic scaling: for ranges > 6h (360m), scale gap threshold (1 min per hour of range)
+  const dynamicFloor = rangeMinutes > 360 ? Math.round(rangeMinutes / 60) : 0;
+  return Math.max(baseFloor, dynamicFloor);
+}
+
+export function getMedianIntervalMs(pointTimes: (number | null)[], maxFloorMs: number = GAP_FLOOR_MS): number | null {
   const validIntervals: number[] = [];
+  const upperLimit = Math.max(GAP_FLOOR_MS, maxFloorMs) * 20;
   for (let i = 1; i < pointTimes.length; i++) {
     const a = pointTimes[i - 1];
     const b = pointTimes[i];
     if (a !== null && b !== null) {
       const d = b - a;
-      if (d > 0 && d < GAP_FLOOR_MS * 20) validIntervals.push(d);
+      if (d > 0 && d < upperLimit) validIntervals.push(d);
     }
   }
   if (validIntervals.length < 8) return null;
@@ -50,10 +67,16 @@ export function getMedianIntervalMs(pointTimes: (number | null)[]): number | nul
   return validIntervals[Math.floor(validIntervals.length / 2)];
 }
 
-export function getGapThresholdMs(pointTimes: (number | null)[]): number {
-  const median = getMedianIntervalMs(pointTimes);
-  if (median === null) return GAP_FLOOR_MS;
-  return Math.max(GAP_FLOOR_MS, median * 10);
+export function getGapThresholdMs(
+  pointTimes: (number | null)[],
+  devType?: string,
+  rangeMinutes?: number
+): number {
+  const floorMin = getGapThresholdMinutes(devType, rangeMinutes);
+  const floorMs = floorMin * 60 * 1000;
+  const median = getMedianIntervalMs(pointTimes, floorMs);
+  if (median === null) return floorMs;
+  return Math.max(floorMs, median * 10);
 }
 
 export function getOutages(

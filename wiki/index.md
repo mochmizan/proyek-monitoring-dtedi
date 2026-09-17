@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: []
 sources: [AGENTS.md]
-updated: 2026-09-12
+updated: 2026-09-17
 ---
 
 # smsb wiki index
@@ -13,10 +13,10 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 ## Entities
 
 - [entity-hubgate-v5.md](entity-hubgate-v5.md) — FastAPI cloud gateway (server/): canonical `app.main:api` entrypoint, auth/RBAC, active PostgreSQL 16 `smsb_prod` persistence (4.15M rows migrated), batch ingestion, presence sweeper
-- [entity-hubbrain-v5.md](entity-hubbrain-v5.md) — Raspberry Pi edge gateway (hub/): MQTT bridge, WAL cache, command dispatch
-- [entity-dashboard-spa.md](entity-dashboard-spa.md) — React 19 SPA (dashboard/): routes, edge-to-edge zero-roundness canvas, floating AppSidebar, 4-tier jittered polling, visual CronBuilder, WIB rendering, custom SVG charts
+- [entity-hubbrain-v5.md](entity-hubbrain-v5.md) — Raspberry Pi edge gateway (hub/): MQTT bridge, WAL cache, command dispatch, PRAGMA-hardened SQLite, adaptive RBE telemetry filter (>90% write suppression)
+- [entity-dashboard-spa.md](entity-dashboard-spa.md) — React 19 SPA (dashboard/): routes, edge-to-edge zero-roundness canvas, floating AppSidebar, 4-tier jittered polling, visual CronBuilder, WIB rendering, custom SVG charts with type-aware gap floors
 - [entity-ats-firmware-chain.md](entity-ats-firmware-chain.md) — Two-MCU ATS controller: PROMINI FSM + WEMOS_ATS bridge, serial framing, field remediation for node 68:C6:3A:D7:60:47
-- [entity-firmware-fleet.md](entity-firmware-fleet.md) — Fleet node specifications: WEMOS_TS, WEMOS_AC, WEMOS_ATS, PROMINI pinouts, I2C addresses, EEPROM layouts
+- [entity-firmware-fleet.md](entity-firmware-fleet.md) — Fleet node specifications: WEMOS_TS, WEMOS_AC, WEMOS_ATS, PROMINI pinouts, I2C addresses, EEPROM layouts, RBE deadbands & publish cadences, toolchain invariants, and FTDI hardware flashing protocol
 - [entity-security-auth.md](entity-security-auth.md) — Authentication & authorization model: RBAC matrix, Argon2id, session cookies, SlowAPI rate limiting, security remediations (SEC-01, SEC-03, SEC-06, SEC-10), VPS SSH auth (`genset123`), and campus perimeter isolation
 - [entity-deploy-pipeline.md](entity-deploy-pipeline.md) — Push-deploy to VPS via post-receive hook; normalized server runtime path, V8 heap cap, Alembic migration pre-flight gate, credential rotation
 - [entity-devops-infrastructure.md](entity-devops-infrastructure.md) — VPS topology (8GB host / 4 vCPUs, 4GB SMSB profile, CTFd co-tenancy), Nginx reverse proxy, TLS termination, systemd isolation (--workers 1 --limit-concurrency 50, MemoryMax=1.8G), active PostgreSQL 16 `smsb_prod`, campus inter-VLAN network isolation, VPS SSH password auth, and hardware remote MQTT tunneling
@@ -24,14 +24,14 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 
 ## Concepts
 
-- [concept-telemetry-pipeline.md](concept-telemetry-pipeline.md) — End-to-end data flow: ESP → MQTT → hub WAL → HTTPS → single-transaction DB ingest with boundary timestamp filtering → dashboard; hardware team remote MQTT testing tunnel; ASHRAE/NFPA 110/Sparkplug B RBE standards roadmap
+- [concept-telemetry-pipeline.md](concept-telemetry-pipeline.md) — End-to-end data flow: ESP → MQTT → hub WAL → HTTPS → single-transaction DB ingest with boundary timestamp filtering → dashboard; hardware team remote MQTT testing tunnel; implemented ASHRAE/NFPA 110/Sparkplug B RBE standards
 - [concept-downsampling-v2.md](concept-downsampling-v2.md) — Single-pass SQL epoch bucketing, min/max envelopes, and sub-second 30d SLAs on active PostgreSQL 16
-- [concept-presence-engine.md](concept-presence-engine.md) — Decoupled 15s background presence sweeper, detection lag SLA (<= 75s), and read-only query invariant (4GB profile with CTFd co-tenancy)
+- [concept-presence-engine.md](concept-presence-engine.md) — Decoupled 15s background presence sweeper, type-aware offline windows (ATS 180s, AC 360s, TS 900s), detection lag SLAs (ATS: 195s, AC: 375s, TS: 915s), and read-only query invariant (4GB profile with CTFd co-tenancy)
 - [concept-frontend-navigation.md](concept-frontend-navigation.md) — TanStack Router intent preloading, background idle route warmup, floating sidebar & drawer navigation, and 401 unauth handling
 - [concept-frontend-resilience.md](concept-frontend-resilience.md) — Active ErrorBoundary mounting hierarchy, query retry policies, 401 redirect interceptors, offline/reconnecting UX, scroll restoration
 - [concept-state-management.md](concept-state-management.md) — TanStack Query server cache, constants.ts, persistent sidebarStore, background tab polling suspension contract, Rollup manualChunks, lazy dialogs
 - [concept-database-lifecycle.md](concept-database-lifecycle.md) — Hardened connection pool sizing (20/10), transaction atomicity, active PostgreSQL 16 `smsb_prod` (4.15M rows migrated at 100% parity) with declarative monthly range partitioning & BRIN, O(1) retention pruning, 4GB profile with CTFd co-tenancy, SQLite 3 edge WAL
-- [concept-edge-resilience.md](concept-edge-resilience.md) — MQTT bridge durability, offline WAL FIFO queueing, rate pacing, timestamp preservation, dual-interface network isolation, remote SSH tunneling, failure modes
+- [concept-edge-resilience.md](concept-edge-resilience.md) — MQTT bridge durability, offline WAL FIFO queueing, adaptive RBE telemetry filter (>90% write suppression), rate pacing, timestamp preservation, dual-interface network isolation, remote SSH tunneling, failure modes
 - [concept-command-path.md](concept-command-path.md) — Downlink: web command → pending_commands → hub poll → MQTT → serial frame
 - [concept-alert-engine.md](concept-alert-engine.md) — Threshold evaluation, debounce, hysteresis, ATS emergency auto-resolve
 - [concept-observability-monitoring.md](concept-observability-monitoring.md) — Structured JSON logging with X-Request-ID tracing, JSON formatter for app/error logs, health probe contracts, alert dispatching
@@ -40,7 +40,7 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 
 ## Workstreams
 
-- [workstream-production-grade-roadmap.md](workstream-production-grade-roadmap.md) — Actionable production-grade refactoring plan: P0 Blockers (P0-2 PostgreSQL 16 live cutover completed with 4.15M rows at 100% parity), P1 Hardening, P2 Optimization
+- [workstream-production-grade-roadmap.md](workstream-production-grade-roadmap.md) — Actionable production-grade refactoring plan: P0 Blockers (PostgreSQL 16 cutover completed), P1 Hardening (P1-5 Telemetry Cadence, RBE Deadbands & UI Harmonization completed), P2 Optimization
 - [workstream-backend-hardening-v5.md](workstream-backend-hardening-v5.md) — 6-phase backend hardening: engine pool limits, downsampling v2, batch ingestion, presence worker, zero-lock verification, declarative partitioning & completed 4.15M row live cutover
 - [workstream-ats-emergency-2026-08.md](workstream-ats-emergency-2026-08.md) — Genset-disconnect EMERGENCY latch: timeline, decisions, pending reflash and field node ATS remediation runbook
 - [workstream-firmware-proofing.md](workstream-firmware-proofing.md) — 14-gap hardening of PROMINI/WEMOS_ATS (dcfeb84), bench soak pending
@@ -50,7 +50,8 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 ## Notes
 
 Active staging notes live in `notes/` before promotion:
-- [notes/telemetry-cadence.md](../notes/telemetry-cadence.md) — Telemetry cadence standards reference (ASHRAE Guideline 36, NFPA 110 Level 1, Sparkplug B RBE deadbands).
+- [notes/telemetry-cadence.md](../notes/telemetry-cadence.md) — Telemetry cadence standards reference (ASHRAE Guideline 36, NFPA 110 Level 1, Sparkplug B RBE deadbands) and completed Phases 1-4 implementation.
+- [notes/firmware_toolchain_and_flashing.md](../notes/firmware_toolchain_and_flashing.md) — Firmware toolchain invariants, Arduino IDE 2.x sandbox build root cause & include priority, library version constraints (ArduinoJson v6.21.5), Pro Mini 5V 16MHz clock setting, and FTDI hardware flashing protocol.
 
 All historical notes and benchmark baselines have been codified into the wiki, automated tests (pytest/vitest), and operational runbooks (`docs/runbooks/postgres_cutover_runbook.md`, `docs/runbooks/field_node_ats_remediation.md`). Working notes are archived in git history.
 

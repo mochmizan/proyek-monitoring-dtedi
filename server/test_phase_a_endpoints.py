@@ -132,14 +132,14 @@ def setup_test_environment():
         )
         db.add(dev2)
 
-        # Create offline device (last_seen > 25s ago)
+        # Create offline device (last_seen > AC offline threshold of 360s)
         dev3 = dev_table(
             dev_id="AC-PHASE-03",
             dev_name="AC Node 03",
             dev_type="AC",
             hub_id="HUB_PHASE_A",
             is_active=True,
-            last_seen=datetime.now(UTC) - timedelta(seconds=120),
+            last_seen=datetime.now(UTC) - timedelta(seconds=400),
             created_at=datetime.now(UTC),
         )
         db.add(dev3)

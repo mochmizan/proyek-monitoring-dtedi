@@ -28,7 +28,8 @@ from app.main import api
 from app.services.presence import (
     evaluate_device_presence_batch,
     PRESENCE_INTERVAL_SECONDS,
-    DEVICE_OFFLINE_WINDOW_SECONDS
+    DEVICE_OFFLINE_WINDOW_SECONDS,
+    get_device_offline_window_seconds,
 )
 
 client = TestClient(api)
@@ -100,10 +101,10 @@ def clean_db():
 # ---------------------------------------------------------------------------
 
 def test_presence_worker_offline_detection(clean_db):
-    """Active device with last_seen > DEVICE_OFFLINE_WINDOW_SECONDS ago transitions to offline and creates 1 alert."""
+    """Active device with last_seen > threshold ago transitions to offline and creates 1 alert."""
     db = SessionLocal()
     now_utc = datetime.now(UTC)
-    stale_time = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS + 15)
+    stale_time = now_utc - timedelta(seconds=get_device_offline_window_seconds("TS") + 15)
 
     room = rooms(id="r-pres-1", name="Presence Room 1")
     dev = dev_table(
@@ -151,7 +152,7 @@ def test_presence_worker_online_recovery(clean_db):
     """When an offline device sends a recent signal, worker resolves the open alert and sets online."""
     db = SessionLocal()
     now_utc = datetime.now(UTC)
-    stale_time = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS + 15)
+    stale_time = now_utc - timedelta(seconds=get_device_offline_window_seconds("TS") + 15)
 
     room = rooms(id="r-rec-1", name="Recovery Room")
     dev = dev_table(

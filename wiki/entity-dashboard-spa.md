@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/concept-frontend-navigation.md, wiki/concept-state-management.md, wiki/concept-frontend-resilience.md, wiki/concept-downsampling-v2.md, wiki/concept-telemetry-pipeline.md, wiki/concept-time-conventions.md, wiki/concept-command-path.md, wiki/workstream-flexible-scheduling.md, wiki/workstream-shadcn-revert.md]
-sources: [dashboard/src/App.tsx, dashboard/src/routes/__root.tsx, dashboard/src/components/sidebar/AppSidebar.tsx, dashboard/src/components/ui/tooltip.tsx, dashboard/src/lib/sidebarStore.ts, dashboard/src/hooks/useSidebarKeyboard.ts, dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/HistoryChart.tsx, dashboard/src/components/device/Controls.tsx, dashboard/src/components/device/chart/MultiPanelChartContainer.tsx, dashboard/src/components/ui/pagination.tsx, dashboard/src/routes/, dashboard/package.json, dashboard/AGENTS.md, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py, commit:b290e3c, commit:35e0582]
-updated: 2026-09-04
+sources: [dashboard/src/App.tsx, dashboard/src/routes/__root.tsx, dashboard/src/components/sidebar/AppSidebar.tsx, dashboard/src/components/ui/tooltip.tsx, dashboard/src/lib/sidebarStore.ts, dashboard/src/hooks/useSidebarKeyboard.ts, dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/chartUtils.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/HistoryChart.tsx, dashboard/src/components/device/Controls.tsx, dashboard/src/components/device/chart/MultiPanelChartContainer.tsx, dashboard/src/components/ui/pagination.tsx, dashboard/src/routes/, dashboard/package.json, dashboard/AGENTS.md, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py, commit:b290e3c, commit:35e0582]
+updated: 2026-09-17
 ---
 
 # Dashboard SPA (dashboard/)
@@ -73,7 +73,7 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
                 │               │   ├── Audit Log Table (Severity Badges, Timestamp WIB, Reading/Threshold)
                 │               │   └── Pagination (<Pagination> 15/page, resetScroll: false)
                 │               ├── Route: /device/$deviceId (src/routes/device.$deviceId.tsx)
-                │               │   ├── Header (Device metadata, status badge, copy MAC button)
+                │               │   ├── Header (Device metadata, nominal cadence badge, status badge, copy MAC button)
                 │               │   ├── HistoryChart (src/components/device/HistoryChart.tsx)
                 │               │   │   └── MultiPanelChartContainer (src/components/device/chart/)
                 │               │   │       ├── TelemetryPanel (PLN Grid AC)
@@ -151,7 +151,7 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
    - **Tier 3 (15s ±15%)**: `POLL_TIER3_PRESENCE_MS` for telemetry history charting and operational presence metadata.
    - **Tier 4 (60s ±15%)**: `POLL_TIER4_TRENDS_MS` for 6h sparklines and analytical trend buckets.
    - **Cache Harmony Invariant**: Guaranteed `staleTime >= refetchInterval` across all tiers (`staleTime: 6s/15s/60s`), eliminating redundant duplicate network requests. Background tab polling is halted via `refetchIntervalInBackground: false`.
-3. **Multi-Panel Telemetry Rendering Flow**: `HistoryChart` passes downsampled telemetry points to `MultiPanelChartContainer`. X-axis timestamps are synchronized across three stacked panels. Dynamic 12% padded Y-axes auto-scale based on visible values, toggled to fixed electrical presets via panel headers.
+3. **Multi-Panel Telemetry Rendering & Type-Aware Gap Flow**: `HistoryChart` passes downsampled telemetry points, device type (`devType`), and time range (`timeRange`) to `MultiPanelChartContainer`. X-axis timestamps are synchronized across stacked panels. Dynamic 12% padded Y-axes auto-scale based on visible values, toggled to fixed electrical presets via panel headers. Outage gap detection utilizes `getGapThresholdMs(pointTimes, devType, rangeMinutes)`, enforcing type-aware minimum gap floors (`GAP_FLOOR_BY_TYPE_MIN`: TS 15m, AC/ACC 6m, ATS 3m, DEFAULT 3m) to prevent relaxed RBE heartbeats from triggering false outage hatches. Extended historical views (> 6h / 360m) dynamically scale gap thresholds (e.g. 24h: 24m, 7d: 168m, 30d: 720m) to accommodate downsampled bucket intervals.
 4. **Command Dispatch Flow**: Commands dispatch through `useCommandLifecycle`, transitioning from `queuing` to `queued`, polling `GET /api/commands/{id}` every 1.5s, with a 12s client timeout and cache invalidation cascade upon delivery confirmation.
 5. **Form Editing Flow**: Device threshold inputs in `Controls.tsx` track focus (`isEditingRef`) and input dirtiness (`isDirty`), preventing background telemetry refetches from overwriting uncommitted operator edits.
 
@@ -165,10 +165,17 @@ In late August 2026, an experimental migration to shadcn Recharts components was
 - Difficulty styling custom telemetry outage hatch patterns for power dropouts.
 
 **Current Custom SVG Architecture** (`src/components/device/chart/*`):
-- **`MultiPanelChartContainer`**: Orchestrates global time coordinate projections (`timeToXCoord`), common time range calculations (`minTimeMs`, `maxTimeMs`), and outage region detection (`getOutages`).
+- **`MultiPanelChartContainer`**: Orchestrates global time coordinate projections (`timeToXCoord`), common time range calculations (`minTimeMs`, `maxTimeMs`), and outage region detection (`getOutages`). Computes `gapThresholdMs` with `getGapThresholdMs(pointTimes, devType, rangeMinutes)`.
 - **`TelemetryPanel`**: Renders an individual SVG panel (PLN 180–240V, Genset 0–240V, Battery 10–14.5V, Temp 20–35°C, Humid 30–80%).
 - **`computeYScale`**: Calculates independent linear scales with 12% padding above and below data bounds while enforcing domain safety floors.
 - **Synchronized Cursor & Crosshair**: Hovering over any panel displays a vertical crosshair line and a single lifted tooltip across all panels at that precise epoch.
+
+### 4.1 Type-Aware Telemetry Cadence & Outage Hatch Alignment
+- **Problem**: When IoT sensor nodes report on relaxed cadences (TS: 5m steady, AC: 2m steady, ATS: 1m steady), static 2-5m gap thresholds erroneously painted dark diagonal-striped outage hatches across healthy charts.
+- **Resolution**:
+  - `GAP_FLOOR_BY_TYPE_MIN`: Type-aware minimum outage floor in `dashboard/src/lib/constants.ts` (`{ TS: 15, AC: 6, ACC: 6, ATS: 3, DEFAULT: 3 }` in minutes).
+  - `CADENCE_BY_TYPE`: Nominal reporting cadence metadata for UI display (`{ TS: '5m RBE', AC: '2m RBE', ATS: '1m RBE' }`). Rendered as a subtle cadence chip in `device.$deviceId.tsx`.
+  - `getGapThresholdMinutes(devType, rangeMinutes)` in `chartUtils.ts`: Pure functional helper that guards against false outages during deadband periods while dynamically scaling thresholds for 24h, 7d, and 30d historical downsampled ranges.
 
 ---
 

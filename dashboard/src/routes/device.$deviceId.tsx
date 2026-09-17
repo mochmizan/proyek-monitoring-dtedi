@@ -1,13 +1,18 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ShieldAlert, RefreshCw, Copy, Check } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, RefreshCw, Copy, Check, Clock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { z } from 'zod';
 import { Pagination } from '../components/ui/pagination';
 import { cn } from '../lib/utils';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchDevice, fetchRooms, fetchAlerts, fetchCurrentUser } from '../lib/api';
-import { POLL_TIER2_ALERTS_MS, STALE_TIER2_ALERTS_MS, STALE_METADATA_MS } from '../lib/constants';
+import {
+  POLL_TIER2_ALERTS_MS,
+  STALE_TIER2_ALERTS_MS,
+  STALE_METADATA_MS,
+  CADENCE_BY_TYPE,
+} from '../lib/constants';
 import { getJitteredInterval } from '../lib/jitter';
 import { formatWIBDateTime, formatWIBDate } from '../lib/dateUtils';
 import { HistoryChart } from '../components/device/HistoryChart';
@@ -118,6 +123,7 @@ function DeviceDetailPage() {
   const displayName = device.dev_name || device.dev_id;
   const isOnline = device.status === 'online';
   const isPending = !device.is_active || device.status === 'pending';
+  const cadence = (device.dev_type ? CADENCE_BY_TYPE[device.dev_type.toUpperCase()] : undefined) ?? CADENCE_BY_TYPE.DEFAULT;
 
   return (
     <div className="space-y-8">
@@ -137,6 +143,18 @@ function DeviceDetailPage() {
               {/* Type Chip */}
               <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-400 font-medium">
                 Type: <strong className="text-zinc-200 font-medium">{device.dev_type || 'Generic'}</strong>
+              </span>
+
+              {/* Cadence Chip */}
+              <span
+                data-testid="device-cadence-badge"
+                className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-400 font-medium inline-flex items-center gap-1.5"
+                title={`Nominal reporting cadence: ${cadence.label}`}
+              >
+                <Clock className="h-3 w-3 text-indigo-400" />
+                <span>
+                  Cadence: <strong className="text-zinc-200 font-medium">{cadence.label}</strong>
+                </span>
               </span>
 
               {/* Room Chip */}

@@ -102,10 +102,12 @@ CREATE INDEX IF NOT EXISTS idx_pending_created ON pending_telemetry(created_at);
 ```
 
 ### 3.2 Performance & MicroSD Endurance PRAGMAs
-Database connections created via `get_db_conn()` execute dedicated PRAGMAs:
+Database connections created via `get_db_conn()` and `create_db_connection()` execute hardened PRAGMAs:
 - `PRAGMA journal_mode = WAL;`: Write-Ahead Logging allows concurrent readers and writers without lock contention.
-- `PRAGMA busy_timeout = 5000;`: Waits up to 5,000 ms before raising database busy exceptions.
+- `PRAGMA busy_timeout = 10000;`: Waits up to 10,000 ms before raising database busy exceptions.
 - `PRAGMA synchronous = NORMAL;`: Ensures crash resistance against power cuts while eliminating `fsync` on every transaction, dramatically reducing microSD write wear.
+- `PRAGMA wal_autocheckpoint = 1000;`: Automatically checkpoints WAL frames every 1,000 pages (~4MB).
+- `PRAGMA cache_size = -8000;`: Sets SQLite page cache ceiling to 8MB in RAM.
 - `PRAGMA temp_store = MEMORY;`: Keeps temporary tables and indices in RAM.
 
 ### 3.3 File Descriptor Safety
@@ -113,7 +115,7 @@ Connection lifecycles are strictly managed via context manager:
 ```python
 @contextmanager
 def get_db_conn(db_path: str = None):
-    conn = sqlite3.connect(target_path, timeout=5.0)
+    conn = sqlite3.connect(target_path, timeout=10.0)
     # Apply PRAGMAs...
     try:
         yield conn
@@ -121,6 +123,17 @@ def get_db_conn(db_path: str = None):
         conn.close()
 ```
 This guarantees deterministic connection closing, eliminating file descriptor leaks (`EMFILE: Too many open files`).
+
+### 3.4 Report-by-Exception (RBE) Telemetry Deadband Filter (`filter.py`)
+To prevent flash drive exhaustion and expand offline queue buffer time by >90%:
+- **Pure Functional Core**: `evaluate_telemetry_filter(incoming, last_state, now, config)` executes in < 0.05ms without tight-loop allocations.
+- **Deadbands**:
+  - TS: $\Delta T \ge 0.2^\circ\text{C}$, $\Delta\text{RH} \ge 2.0\%$, 300s heartbeat.
+  - ATS: $\Delta V \ge 1.0\text{V}$, $\Delta V_\text{batt} \ge 0.1\text{V}$, $\Delta I \ge 0.2\text{A}$, $\Delta F \ge 0.2\text{Hz}$, 60s heartbeat.
+  - AC: $\Delta T \ge 0.5^\circ\text{C}$, $\Delta\text{RH} \ge 2.0\%$, 120s heartbeat.
+  - Default: 60s heartbeat.
+- **Instant Bypass**: State changes immediately forward (<100ms) and activate a 2.0s burst rate for 60 seconds.
+- **Write Suppression Invariant**: >90% (measured 98.0%) of redundant offline telemetry writes are eliminated before reaching disk.
 
 ---
 

@@ -17,7 +17,30 @@ export const COMMAND_DELIVERY_TIMEOUT_MS = 12000; // Radio downlink ACK wait cei
 export const COMMAND_AUTO_DISMISS_MS = 8000;       // Success badge banner dismissal
 
 // Telemetry Gap Thresholds (minutes)
-export const GAP_FLOOR_MIN = 5;                 // Minimum gap duration before rendering outage hatch
+export const GAP_FLOOR_MIN = 5;                 // Minimum gap duration before rendering outage hatch (legacy fallback)
+
+// Type-aware gap threshold minimums (minutes) before rendering outage hatch/break
+export const GAP_FLOOR_BY_TYPE_MIN: Record<string, number> = {
+  ATS: 3,
+  AC: 6,
+  ACC: 6,
+  TS: 15,
+  DEFAULT: 3,
+};
+
+// Nominal reporting cadence metadata for UI display & telemetry expectations
+export interface CadenceMetadata {
+  label: string;
+  intervalSec: number;
+}
+
+export const CADENCE_BY_TYPE: Record<string, CadenceMetadata> = {
+  ATS: { label: '1m RBE', intervalSec: 60 },
+  TS: { label: '5m RBE', intervalSec: 300 },
+  AC: { label: '2m RBE', intervalSec: 120 },
+  ACC: { label: '2m RBE', intervalSec: 120 },
+  DEFAULT: { label: '1m RBE', intervalSec: 60 },
+};
 
 // Backwards compatibility aliases mapped to new tiered constants
 export const POLL_COMMAND_STATUS_MS = POLL_TIER1_COMMAND_MS;

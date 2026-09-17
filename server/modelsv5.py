@@ -73,6 +73,8 @@ class dev_table(Base):
         Index("ix_dev_table_hub_id", "hub_id"),
         Index("ix_dev_table_room_id", "room_id"),
         Index("ix_dev_table_dev_name", "dev_name"),
+        Index("ix_dev_table_active_last_seen", "is_active", "last_seen"),
+        Index("ix_dev_table_dev_type", "dev_type"),
     )
 
 

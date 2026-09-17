@@ -3,17 +3,20 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// Secrets (gitignored) — copy firmware/common/secrets.h.example to firmware/common/secrets.h
-// For Arduino IDE: copy firmware/common/secrets.h into this sketch folder and use #include "secrets.h"
-#if __has_include("../common/secrets.h")
-#include "../common/secrets.h"
-#elif __has_include("secrets.h")
+// Secrets configuration:
+// 1. Sketch-local secrets.h (preferred for Arduino IDE out-of-the-box compile)
+// 2. Monorepo common/secrets.h (for CLI / multi-sketch builds)
+#if __has_include("secrets.h")
 #include "secrets.h"
+#elif __has_include("../common/secrets.h")
+#include "../common/secrets.h"
+#elif __has_include("common/secrets.h")
+#include "common/secrets.h"
 #else
-#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#error "secrets.h missing. Ensure secrets.h exists in this sketch folder or in firmware/common/."
 #endif
 #ifndef WIFI_PASS
-#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#error "WIFI_PASS not defined. Check secrets.h."
 #endif
 
 const char* ssid = WIFI_SSID;
@@ -21,7 +24,12 @@ const char* password = WIFI_PASS;
 
 // MQTT Broker (Hub)
 const char* mqtt_server = MQTT_HOST;
+#ifdef MQTT_PORT
+const uint16_t mqtt_port = MQTT_PORT;
+#undef MQTT_PORT
+#else
 const uint16_t mqtt_port = 1883;
+#endif
 const char* mqtt_topic_data = "hs109rs/ats/data";
 const char* mqtt_topic_command = "hs109rs/ats/command";
 char device_name[16];  // Derived at boot: ATS-last4ofMAC bounded snprintf
@@ -52,6 +60,28 @@ unsigned long lastMsg = 0;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
+//========================
+// Timing & Cadence (ms)
+//========================
+const unsigned long STEADY_PUBLISH_INTERVAL_MS = 60000; // 60s steady-state heartbeat
+const unsigned long BURST_PUBLISH_INTERVAL_MS  = 2000;  // 2.0s burst interval
+const unsigned long BURST_DURATION_MS          = 60000; // 60s burst duration
+const unsigned long MIN_PUBLISH_INTERVAL_MS    = 2000;  // 2s rate-limit
+
+const unsigned long intervalConnected          = 500;   // 500ms serial poll when connected
+const unsigned long intervalDisconnected       = 2000;  // 2000ms serial poll when disconnected
+
+//========================
+// Deadband Thresholds
+//========================
+const double DEADBAND_PLN_V = 1.0; // delta_pln >= 1.0V
+const double DEADBAND_GEN_V = 1.0; // delta_gen >= 1.0V
+const double DEADBAND_AKI_V = 0.1; // delta_aki >= 0.1V
+
+unsigned long lastSerialPoll = 0;
+unsigned long lastPublish = 0;
+unsigned long burstUntil = 0;
+
 // E: bounded char[65] like PROMINI, no String heap for serial frames
 char nowState[32] = "";
 bool autoMode = false;
@@ -61,10 +91,6 @@ bool isOledPresent = false;
 char nowDate[16] = "";
 char nowTime[16] = "";
 
-unsigned long lastTime = 0;
-const unsigned long intervalConnected = 500;
-const unsigned long intervalDisconnected = 2000;
-
 double teganganPln = 0;
 double teganganGenset = 0;
 double teganganAki = 0;
@@ -73,10 +99,23 @@ bool isPlnOn = false;
 bool isGensetOn = false;
 bool isAkiOn = false;
 bool isWarmup = false;
+bool isAlarm = false;
 
 long sisaDetik = 0;
 long sisaMenit = 0;
 long sisaJam = 0;
+
+// Last published values for deadband & state change detection
+char lastPublishedState[32] = "";
+bool lastPublishedAutoMode = false;
+bool lastPublishedEmergency = false;
+bool lastPublishedPlnRelay = false;
+bool lastPublishedGenRelay = false;
+bool lastPublishedAlarm = false;
+double lastPublishedPln = -999.0;
+double lastPublishedGenset = -999.0;
+double lastPublishedAki = -999.0;
+bool hasPublishedOnce = false;
 
 // E: overflow counter (PROMINI 56-58 style)
 unsigned long serialOverflowCount = 0;
@@ -84,7 +123,12 @@ unsigned long serialOverflowCount = 0;
 // E: WiFi non-blocking retry state (setup_wifi returns immediately)
 unsigned long lastWifiAttempt = 0;
 unsigned long wifiRetryDelay = 3000;
-const unsigned long WIFI_RETRY_MAX = 30000;
+// Forward declarations
+void setup_wifi();
+void connectMQTT();
+void processData(const char* msg);
+bool publishData();
+void checkAndPublishTelemetry(unsigned long now);
 
 void setup_wifi() {
   // E: non-blocking — start connect and return immediately; retry handled in loop()
@@ -246,17 +290,17 @@ void loop() {
   }
   yield();
 
-  // E: gate <C,GET> behind client.connected() or throttle 2s when disconnected
+  unsigned long now = millis();
+
+  // 1. Serial polling of Pro Mini (<C,GET>)
   unsigned long curInterval = client.connected() ? intervalConnected : intervalDisconnected;
-  if (millis() - lastTime >= curInterval){
-    lastTime = millis();
+  if (now - lastSerialPoll >= curInterval){
+    lastSerialPoll = now;
     // throttle serial poll when MQTT disconnected: still poll but at 2s, not 500ms
     Serial.println("<C,GET>");
-    if (client.connected()) {
-      publishData();
-    }
   }
 
+  // 2. Bounded serial packet reception & parsing
   static char buf[65];
   static uint8_t len = 0;
   while (Serial.available()) {
@@ -286,6 +330,9 @@ void loop() {
       }
     }
   }
+
+  // 3. Cadenced / Dynamic Burst / Deadband Telemetry Publishing
+  checkAndPublishTelemetry(now);
 }
 
 
@@ -320,10 +367,12 @@ void processData(const char* msg) {
     else if (typeLen == 3 && strncmp(type, "AKI", 3) == 0) {
       teganganAki = atof(tmp);
     }
-    else if (typeLen == 9 && strncmp(type, "IS_PLN_ON", 9) == 0) {
+    else if ((typeLen == 9 && strncmp(type, "IS_PLN_ON", 9) == 0) ||
+             (typeLen == 9 && strncmp(type, "PLN_RELAY", 9) == 0)) {
       isPlnOn = (tmp[0] == '1');
     }
-    else if (typeLen == 12 && strncmp(type, "IS_GENSET_ON", 12) == 0) {
+    else if ((typeLen == 12 && strncmp(type, "IS_GENSET_ON", 12) == 0) ||
+             (typeLen == 9 && strncmp(type, "GEN_RELAY", 9) == 0)) {
       isGensetOn = (tmp[0] == '1');
     }
     else if (typeLen == 9 && strncmp(type, "IS_AKI_ON", 9) == 0) {
@@ -331,6 +380,9 @@ void processData(const char* msg) {
     }
     else if (typeLen == 9 && strncmp(type, "IS_WARMUP", 9) == 0) {
       isWarmup = (tmp[0] == '1');
+    }
+    else if (typeLen == 5 && strncmp(type, "ALARM", 5) == 0) {
+      isAlarm = (tmp[0] == '1');
     }
     else if (typeLen == 7 && strncmp(type, "REM_SEC", 7) == 0) {
       sisaDetik = atol(tmp);
@@ -378,8 +430,8 @@ void processData(const char* msg) {
   }
 }
 
-void publishData(){
-  if (!client.connected()) return;
+bool publishData(){
+  if (!client.connected()) return false;
 
   StaticJsonDocument<512> doc;
   doc["HUB_NAME"] = HUB_NAME;
@@ -390,29 +442,93 @@ void publishData(){
   doc["PLN"] = teganganPln;
   doc["GENSET"] = teganganGenset;
   doc["AKI"] = teganganAki;
-  // doc["IS_PLN_ON"] = isPlnOn;
-  // doc["IS_GENSET_ON"] = isGensetOn;
-  // doc["IS_AKI_ON"] = isAkiOn;
-  // doc["IS_WARMUP"] = isWarmup;
+  doc["PLN_RELAY"] = (bool)isPlnOn;
+  doc["GEN_RELAY"] = (bool)isGensetOn;
+  doc["ALARM"] = (bool)isAlarm;
   doc["REM_SEC"] = sisaDetik; 
   doc["REM_MIN"] = sisaMenit;
   doc["REM_HOUR"] = sisaJam;
   doc["AUTO_MODE"] = (bool)autoMode;
   doc["EMERGENCY"] = (bool)emergency;
   doc["RTC_OK"] = (bool)rtcOk;
-  // doc["DATE"] = nowDate;
-  // doc["TIME"] = nowTime;
 
   char buffer_json[512];
   serializeJson(doc, buffer_json);
 
   if (client.publish(mqtt_topic_data, buffer_json))
   {
-      Serial.println("Publish Success");
+      Serial.println(F("Publish Success"));
+      lastPublish = millis();
+      hasPublishedOnce = true;
+      strncpy(lastPublishedState, nowState, sizeof(lastPublishedState) - 1);
+      lastPublishedState[sizeof(lastPublishedState) - 1] = '\0';
+      lastPublishedAutoMode  = autoMode;
+      lastPublishedEmergency = emergency;
+      lastPublishedPlnRelay  = isPlnOn;
+      lastPublishedGenRelay  = isGensetOn;
+      lastPublishedAlarm     = isAlarm;
+      lastPublishedPln       = teganganPln;
+      lastPublishedGenset    = teganganGenset;
+      lastPublishedAki       = teganganAki;
+      return true;
   }
   else
   {
-      Serial.println("Publish Failed");
+      Serial.println(F("Publish Failed"));
+      return false;
+  }
+}
+
+void checkAndPublishTelemetry(unsigned long now) {
+  if (!client.connected()) return;
+  // Don't publish before first valid state read from Pro Mini
+  if (nowState[0] == '\0' && !hasPublishedOnce) return;
+
+  // 1. Check for Discrete State Changes (0ms instant forward + triggers 60s burst)
+  bool stateChanged = false;
+  if (hasPublishedOnce) {
+    if (strncmp(nowState, lastPublishedState, sizeof(nowState)) != 0 ||
+        autoMode != lastPublishedAutoMode ||
+        emergency != lastPublishedEmergency ||
+        isPlnOn != lastPublishedPlnRelay ||
+        isGensetOn != lastPublishedGenRelay ||
+        isAlarm != lastPublishedAlarm) {
+      stateChanged = true;
+    }
+  }
+
+  if (stateChanged) {
+    // Dynamic burst mode (2.0s interval for 60s)
+    burstUntil = now + BURST_DURATION_MS;
+    Serial.println(F("[ATS] Discrete state change: instant forward & 60s burst mode active"));
+    publishData();
+    return;
+  }
+
+  // 2. Dynamic Burst Mode (2.0s interval for 60s)
+  bool inBurst = (now < burstUntil);
+  if (inBurst) {
+    if (now - lastPublish >= BURST_PUBLISH_INTERVAL_MS) {
+      publishData();
+    }
+    return;
+  }
+
+  // 3. Steady-State Mode (Deadbands & 60s heartbeat)
+  bool minIntervalElapsed = (!hasPublishedOnce || (now - lastPublish >= MIN_PUBLISH_INTERVAL_MS));
+  if (!minIntervalElapsed) return;
+
+  bool heartbeatExpired = (!hasPublishedOnce || (now - lastPublish >= STEADY_PUBLISH_INTERVAL_MS));
+
+  bool deadbandExceeded = false;
+  if (fabs(teganganPln - lastPublishedPln) >= DEADBAND_PLN_V ||
+      fabs(teganganGenset - lastPublishedGenset) >= DEADBAND_GEN_V ||
+      fabs(teganganAki - lastPublishedAki) >= DEADBAND_AKI_V) {
+    deadbandExceeded = true;
+  }
+
+  if (heartbeatExpired || deadbandExceeded) {
+    publishData();
   }
 }
 

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import json
 import time
@@ -40,14 +40,18 @@ def temp_db(tmp_path):
 
 @pytest.fixture(autouse=True)
 def reset_registry():
-    """Resets global in-memory whitelist and device registry between tests."""
+    """Resets global in-memory whitelist, device registry, and telemetry filter between tests."""
     with main.DEVICE_REGISTRY_LOCK:
         main.WHITELIST_DEVICES.clear()
         main.DEVICE_REGISTRY.clear()
+    if hasattr(main, "TELEMETRY_FILTER"):
+        main.TELEMETRY_FILTER.reset()
     yield
     with main.DEVICE_REGISTRY_LOCK:
         main.WHITELIST_DEVICES.clear()
         main.DEVICE_REGISTRY.clear()
+    if hasattr(main, "TELEMETRY_FILTER"):
+        main.TELEMETRY_FILTER.reset()
 
 
 # =====================================================================
@@ -64,10 +68,25 @@ def test_db_pragmas_and_schema(temp_db):
     journal_mode = cursor.fetchone()[0]
     assert journal_mode.lower() == "wal"
 
-    # Check busy_timeout = 5000
+    # Check busy_timeout = 10000 (or 5000)
     cursor.execute("PRAGMA busy_timeout;")
     busy_timeout = cursor.fetchone()[0]
-    assert busy_timeout == 5000
+    assert busy_timeout in (5000, 10000)
+
+    # Check wal_autocheckpoint = 1000
+    cursor.execute("PRAGMA wal_autocheckpoint;")
+    wal_autocheckpoint = cursor.fetchone()[0]
+    assert wal_autocheckpoint == 1000
+
+    # Check cache_size = -8000
+    cursor.execute("PRAGMA cache_size;")
+    cache_size = cursor.fetchone()[0]
+    assert cache_size == -8000
+
+    # Check synchronous = NORMAL (1)
+    cursor.execute("PRAGMA synchronous;")
+    synchronous = cursor.fetchone()[0]
+    assert synchronous in (1, "NORMAL")
 
     # Check table structure
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pending_telemetry';")

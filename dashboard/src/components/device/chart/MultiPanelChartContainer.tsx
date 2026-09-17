@@ -11,6 +11,7 @@ export interface MultiPanelChartContainerProps {
   panels: PanelConfig[];
   points: TelemetryHistoryPoint[];
   timeRange: TimeRange;
+  devType?: string;
   onToggleSeries: (seriesId: string) => void;
   containerTestId?: string;
   tooltipTestId?: string;
@@ -21,6 +22,7 @@ export const MultiPanelChartContainer: React.FC<MultiPanelChartContainerProps> =
   panels,
   points,
   timeRange,
+  devType,
   onToggleSeries,
   containerTestId,
   tooltipTestId,
@@ -36,6 +38,7 @@ export const MultiPanelChartContainer: React.FC<MultiPanelChartContainerProps> =
   const windowHours =
     timeRange === '6h' ? 6 : timeRange === '24h' ? 24 : timeRange === '7d' ? 7 * 24 : 30 * 24;
   const windowMs = windowHours * 3600 * 1000;
+  const rangeMinutes = windowHours * 60;
 
   const latestPointTime =
     points.length > 0 && points[points.length - 1].timestamp
@@ -51,7 +54,10 @@ export const MultiPanelChartContainer: React.FC<MultiPanelChartContainerProps> =
     });
   }, [points]);
 
-  const gapThresholdMs = useMemo(() => getGapThresholdMs(pointTimes), [pointTimes]);
+  const gapThresholdMs = useMemo(
+    () => getGapThresholdMs(pointTimes, devType, rangeMinutes),
+    [pointTimes, devType, rangeMinutes]
+  );
   const outages = useMemo(
     () => getOutages(pointTimes, minTimeMs, maxTimeMs, gapThresholdMs),
     [pointTimes, minTimeMs, maxTimeMs, gapThresholdMs]
