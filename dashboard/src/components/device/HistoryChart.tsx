@@ -104,6 +104,18 @@ export function HistoryChart({
     (latestReading?.state || latestReading?.STATE) ??
     (points.length > 0 ? points[points.length - 1].state : null);
 
+  const stateStr = String(currentState || 'STANDBY').toUpperCase();
+  const isEmergency = stateStr.includes('EMERGENCY') || stateStr.includes('ALARM');
+  const isPln = !isEmergency && (stateStr === 'PLN' || stateStr.includes('PLN'));
+  const isGenset = !isEmergency && (stateStr === 'GENSET' || stateStr.includes('GENSET'));
+  const stateColor = isEmergency
+    ? 'text-red-400'
+    : isPln
+    ? 'text-emerald-400'
+    : isGenset
+    ? 'text-amber-400'
+    : 'text-zinc-200';
+
 
   // Toggle handlers
   const handleToggleSeries = (seriesId: string) => {
@@ -478,8 +490,13 @@ export function HistoryChart({
                 </span>
               </div>
               <div className="bg-zinc-950 p-3 rounded-md border border-zinc-800/60">
-                <span className="text-[10px] uppercase font-semibold text-zinc-500">Controller State</span>
-                <p className="text-sm font-mono font-bold text-zinc-200 mt-1.5 truncate">
+                <span className="text-[10px] uppercase font-semibold text-zinc-500 flex items-center justify-between">
+                  Controller State
+                  {isEmergency && <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" title="Emergency / Alarm" />}
+                  {isPln && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="PLN Grid Active" />}
+                  {isGenset && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Genset Active" />}
+                </span>
+                <p className={cn("text-sm font-mono font-bold mt-1.5 truncate", stateColor)}>
                   {currentState || 'STANDBY'}
                 </p>
                 <span className="text-[10px] text-zinc-500">
