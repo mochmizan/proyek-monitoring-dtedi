@@ -3,4 +3,4 @@
 paho-mqtt==2.2.1  # MQTT client v2.x (CallbackAPIVersion.VERSION1)
 requests==2.32.3  # HTTPS upstream to HubGate V5 (verify=TLS_CERT_PATH)
 python-dotenv==1.0.1  # .env loader
-urllib3==2.2.3  # transitive dep of requests; pinned to stabilize SSL warning suppression
+urllib3==2.8.0  # transitive dep of requests; pinned to stabilize SSL warning suppression
