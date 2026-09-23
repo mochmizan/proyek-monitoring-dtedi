@@ -276,13 +276,15 @@ def _compute_time_window(
             if start_dt.tzinfo is None:
                 start_dt = start_dt.replace(tzinfo=UTC)
         else:
-            valid_ranges = {"6h", "24h", "7d", "30d", "all"}
+            valid_ranges = {"1h", "6h", "24h", "7d", "30d", "all"}
             if range_str not in valid_ranges:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, all",
+                    detail=f"Invalid range '{range_str}'. Valid options: 1h, 6h, 24h, 7d, 30d, all",
                 )
-            if range_str == "6h":
+            if range_str == "1h":
+                start_dt = end_dt - timedelta(hours=1)
+            elif range_str == "6h":
                 start_dt = end_dt - timedelta(hours=6)
             elif range_str == "24h":
                 start_dt = end_dt - timedelta(hours=24)
@@ -307,14 +309,16 @@ def _compute_time_window(
                 detail="start_time must be earlier than or equal to end_time",
             )
     else:
-        valid_ranges = {"6h", "24h", "7d", "30d", "all"}
+        valid_ranges = {"1h", "6h", "24h", "7d", "30d", "all"}
         if range_str not in valid_ranges:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid range '{range_str}'. Valid options: 6h, 24h, 7d, 30d, all",
+                detail=f"Invalid range '{range_str}'. Valid options: 1h, 6h, 24h, 7d, 30d, all",
             )
         end_dt = now
-        if range_str == "6h":
+        if range_str == "1h":
+            start_dt = now - timedelta(hours=1)
+        elif range_str == "6h":
             start_dt = now - timedelta(hours=6)
         elif range_str == "24h":
             start_dt = now - timedelta(hours=24)

@@ -84,13 +84,15 @@ export function formatWIBTime(date: Date | string | number | null | undefined): 
 }
 
 /**
- * Converts a time range token ('6h', '24h', '7d', '30d') to an ISO UTC string boundary.
+ * Converts a time range token ('1h', '6h', '24h', '7d', '30d') to an ISO UTC string boundary.
  * Returns undefined for 'all' or unrecognized range tokens.
  */
 export function computeStartTimeFromRange(range?: string): string | undefined {
   if (!range) return undefined;
   const now = Date.now();
   switch (range) {
+    case '1h':
+      return new Date(now - 1 * 3600 * 1000).toISOString();
     case '6h':
       return new Date(now - 6 * 3600 * 1000).toISOString();
     case '24h':

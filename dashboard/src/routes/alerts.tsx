@@ -24,7 +24,7 @@ const alertsSearchSchema = z.object({
   ).catch([]).optional(),
   severity: z.enum(['All', 'Warning', 'Critical', 'warning', 'critical']).catch('All').optional(),
   status: z.enum(['All', 'Open', 'Resolved', 'all', 'open', 'resolved']).catch('All').optional(),
-  timeRange: z.enum(['6h', '24h', '7d', '30d']).catch('24h').optional(),
+  timeRange: z.enum(['1h', '6h', '24h', '7d', '30d']).catch('24h').optional(),
   page: z.number().int().min(1).catch(1).optional(),
 });
 
@@ -271,9 +271,10 @@ function AlertsPage() {
             <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Time Range</label>
             <select
               value={selectedTimeRange}
-              onChange={(e) => updateSearch({ timeRange: e.target.value as '6h' | '24h' | '7d' | '30d' })}
+              onChange={(e) => updateSearch({ timeRange: e.target.value as '1h' | '6h' | '24h' | '7d' | '30d' })}
               className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-300 text-sm focus:outline-none focus:border-indigo-500"
             >
+              <option value="1h">Past 1 Hour</option>
               <option value="6h">Past 6 Hours</option>
               <option value="24h">Past 24 Hours</option>
               <option value="7d">Past 7 Days</option>

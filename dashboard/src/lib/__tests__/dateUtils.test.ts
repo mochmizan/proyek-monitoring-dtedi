@@ -95,6 +95,10 @@ describe('dateUtils', () => {
       vi.useRealTimers();
     });
 
+    it('computes correct ISO boundary for 1h', () => {
+      expect(computeStartTimeFromRange('1h')).toBe('2026-09-03T11:00:00.000Z');
+    });
+
     it('computes correct ISO boundary for 6h', () => {
       expect(computeStartTimeFromRange('6h')).toBe('2026-09-03T06:00:00.000Z');
     });

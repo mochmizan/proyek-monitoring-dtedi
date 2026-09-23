@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-dashboard-spa.md, wiki/concept-frontend-navigation.md, wiki/concept-frontend-resilience.md, wiki/concept-command-path.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-flexible-scheduling.md]
 sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/dateUtils.ts, dashboard/src/lib/api.ts, dashboard/src/lib/sidebarStore.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, dashboard/vite.config.ts, dashboard/src/App.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
-updated: 2026-09-04
+updated: 2026-09-23
 ---
 
 # Frontend State Management Architecture
@@ -11,19 +11,19 @@ updated: 2026-09-04
 The smsb dashboard SPA (`dashboard/`) structures client state across three operational layers: server state managed by TanStack Query v5, navigational and filter state encoded into URL search parameters via TanStack Router with Zod validation, and local ephemeral UI state in React components alongside persistent layout preferences in Zustand (`sidebarStore`).
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                            Frontend State Topology                           │
-├───────────────────────────────┬───────────────────────────────┬──────────────┤
-│      Server Cache State       │      Navigational State       │ Local UI     │
-│       (TanStack Query)        │      (URL Search Params)      │ (React/Store)│
-├───────────────────────────────┼───────────────────────────────┼──────────────┤
-│ • Rooms & Sparklines          │ • Table sorting (sortBy, asc) │ • Input focus│
-│ • Devices & Pairing           │ • Severity & status filters   │ • Dirty flag │
-│ • Multi-panel Telemetry       │ • Active time range (6h/24h)  │ • Dialog open│
-│ • Alerts & Thresholds         │ • Pagination (page 1..N)      │ • Command FSM│
-│ • Hubs & Approvals            │ • Settings active tab         │ • Persistent │
-│ • Flexible ATS Schedules      │ • Map view mode (plan/topo)   │  sidebarStore│
-└───────────────────────────────┴───────────────────────────────┴──────────────┘
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                            Frontend State Topology                             │
+├───────────────────────────────┬─────────────────────────────────┬──────────────┤
+│      Server Cache State       │       Navigational State        │ Local UI     │
+│       (TanStack Query)        │       (URL Search Params)       │ (React/Store)│
+├───────────────────────────────┼─────────────────────────────────┼──────────────┤
+│ • Rooms & Sparklines          │ • Table sorting (sortBy, asc)   │ • Input focus│
+│ • Devices & Pairing           │ • Severity & status filters     │ • Dirty flag │
+│ • Multi-panel Telemetry       │ • Active time range (1h/6h/24h) │ • Dialog open│
+│ • Alerts & Thresholds         │ • Pagination (page 1..N)        │ • Command FSM│
+│ • Hubs & Approvals            │ • Settings active tab           │ • Persistent │
+│ • Flexible ATS Schedules      │ • Map view mode (plan/topo)     │  sidebarStore│
+└───────────────────────────────┴─────────────────────────────────┴──────────────┘
 ```
 
 ---
@@ -100,7 +100,7 @@ Telemetry monitoring requires continuous real-time data sync without WebSocket i
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Tier 1: Ephemeral Commands** | `GET /api/commands/{id}` (via `useCommandLifecycle`) | `1,500ms` (Fixed, no jitter) | `0ms` | Paused on `visibilitychange: hidden` | 12s downlink ceiling; auto-aborts on `delivered`, `ACK`, `failed`, `rejected`, `timeout` |
 | **Tier 2: Alerts & Critical Status** | `alerts.list(...)`, `rooms.list()` (Overview `/`), `rooms.map(...)` | `6,000ms` ($\pm 15\%$ jitter) | `6,000ms` | `false` (globally inherited) | Synchronized with ESP8266 5s publish interval + 1s network transit |
-| **Tier 3: Operational Presence** | `devices.list('all')`, `hubs.list()`, `devices.active()`, `devices.history` (6h/24h) | `15,000ms` ($\pm 15\%$ jitter) | `15,000ms` | `false` (globally inherited) | Synchronized with APScheduler 15s presence sweeper (`PRESENCE_INTERVAL_SECONDS = 15`) |
+| **Tier 3: Operational Presence** | `devices.list('all')`, `hubs.list()`, `devices.active()`, `devices.history` (1h/6h/24h) | `15,000ms` ($\pm 15\%$ jitter) | `15,000ms` | `false` (globally inherited) | Synchronized with APScheduler 15s presence sweeper (`PRESENCE_INTERVAL_SECONDS = 15`) |
 | **Tier 4: Analytical Trends** | `rooms.sparklines('6h', 24)` | `60,000ms` ($\pm 15\%$ jitter) | `60,000ms` | `false` (globally inherited) | 6-hour CTE downsampled envelopes; cuts 95% of heavy aggregation queries |
 | **Static Reference Metadata** | `rooms.list()` (in `/room/$id`, `/device/$id`, `DevicesTab`), `devices.detail(id)` | **Disabled (`false`)** | `300,000ms` (5 minutes) | N/A | Static facility configuration; refetches solely on window focus or mutation invalidation |
 
@@ -117,7 +117,7 @@ In earlier iterations, dynamic minute-bucketed ISO timestamps were embedded into
 
 In the current active contract:
 - Dynamic time calculation is decoupled from the query key.
-- Query keys use a static `timeRange` descriptor (`'6h' | '24h' | '7d' | '30d'`), ensuring that the query key remains stable:
+- Query keys use a static `timeRange` descriptor (`'1h' | '6h' | '24h' | '7d' | '30d'`), ensuring that the query key remains stable:
   ```typescript
   queryKeys.alerts.list({ rooms, devices, severity, status, timeRange, page })
   ```
@@ -139,7 +139,7 @@ Client UI state is partitioned between URL search parameters, local React compon
 Per `dashboard/AGENTS.md`, table sorting, filters, time ranges, and pagination reside in URL search parameters validated by Zod schemas:
 - **Alerts Table** (`alertsSearchSchema`): `rooms: string[]`, `devices: string[]`, `severity: enum`, `status: enum`, `timeRange: enum`, `page: number`. Navigation uses `resetScroll: false` to preserve viewport position across filter toggles.
 - **Dashboard Table** (`dashboardSearchSchema`): `sortBy: enum(['name', 'type', 'room', 'devId', 'status', 'created'])`, `sortOrder: enum(['asc', 'desc'])`.
-- **Device Detail** (`deviceSearchSchema`): `range: enum(['6h', '24h', '7d', '30d'])`.
+- **Device Detail** (`deviceSearchSchema`): `range: enum(['1h', '6h', '24h', '7d', '30d'])`.
 - **Floor Map** (`mapSearchSchema`): `view: enum(['floor-plan', 'topology'])`.
 - **Settings Tabs** (`settingsSearchSchema`): `tab: enum(['rooms', 'devices', 'thresholds'])`.
 

@@ -351,8 +351,12 @@ describe('HistoryChart Component', () => {
         />
       );
 
+      const btn1h = screen.getByRole('button', { name: '1h' });
       const btn6h = screen.getByRole('button', { name: '6h' });
       const btn7d = screen.getByRole('button', { name: '7d' });
+
+      fireEvent.click(btn1h);
+      expect(setTimeRange).toHaveBeenCalledWith('1h');
 
       fireEvent.click(btn6h);
       expect(setTimeRange).toHaveBeenCalledWith('6h');

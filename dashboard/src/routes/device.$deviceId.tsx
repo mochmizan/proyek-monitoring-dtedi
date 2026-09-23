@@ -23,7 +23,7 @@ import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { formatAlertReading } from '../lib/formatAlert';
 
 const deviceSearchSchema = z.object({
-  range: z.enum(['6h', '24h', '7d', '30d']).catch('24h').optional(),
+  range: z.enum(['1h', '6h', '24h', '7d', '30d']).catch('24h').optional(),
 });
 
 export const Route = createFileRoute('/device/$deviceId')({
@@ -37,7 +37,7 @@ export function DeviceDetailPage() {
   const { deviceId } = Route.useParams();
   const { range } = Route.useSearch();
   const router = useRouter();
-  const [timeRange, setTimeRange] = useState<'6h' | '24h' | '7d' | '30d'>(range ?? '24h');
+  const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d' | '30d'>(range ?? '24h');
   const [alertPage, setAlertPage] = useState(1);
   const [copiedMac, setCopiedMac] = useState(false);
 

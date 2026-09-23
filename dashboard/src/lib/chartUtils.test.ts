@@ -230,7 +230,10 @@ describe('chartUtils type-aware gap thresholds & cadence harmonization', () => {
       expect(d.getTime()).toBe(new Date('2026-09-17T12:00:00Z').getTime());
     });
 
-    it('formats axis time for 6h and 24h ranges', () => {
+    it('formats axis time for 1h, 6h, and 24h ranges', () => {
+      const formatted1h = formatAxisTime('2026-09-17T05:30:00Z', '1h');
+      expect(formatted1h).toMatch(/\d{2}[.:]\d{2}/);
+
       const formatted = formatAxisTime('2026-09-17T05:30:00Z', '6h');
       // In Asia/Jakarta (UTC+7) with id-ID locale, 05:30 UTC is formatted as 12.30 or 12:30
       expect(formatted).toMatch(/\d{2}[.:]\d{2}/);

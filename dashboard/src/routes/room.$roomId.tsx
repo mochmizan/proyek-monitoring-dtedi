@@ -22,7 +22,7 @@ import { useJitteredInterval } from '../lib/jitter';
 import type { RoomMapMarker, ATSCommand } from '../types/api';
 
 const roomSearchSchema = z.object({
-  range: z.enum(['6h', '24h', '7d', '30d']).optional(),
+  range: z.enum(['1h', '6h', '24h', '7d', '30d']).optional(),
 });
 
 export const Route = createFileRoute('/room/$roomId')({

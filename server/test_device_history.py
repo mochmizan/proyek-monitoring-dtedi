@@ -271,6 +271,20 @@ def test_ts_device_history_default_range_24h():
     assert p2["humid"] == 68.0
 
 
+def test_ts_device_history_1h():
+    """Range 1h returns only points from past 1 hour (1 point)."""
+    cookies = get_auth_cookies()
+    resp = client.get("/api/devices/TS_DEV_01/history?range=1h", cookies=cookies)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["range"] == "1h"
+    assert data["total_points"] == 1
+    assert len(data["points"]) == 1
+    assert data["points"][0]["temp"] == 30.5
+    assert data["points"][0]["humid"] == 68.0
+
+
 def test_ts_device_history_6h():
     """Range 6h returns only points from past 6 hours (2 points)."""
     cookies = get_auth_cookies()
@@ -353,6 +367,22 @@ def test_ats_device_history_24h():
     assert p1["genset"] == 222.1
     assert p1["aki"] == 13.5
     assert p1["state"] == "GENSET_RUN"
+
+
+def test_ats_device_history_1h():
+    """Range 1h for ATS returns only points within the past hour (1 point)."""
+    cookies = get_auth_cookies()
+    resp = client.get("/api/devices/ATS_DEV_01/history?range=1h", cookies=cookies)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["range"] == "1h"
+    assert data["total_points"] == 1
+    assert len(data["points"]) == 1
+    assert data["points"][0]["pln"] == 219.8
+    assert data["points"][0]["genset"] == 0.0
+    assert data["points"][0]["aki"] == 13.9
+    assert data["points"][0]["state"] == "PLN_MAIN"
 
 
 # ==========================================

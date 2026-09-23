@@ -77,12 +77,23 @@ describe('useDeviceHistory Hook', () => {
 
     const { wrapper, queryClient } = createWrapper();
 
-    // 6h range -> should query with 6h
+    // 1h range -> should query with 1h
     const { result, rerender } = renderHook(
-      ({ range }: { range: '6h' | '24h' | '7d' | '30d' }) => useDeviceHistory('DEV-01', range),
-      { wrapper, initialProps: { range: '6h' } }
+      ({ range }: { range: '1h' | '6h' | '24h' | '7d' | '30d' }) => useDeviceHistory('DEV-01', range),
+      { wrapper, initialProps: { range: '1h' } }
     );
 
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(api.fetchDeviceHistory).toHaveBeenCalledWith('DEV-01', '1h');
+
+    // Query defaults / options check for 1h (15s refetchInterval)
+    const query1h = queryClient.getQueryCache().find({
+      queryKey: ['devices', 'history', 'DEV-01', { range: '1h' }],
+    });
+    expect(query1h).toBeDefined();
+
+    // Re-render with 6h
+    rerender({ range: '6h' });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(api.fetchDeviceHistory).toHaveBeenCalledWith('DEV-01', '6h');
 

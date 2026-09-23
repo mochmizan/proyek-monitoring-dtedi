@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-telemetry-pipeline.md, wiki/entity-dashboard-spa.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/app/routers/devices.py, server/test_device_history.py, server/test_phase2_downsampling.py, server/test_phase6_verification_benchmark.py, dashboard/src/hooks/useDeviceHistory.ts, commit:8f8f6cd]
-updated: 2026-09-12
+updated: 2026-09-23
 ---
 
 # Downsampling V2

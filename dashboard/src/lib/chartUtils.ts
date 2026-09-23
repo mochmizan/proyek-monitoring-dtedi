@@ -7,7 +7,7 @@ export const GAP_FLOOR_MS = GAP_FLOOR_MIN * 60 * 1000;
 export function formatAxisTime(isoStr: string, range: string): string {
   const d = parseToDate(isoStr);
   if (isNaN(d.getTime())) return isoStr;
-  if (range === '6h' || range === '24h') {
+  if (range === '1h' || range === '6h' || range === '24h') {
     return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
   }
   return d.toLocaleString('id-ID', {

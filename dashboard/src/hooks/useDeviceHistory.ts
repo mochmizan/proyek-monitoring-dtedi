@@ -5,10 +5,10 @@ import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS } from '../lib/constant
 import { useJitteredInterval } from '../lib/jitter';
 import type { DeviceHistoryResponse } from '../types/api';
 
-export type TimeRange = '6h' | '24h' | '7d' | '30d';
+export type TimeRange = '1h' | '6h' | '24h' | '7d' | '30d';
 
 export function useDeviceHistory(deviceId: string, timeRange: TimeRange) {
-  const isRealtime = timeRange === '6h' || timeRange === '24h';
+  const isRealtime = timeRange === '1h' || timeRange === '6h' || timeRange === '24h';
   const jitteredInterval = useJitteredInterval(POLL_TIER3_PRESENCE_MS);
   const refetchInterval = isRealtime ? jitteredInterval : false;
   const query = useQuery<DeviceHistoryResponse>({

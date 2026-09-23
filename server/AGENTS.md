@@ -52,7 +52,7 @@ Composite SARGable performance & partitioning indexes:
 
 ### Downsampling V2 & Telemetry History Contract
 
-- Endpoint: `GET /api/devices/{id}/history` (`?range=6h,24h,7d,30d,all&max_points=1000`).
+- Endpoint: `GET /api/devices/{id}/history` (`?range=1h,6h,24h,7d,30d,all&max_points=1000`).
 - Dynamic Bucket Resolution: Calculates bucket size in seconds dynamically based on requested time range and `max_points` parameter.
 - Single-Pass SQL Bucket Expression (`_build_epoch_bucket_expr`):
   - SQLite: `func.unixepoch(col)` integer seconds (~2x faster than strftime).

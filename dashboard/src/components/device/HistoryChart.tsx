@@ -393,7 +393,7 @@ export function HistoryChart({
             </span>
           )}
           <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
-            {(['6h', '24h', '7d', '30d'] as const).map((r) => (
+            {(['1h', '6h', '24h', '7d', '30d'] as const).map((r) => (
               <button
                 key={r}
                 type="button"

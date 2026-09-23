@@ -1,6 +1,6 @@
 import type { TelemetryHistoryPoint } from '../../../types/api';
 
-export type TimeRange = '6h' | '24h' | '7d' | '30d';
+export type TimeRange = '1h' | '6h' | '24h' | '7d' | '30d';
 
 export interface SeriesConfig {
   id: string;

@@ -36,7 +36,7 @@ export const MultiPanelChartContainer: React.FC<MultiPanelChartContainerProps> =
   const plotWidth = width - paddingLeft - paddingRight;
 
   const windowHours =
-    timeRange === '6h' ? 6 : timeRange === '24h' ? 24 : timeRange === '7d' ? 7 * 24 : 30 * 24;
+    timeRange === '1h' ? 1 : timeRange === '6h' ? 6 : timeRange === '24h' ? 24 : timeRange === '7d' ? 7 * 24 : 30 * 24;
   const windowMs = windowHours * 3600 * 1000;
   const rangeMinutes = windowHours * 60;
 
