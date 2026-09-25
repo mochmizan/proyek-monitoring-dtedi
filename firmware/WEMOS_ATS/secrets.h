@@ -1,7 +1,6 @@
 #pragma once
 // secrets.h — Firmware configuration & network credentials for WEMOS_ATS
 // Placed directly in sketch folder for out-of-the-box Arduino IDE compilation.
-
 #define WIFI_SSID "smsb-iot"
 #define WIFI_PASS "SmsbRoomNet2026"
 #define MQTT_USER "hubadmin"
