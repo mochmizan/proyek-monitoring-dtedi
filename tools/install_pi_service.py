@@ -7,7 +7,11 @@ password = os.getenv("PI_PASSWORD") or os.getenv("SSH_PASSWORD")
 if not password:
     raise SystemExit("PI_PASSWORD env required. No hardcoded live secret.")
 ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+ssh.load_system_host_keys()
+known_hosts = os.getenv("PI_KNOWN_HOSTS")
+if known_hosts:
+    ssh.load_host_keys(known_hosts)
+ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
 ssh.connect(host, username=user, password=password)
 
 service_file = """[Unit]
@@ -28,13 +32,16 @@ WantedBy=multi-user.target
 """
 
 print("[*] Installing hubbrain.service on Raspberry Pi...")
-stdin, stdout, stderr = ssh.exec_command(f"echo '{password}' | sudo -S tee /etc/systemd/system/hubbrain.service > /dev/null")
-stdin.write(service_file)
+stdin, stdout, stderr = ssh.exec_command("sudo -S -p '' tee /etc/systemd/system/hubbrain.service > /dev/null")
+stdin.write(password + "\n" + service_file)
 stdin.channel.shutdown_write()
 stdout.channel.recv_exit_status()
 
-stdin, stdout, stderr = ssh.exec_command(f"echo '{password}' | sudo -S systemctl daemon-reload && echo '{password}' | sudo -S systemctl enable --now hubbrain.service")
-stdout.channel.recv_exit_status()
+for command in ("systemctl daemon-reload", "systemctl enable --now hubbrain.service"):
+    stdin, stdout, stderr = ssh.exec_command(f"sudo -S -p '' {command}")
+    stdin.write(password + "\n")
+    stdin.flush()
+    stdout.channel.recv_exit_status()
 
 stdin, stdout, stderr = ssh.exec_command("systemctl status hubbrain.service --no-pager")
 print(stdout.read().decode())

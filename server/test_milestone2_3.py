@@ -202,14 +202,14 @@ def test_command_relay():
     assert cmds_list[0]["command_id"] == command_id
     assert cmds_list[0]["payload"]["start_genset"] == "on"
 
-    # 5. Mark command as delivered
-    response = client.post(f"/api/hub/commands/{command_id}/delivered", headers=headers)
-    assert response.status_code == 200, f"Failed to mark delivered: {response.text}"
+    # 5. Mark command as dispatched to the local MQTT broker.
+    response = client.post(f"/api/hub/commands/{command_id}/dispatched", headers=headers)
+    assert response.status_code == 200, f"Failed to mark dispatched: {response.text}"
     
     # 6. Verify in DB
     db = SessionLocal()
     cmd_row = db.get(pending_commands, command_id)
-    assert cmd_row.status == "delivered"
+    assert cmd_row.status == "dispatched"
     assert cmd_row.delivered_at is not None
     db.close()
     

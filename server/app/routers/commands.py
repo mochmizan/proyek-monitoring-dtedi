@@ -121,9 +121,10 @@ def get_pending_commands(
     ]
 
 
-@router.post("/api/hub/commands/{command_id}/delivered")
+@router.post("/api/hub/commands/{command_id}/dispatched")
+@router.post("/api/hub/commands/{command_id}/delivered", deprecated=True)
 @limiter.limit("30/minute")
-def mark_command_delivered(
+def mark_command_dispatched(
     request: Request,
     command_id: str,
     hub: hub_table = Depends(verify_hub_identity),
@@ -136,10 +137,12 @@ def mark_command_delivered(
     if cmd.hub_id != hub.hub_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this command")
 
-    cmd.status = "delivered"
+    # This acknowledgement only proves that HubBrain published to its local
+    # MQTT broker. It does not prove that the field device executed the action.
+    cmd.status = "dispatched"
     cmd.delivered_at = datetime.now(UTC)
     db.commit()
-    return {"status": "marked_delivered", "command_id": command_id}
+    return {"status": "marked_dispatched", "command_id": command_id}
 
 
 @router.get("/api/commands/{command_id}", response_model=CommandStatusResponse)

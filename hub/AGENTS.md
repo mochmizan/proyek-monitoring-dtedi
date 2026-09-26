@@ -16,7 +16,7 @@ HubBrain V5 edge gateway on Raspberry Pi 4. Bridges `hs109rs/#` MQTT → HTTPS u
 
 - Single-file gateway: 4 background threads + optional interactive CLI on main thread
   - `whitelist sync` — every 30s `GET SERVER_DEVICES_URL` → local `whitelist` set of `DEV_ID` (MAC)
-  - `command poller` — every 2s `GET SERVER_COMMANDS_URL` (`/api/hub/commands`) → `derive_command_topic` → `{hub_name}/{dev_type}/command` publish → `POST /delivered` ack
+  - `command poller` — every 2s `GET SERVER_COMMANDS_URL` (`/api/hub/commands`) → `derive_command_topic` → `{hub_name}/{dev_type}/command` publish → `POST /dispatched` broker-publish ack; device execution remains unconfirmed
   - `WAL replay` — every 5s (`REPLAY_INTERVAL=5.0s`) FIFO replay of `edge_cache.db` with `REPLAY_PACING_DELAY=0.35s` and `REPLAY_BATCH_SIZE=25`
   - `MQTT loop` — `paho-mqtt` subscribe `MQTT_TOPIC` (default `hs109rs/#`), `on_message` filter + forward
 - All loops use bounded timeouts (`timeout=5`) and never block MQTT loop.

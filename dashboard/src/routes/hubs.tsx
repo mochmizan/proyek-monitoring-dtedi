@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Radio,
+  Copy,
+  X,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchCurrentUser, fetchHubs, approveHub, revokeHub } from '../lib/api';
@@ -18,7 +20,7 @@ import { getJitteredInterval } from '../lib/jitter';
 import { cn } from '../lib/utils';
 import { StatusDot } from '../components/StatusDot';
 import { FreshnessBadge } from '../components/FreshnessBadge';
-import type { HubResponse, HubDeviceSummary } from '../types/api';
+import type { HubResponse, HubDeviceSummary, HubActionResponse } from '../types/api';
 
 export const Route = createFileRoute('/hubs')({
   component: HubsPage,
@@ -165,6 +167,7 @@ function HubsPage() {
   });
 
   const [actionError, setActionError] = useState<string | null>(null);
+  const [approvedCredential, setApprovedCredential] = useState<HubActionResponse | null>(null);
 
   const invalidateHubs = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.hubs.all });
@@ -172,7 +175,10 @@ function HubsPage() {
 
   const approveMutation = useMutation({
     mutationFn: approveHub,
-    onSuccess: invalidateHubs,
+    onSuccess: (result) => {
+      setApprovedCredential(result);
+      invalidateHubs();
+    },
     onError: (err: Error) => setActionError(err.message),
   });
 
@@ -214,6 +220,28 @@ function HubsPage() {
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 flex-shrink-0" />
           <span>{actionError}</span>
+        </div>
+      )}
+
+      {approvedCredential?.hub_key && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-100 p-4 rounded-lg space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Save the permanent key for {approvedCredential.hub_id}</p>
+              <p className="text-xs text-amber-200/70 mt-1">
+                This credential is shown once. Put it in the hub's <code>HUB_KEY</code> environment value before restarting HubBrain.
+              </p>
+            </div>
+            <button type="button" onClick={() => setApprovedCredential(null)} aria-label="Hide credential" className="p-1 text-amber-200/70 hover:text-amber-100">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 overflow-x-auto rounded bg-zinc-950 px-3 py-2 text-xs text-amber-200">{approvedCredential.hub_key}</code>
+            <button type="button" onClick={() => void navigator.clipboard.writeText(approvedCredential.hub_key || '')} className="inline-flex items-center gap-1.5 rounded border border-amber-500/30 px-3 py-2 text-xs hover:bg-amber-500/10">
+              <Copy className="h-3.5 w-3.5" /> Copy
+            </button>
+          </div>
         </div>
       )}
 

@@ -42,7 +42,7 @@ describe('CommandStatusBadge Component', () => {
     expect(screen.getByText('[cmd-xyz-100]')).toBeInTheDocument();
   });
 
-  it('renders delivered confirmation with WIB formatted timestamp', () => {
+  it('renders MQTT dispatch confirmation without claiming device execution', () => {
     const deliveredAt = new Date('2026-09-01T12:30:45Z');
     render(
       <CommandStatusBadge
@@ -51,7 +51,7 @@ describe('CommandStatusBadge Component', () => {
         deliveredAt={deliveredAt}
       />
     );
-    expect(screen.getByText(/Delivered to edge hub at 19:30:45 WIB/i)).toBeInTheDocument();
+    expect(screen.getByText(/Published to the local MQTT broker at 19:30:45 WIB; device execution is not confirmed/i)).toBeInTheDocument();
     expect(screen.getByText('[cmd-xyz-100]')).toBeInTheDocument();
   });
 

@@ -2,8 +2,8 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-database-lifecycle.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-backend-hardening-v5.md]
-sources: [server/auth.py, server/app/routers/auth.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/iot.py, server/app/dependencies.py, server/app/core/rate_limit.py, server/app/core/config.py, server/app/core/csrf.py, dashboard/src/lib/api.ts, dashboard/src/routes/login.tsx, server/modelsv5.py, tools/verify_prod_env.py, tools/rotate_credentials.py, docs/CREDENTIAL_ROTATION_GUIDE.md]
-updated: 2026-09-14
+sources: [server/auth.py, server/app/routers/auth.py, server/app/routers/admin_users.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/iot.py, server/app/dependencies.py, server/app/core/rate_limit.py, server/app/core/config.py, server/app/core/csrf.py, dashboard/src/lib/api.ts, dashboard/src/routes/login.tsx, server/modelsv5.py, tools/verify_prod_env.py, tools/rotate_credentials.py, docs/CREDENTIAL_ROTATION_GUIDE.md]
+updated: 2026-09-26
 ---
 
 # HubGate V5 Security & Authentication Architecture
@@ -137,7 +137,11 @@ flowchart TD
 
 ### Hub Registration & Bootstrap Key
 - **Pre-Registered Hubs**: Registered by administrators via `POST /api/admin/hubs`.
-- **Edge Self-Pairing**: Unregistered hubs submitting `POST /api/hubs/pair` must provide `X-Hub-Key` matching `HUB_BOOTSTRAP_KEY` from the environment. Successful bootstrap creates a dormant record (`is_active=False`, `status="offline"`) returning HTTP 202 Accepted (`pending_approval`) until explicitly activated by an administrator via `POST /api/hubs/{id}/approve`.
+- **Edge Self-Pairing**: Unregistered hubs submitting `POST /api/hubs/pair` must provide `X-Hub-Key` matching `HUB_BOOTSTRAP_KEY` from the environment. Successful bootstrap creates a dormant record (`is_active=False`, `status="offline"`) with an unrelated random placeholder key; the shared bootstrap secret is never persisted as an operational credential.
+- **One-Time Approval Credential**: `POST /api/hubs/{id}/approve` generates a new 32-byte/64-hex per-hub key, stores it, activates the hub, and returns the key once to the administrator for provisioning into the edge `.env`. Re-approving an already-active hub returns HTTP 409 instead of silently rotating its credential.
+
+### Forced Password Change Boundary
+Users with `must_change_password=True` remain authenticated only for `/api/auth/me`, CSRF bootstrap, password change, and logout. Other authenticated resources return HTTP 403 with code `PASSWORD_CHANGE_REQUIRED`; the SPA root route independently redirects these sessions to `/change-password`.
 
 ---
 
@@ -167,7 +171,7 @@ def require_role(*allowed_roles: str):
 | `/api/admin/hubs` | POST | Session Cookie | `admin` | Register Pre-Shared Hub |
 | `/api/hubs` | GET | Session Cookie | Any Authenticated User | List Hubs & Paired Devices |
 | `/api/hubs/pair` | POST | Header (`X-Hub-Key`) | Bootstrap Key or Existing Hub | Edge Hub Auto-Enrollment |
-| `/api/hubs/{id}/approve` | POST | Session Cookie | `admin` | Activate Pending Hub |
+| `/api/hubs/{id}/approve` | POST | Session Cookie | `admin` | Activate Pending Hub & Return One-Time Key |
 | `/api/hubs/{id}/revoke` | POST | Session Cookie | `admin` | Suspend Active Hub |
 | `/api/hubs/{id}` | DELETE | Session Cookie | `admin` | Hard-Delete Empty Hub (409 if paired) |
 | `/api/gateways/{id}/room` | POST | Session Cookie | `admin` | Assign Hub to Room |
@@ -176,7 +180,7 @@ def require_role(*allowed_roles: str):
 | `/api/rooms/{id}` | PATCH | Session Cookie | `admin` | Update Room Metadata |
 | `/api/rooms/{id}` | DELETE | Session Cookie | `admin` | Delete Room (400 if devices assigned) |
 | `/api/rooms/{id}/map` | GET | Session Cookie | Any Authenticated User | Room Floor Plan & Live Markers |
-| `/api/rooms/{id}/floor-plan` | POST | Session Cookie | `admin` | Upload Floor Plan Image |
+| `/api/rooms/{id}/floor-plan` | POST | Session Cookie | `admin` | Upload PNG/JPEG/WebP Floor Plan |
 | `/api/rooms/sparklines` | GET | Session Cookie | Any Authenticated User | 2-Pass CTE Room Sparklines |
 | `/api/devices` | GET | Dual (Cookie or Header) | Any User OR Active Hub | List Devices (Read-Only) |
 | `/api/devices/{id}` | GET | Session Cookie | Any Authenticated User | Single Device Details & Latest State |
@@ -192,7 +196,8 @@ def require_role(*allowed_roles: str):
 | `/api/iot/batch` | POST | Header (`X-Hub-ID/Key`) | Active Edge Hub | Ingest Batch (up to 1000 points) |
 | `/api/iot/unapproved` | POST | Header (`X-Hub-ID/Key`) | Active Edge Hub | Register Discovered Unapproved Device |
 | `/api/hub/commands` | GET | Header (`X-Hub-ID/Key`) | Active Edge Hub | Poll Pending Downlink Commands |
-| `/api/hub/commands/{id}/delivered` | POST | Header (`X-Hub-ID/Key`) | Active Edge Hub | Acknowledge Command Execution |
+| `/api/hub/commands/{id}/dispatched` | POST | Header (`X-Hub-ID/Key`) | Active Edge Hub | Acknowledge Local MQTT Broker Publish |
+| `/api/hub/commands/{id}/delivered` | POST | Header (`X-Hub-ID/Key`) | Active Edge Hub | Deprecated Alias; Records `dispatched`, Not Execution |
 | `/api/schedules` | GET | Session Cookie | Any Authenticated User | List Active Schedules |
 | `/api/schedules/preview` | GET | Session Cookie | Any Authenticated User | Preview Cron Fire Times |
 | `/api/schedules` | POST | Session Cookie | `admin` | Create Cron Automation Job |
@@ -208,7 +213,7 @@ def require_role(*allowed_roles: str):
 Rate limiting is enforced globally through SlowAPI (`server/app/core/rate_limit.py`) using client IP tracking:
 - **Authentication**: `5/minute` on `/api/auth/login`.
 - **Edge Telemetry Ingestion**: `1200/minute` on `/api/iot` (aggregated edge gateway pacing), `60/minute` on `/api/iot/batch` and `/api/iot/unapproved`.
-- **Edge Command Polling**: `30/minute` on `/api/hub/commands` and delivered acknowledgments.
+- **Edge Command Polling**: `30/minute` on `/api/hub/commands` and broker-dispatch acknowledgments.
 - **Admin & Configuration Writes**: `30/minute` on device pairing, threshold updates, rooms, schedules, and command dispatch.
 - **Read Queries**: `60/minute` on devices, room maps, sparklines, history, alerts, and schedules.
 - **Hub Bootstrap**: `10/minute` on `/api/hubs/pair` and `/api/admin/hubs`.
@@ -316,3 +321,5 @@ All events store structured data adhering to the schema:
 ```
 
 Audit entries are persisted in `activity_logs` (`id`, `user_name`, `user_id`, `activity`, `ip_address`, `created_at`) with composite index `ix_activity_logs_user_created(user_name, created_at DESC)` and exposed to administrators via `GET /api/admin/users/activity-logs`.
+
+Admin create-user and reset-password operations use one transaction for the account mutation, user audit entry, and activity entry. Their one-time-password response is fully validated before commit. A logging or response-construction exception therefore rolls the whole operation back instead of leaving a created account or changed password behind an HTTP 500 response.

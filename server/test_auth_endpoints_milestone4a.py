@@ -128,6 +128,35 @@ def test_auth_me_authorized():
     assert data["role"] == "operator"
 
 
+def test_forced_password_change_blocks_other_authenticated_resources():
+    db = SessionLocal()
+    forced_user = User(
+        id="user-forced-password",
+        username="forced_password",
+        password_hash=hash_password("temporary-password"),
+        display_name="Forced Password User",
+        role="viewer",
+        must_change_password=True,
+    )
+    db.add(forced_user)
+    db.commit()
+    db.close()
+
+    login_res = client.post(
+        "/api/auth/login",
+        json={"username": "forced_password", "password": "temporary-password"},
+    )
+    session_id = login_res.cookies["session_id"]
+    cookies = {"session_id": session_id}
+
+    assert client.get("/api/auth/me", cookies=cookies).status_code == 200
+    assert client.get("/api/auth/csrf-token", cookies=cookies).status_code == 200
+
+    blocked = client.get("/api/hubs", cookies=cookies)
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"]["code"] == "PASSWORD_CHANGE_REQUIRED"
+
+
 def test_csrf_token_endpoint_is_authenticated_and_not_cached():
     client.cookies.clear()
     unauthorized = client.get("/api/auth/csrf-token")

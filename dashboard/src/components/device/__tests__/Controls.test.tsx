@@ -283,7 +283,7 @@ describe('DeviceControls Component', () => {
     resolveCommand({ status: 'delivered', command_id: 'cmd-ac-01' });
 
     await waitFor(() => {
-      expect(screen.getByText(/Delivered to edge hub at/i)).toBeInTheDocument();
+      expect(screen.getByText(/Published to the local MQTT broker at/i)).toBeInTheDocument();
     });
   });
 

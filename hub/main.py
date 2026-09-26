@@ -559,8 +559,8 @@ def cli_control_loop(client):
 def poll_commands_batch(client, commands_url: str = None) -> int:
     """
     Polls commands from central server, resolves downlink topic dynamically,
-    publishes to MQTT broker, and marks delivered.
-    Returns the number of successfully delivered commands.
+    publishes to MQTT broker, and marks dispatched.
+    Returns the number of commands accepted by the local MQTT broker.
     """
     url = commands_url or SERVER_COMMANDS_URL
     try:
@@ -579,7 +579,7 @@ def poll_commands_batch(client, commands_url: str = None) -> int:
         return 0
 
     commands = response.json()
-    delivered_count = 0
+    dispatched_count = 0
 
     for cmd in commands:
         command_id = cmd.get("command_id")
@@ -618,23 +618,27 @@ def poll_commands_batch(client, commands_url: str = None) -> int:
 
         # Publish to resolved MQTT topic
         payload_json = json.dumps(payload_dict)
-        result = client.publish(topic, payload_json)
+        result = client.publish(topic, payload_json, qos=1)
 
-        # Check publish success
-        if hasattr(result, "rc") and isinstance(result.rc, int) and result.rc == mqtt.MQTT_ERR_SUCCESS:
-            is_published = True
-        elif hasattr(result, "is_published"):
-            is_published = result.is_published() if callable(result.is_published) else bool(result.is_published)
-        elif hasattr(result, "rc"):
-            is_published = (result.rc == mqtt.MQTT_ERR_SUCCESS)
-        else:
-            is_published = True
+        # QoS 1 plus wait_for_publish means the broker has sent PUBACK. A
+        # successful local enqueue alone is not enough to mark dispatched.
+        is_published = False
+        if getattr(result, "rc", mqtt.MQTT_ERR_SUCCESS) == mqtt.MQTT_ERR_SUCCESS:
+            try:
+                if hasattr(result, "wait_for_publish"):
+                    result.wait_for_publish(timeout=5)
+                if hasattr(result, "is_published"):
+                    is_published = result.is_published() if callable(result.is_published) else bool(result.is_published)
+                else:
+                    is_published = True
+            except (RuntimeError, ValueError, TimeoutError) as publish_err:
+                logging.error(f"[POLL COMMAND PUB FAIL] MQTT PUBACK failed for {command_id}: {publish_err}")
 
         if is_published:
             logging.info(f"[POLL COMMAND DISPATCHED] Published command {command_id} to '{topic}': {payload_json}")
 
-            # Acknowledge delivery to central server
-            ack_url = f"{url}/{command_id}/delivered"
+            # This ACK means broker publish only; field-device execution remains unknown.
+            ack_url = f"{url}/{command_id}/dispatched"
             try:
                 ack_res = requests.post(
                     ack_url,
@@ -643,16 +647,16 @@ def poll_commands_batch(client, commands_url: str = None) -> int:
                     timeout=5
                 )
                 if ack_res.status_code == 200:
-                    logging.info(f"[POLL COMMAND ACK] Acknowledged delivery for command {command_id}")
-                    delivered_count += 1
+                    logging.info(f"[POLL COMMAND ACK] Acknowledged MQTT dispatch for command {command_id}")
+                    dispatched_count += 1
                 else:
                     logging.error(f"[POLL COMMAND ACK FAIL] Server HTTP {ack_res.status_code} on ACK: {ack_res.text}")
             except Exception as ack_err:
-                logging.error(f"[POLL COMMAND ACK ERR] Failed to call /delivered: {ack_err}")
+                logging.error(f"[POLL COMMAND ACK ERR] Failed to call /dispatched: {ack_err}")
         else:
             logging.error(f"[POLL COMMAND PUB FAIL] MQTT broker did not ack publish for command {command_id}")
 
-    return delivered_count
+    return dispatched_count
 
 
 def poll_commands(client):

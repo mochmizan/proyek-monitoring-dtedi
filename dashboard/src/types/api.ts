@@ -307,6 +307,7 @@ export interface HubResponse {
 export interface HubActionResponse {
   status: string;
   hub_id: string;
+  hub_key?: string;
 }
 
 export interface ScheduleResponse {

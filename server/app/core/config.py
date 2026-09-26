@@ -43,9 +43,8 @@ ALLOWED_FLOORPLAN_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/webp": ".webp",
-    "image/svg+xml": ".svg",
 }
-ALLOWED_FLOORPLAN_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+ALLOWED_FLOORPLAN_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_FLOORPLAN_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 # --- CSRF ---

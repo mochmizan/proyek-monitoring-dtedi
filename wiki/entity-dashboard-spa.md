@@ -3,7 +3,7 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/concept-frontend-navigation.md, wiki/concept-state-management.md, wiki/concept-frontend-resilience.md, wiki/concept-downsampling-v2.md, wiki/concept-telemetry-pipeline.md, wiki/concept-time-conventions.md, wiki/concept-command-path.md, wiki/workstream-flexible-scheduling.md, wiki/workstream-shadcn-revert.md]
 sources: [dashboard/src/App.tsx, dashboard/src/routes/__root.tsx, dashboard/src/components/sidebar/AppSidebar.tsx, dashboard/src/components/ui/tooltip.tsx, dashboard/src/lib/sidebarStore.ts, dashboard/src/hooks/useSidebarKeyboard.ts, dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/api.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/HistoryChart.tsx, dashboard/src/components/device/Controls.tsx, dashboard/src/components/device/chart/MultiPanelChartContainer.tsx, dashboard/src/components/ui/pagination.tsx, dashboard/src/routes/, dashboard/package.json, dashboard/AGENTS.md, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py, commit:b290e3c, commit:35e0582]
-updated: 2026-09-04
+updated: 2026-09-26
 ---
 
 # Dashboard SPA (dashboard/)
@@ -135,7 +135,7 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
             │                                                    │
             │     [ Poll FSM: useCommandLifecycle 1.5s ]         │
             ├──── 5. Check Command Status ──────────────────────>│ GET /api/commands/{id}
-            │<─── { status: "delivered", delivered_at } ─────────┤
+            │<─── { status: "dispatched", delivered_at } ────────┤
             │                                                    │
             │     [ Invalidation Cascade ]                       │
             ├──── Invalidate: devices.all, rooms.all, alerts ───>│
@@ -144,7 +144,7 @@ The smsb dashboard is a React 19 + TypeScript SPA (Vite 8) communicating with Hu
 1. **Authentication Session Flow**: Root route `beforeLoad` validates session via `ensureQueryData(queryKeys.auth.me())`. If null, redirects to `/login?redirect=...`.
 2. **Server State Polling Flow**: Live views execute 3s polling (`POLL_MS`) for active telemetry, and 5s polling (`POLL_ALERTS_MS`) for root navigation badges. Cache-first policies (`keepPreviousData`, `staleTime: 10s`, `gcTime: 5m`) eliminate UI layout flashing.
 3. **Multi-Panel Telemetry Rendering Flow**: `HistoryChart` passes downsampled telemetry points to `MultiPanelChartContainer`. X-axis timestamps are synchronized across three stacked panels. Dynamic 12% padded Y-axes auto-scale based on visible values, toggled to fixed electrical presets via panel headers.
-4. **Command Dispatch Flow**: Commands dispatch through `useCommandLifecycle`, transitioning from `queuing` to `queued`, polling `GET /api/commands/{id}` every 1.5s, with a 12s client timeout and cache invalidation cascade upon delivery confirmation.
+4. **Command Dispatch Flow**: Commands dispatch through `useCommandLifecycle`, transitioning from `queuing` to `queued`, polling `GET /api/commands/{id}` every 1.5s, with a 12s client timeout and cache invalidation cascade when the edge reports local MQTT broker acceptance. The status UI explicitly says device execution is unconfirmed.
 5. **Form Editing Flow**: Device threshold inputs in `Controls.tsx` track focus (`isEditingRef`) and input dirtiness (`isDirty`), preventing background telemetry refetches from overwriting uncommitted operator edits.
 
 ---

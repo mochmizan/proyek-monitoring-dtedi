@@ -36,7 +36,8 @@ def log_action(
     target_user_id: Optional[str],
     status_str: str,
     request: Request,
-    details: Optional[str] = None
+    details: Optional[str] = None,
+    commit: bool = True,
 ):
     ip_addr = request.client.host if request.client else None
     audit = UserAuditLog(
@@ -48,7 +49,18 @@ def log_action(
         details=details
     )
     db.add(audit)
-    db.commit()
+    if commit:
+        db.commit()
+
+
+def _user_with_temp_password_response(
+    user: User,
+    temp_password: str,
+) -> UserWithTempPasswordResponse:
+    """Build the one-time-password response with all required fields present."""
+    user_data = UserResponse.model_validate(user).model_dump()
+    user_data.update(is_online=False, temp_password=temp_password)
+    return UserWithTempPasswordResponse.model_validate(user_data)
 
 
 # Helper function untuk menghitung status is_online
@@ -140,10 +152,18 @@ def create_user(
         created_by=current_user.id
     )
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    db.flush()
 
-    log_action(db, current_user.id, "CREATE_USER", new_user.id, "SUCCESS", request, f"Created user {new_user.username} with role {new_user.role}")
+    log_action(
+        db,
+        current_user.id,
+        "CREATE_USER",
+        new_user.id,
+        "SUCCESS",
+        request,
+        f"Created user {new_user.username} with role {new_user.role}",
+        commit=False,
+    )
     log_user_activity(
         db,
         user=current_user,
@@ -151,12 +171,13 @@ def create_user(
         category="account_management",
         details={"target_username": new_user.username, "role": new_user.role, "display_name": new_user.display_name},
         request=request,
-        commit=True,
+        commit=False,
     )
 
-    resp = UserWithTempPasswordResponse.from_orm(new_user)
-    resp.is_online = False
-    resp.temp_password = temp_pwd
+    # Validate the complete response before committing. If response construction
+    # ever regresses, get_db will roll the whole transaction back.
+    resp = _user_with_temp_password_response(new_user, temp_pwd)
+    db.commit()
     return resp
 
 
@@ -340,10 +361,15 @@ def reset_user_password(
     # Cabut seluruh sesi lama
     db.query(UserSession).filter(UserSession.user_id == target_user.id).delete()
 
-    db.commit()
-    db.refresh(target_user)
-
-    log_action(db, current_user.id, "RESET_PASSWORD", target_user.id, "SUCCESS", request)
+    log_action(
+        db,
+        current_user.id,
+        "RESET_PASSWORD",
+        target_user.id,
+        "SUCCESS",
+        request,
+        commit=False,
+    )
     log_user_activity(
         db,
         user=current_user,
@@ -351,12 +377,12 @@ def reset_user_password(
         category="account_management",
         details={"target_username": target_user.username},
         request=request,
-        commit=True,
+        commit=False,
     )
 
-    resp = UserWithTempPasswordResponse.from_orm(target_user)
-    resp.is_online = False
-    resp.temp_password = temp_pwd
+    # Keep the password update, session revocation, and both audit records atomic.
+    resp = _user_with_temp_password_response(target_user, temp_pwd)
+    db.commit()
     return resp
 
 

@@ -382,7 +382,7 @@ def test_dynamic_topic_resolution_and_dispatch_ats_and_ac():
     Test dynamic downlink topic derivation:
     ATS commands -> {HUB_NAME}/ats/command
     AC commands -> {HUB_NAME}/ac/command
-    And delivery acknowledgment via POST /delivered.
+    And broker-dispatch acknowledgment via POST /dispatched.
     """
     # 1. Setup registry
     with main.DEVICE_REGISTRY_LOCK:
@@ -428,18 +428,18 @@ def test_dynamic_topic_resolution_and_dispatch_ats_and_ac():
             return mock_get_resp
         return MagicMock(status_code=404)
 
-    delivered_calls = []
+    dispatched_calls = []
     def mock_requests_post(url, *args, **kwargs):
-        if "delivered" in url:
-            delivered_calls.append(url)
+        if "dispatched" in url:
+            dispatched_calls.append(url)
             return mock_post_resp
         return MagicMock(status_code=404)
 
     with patch("requests.get", side_effect=mock_requests_get), \
          patch("requests.post", side_effect=mock_requests_post):
-        delivered_count = main.poll_commands_batch(mock_client)
+        dispatched_count = main.poll_commands_batch(mock_client)
 
-    assert delivered_count == 2
+    assert dispatched_count == 2
 
     # Verify MQTT publishes to generalized topics
     assert mock_client.publish.call_count == 2
@@ -454,9 +454,9 @@ def test_dynamic_topic_resolution_and_dispatch_ats_and_ac():
     assert json.loads(pub_calls[1][0][1]) == {"AC_NUMBER": "AC1", "AC_COMMAND": "TEMP 24"}
 
     # Verify ACKs were posted for both commands
-    assert len(delivered_calls) == 2
-    assert "cmd-ats-001/delivered" in delivered_calls[0]
-    assert "cmd-ac-001/delivered" in delivered_calls[1]
+    assert len(dispatched_calls) == 2
+    assert "cmd-ats-001/dispatched" in dispatched_calls[0]
+    assert "cmd-ac-001/dispatched" in dispatched_calls[1]
 
 
 def test_command_fallback_inference():

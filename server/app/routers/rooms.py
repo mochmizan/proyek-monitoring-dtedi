@@ -389,11 +389,19 @@ def upload_floor_plan(
 
     content_type = (file.content_type or "").lower().strip()
     ext = os.path.splitext(file.filename or "")[1].lower()
+    expected_ext = ALLOWED_FLOORPLAN_TYPES.get(content_type)
+    extension_matches_type = ext == expected_ext or (
+        content_type == "image/jpeg" and ext == ".jpeg"
+    )
 
-    if content_type not in ALLOWED_FLOORPLAN_TYPES and ext not in ALLOWED_FLOORPLAN_EXTENSIONS:
+    if (
+        content_type not in ALLOWED_FLOORPLAN_TYPES
+        or ext not in ALLOWED_FLOORPLAN_EXTENSIONS
+        or not extension_matches_type
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file type. Allowed formats: PNG, JPEG, WebP, SVG.",
+            detail="Invalid file type. Allowed formats: PNG, JPEG, WebP.",
         )
 
     if ext in ALLOWED_FLOORPLAN_EXTENSIONS:

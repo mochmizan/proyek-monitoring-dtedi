@@ -47,6 +47,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
           },
         });
       }
+      if (user.must_change_password && location.pathname !== '/change-password') {
+        throw redirect({ to: '/change-password' });
+      }
       return { user };
     } catch (error: unknown) {
       if (isRedirect(error)) throw error;

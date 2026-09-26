@@ -23,6 +23,8 @@ Ops utilities that act on `server/`, `hub/`, `deploy/`, and live hardware: Pi de
 
 - Env-driven credentials: `MQTT_PASS`/`HUB_KEY`/`PI_PASSWORD` via env/args, error if missing, no hardcoded live defaults (since `afb9c46`); `verify_prod_env.py` also rejects missing, placeholder, or sub-32-byte `CSRF_SECRET`; banned-value literals are verifier fixtures only
 - Pi tooling defaults to `10.33.36.81` / `hubadmin` — override via args where provided
+- Pi deploy/service tooling rejects unknown SSH host keys. Populate the operator's OpenSSH `known_hosts`, pass `deploy_pi_edge.py --known-hosts PATH`, or set `PI_KNOWN_HOSTS` for `install_pi_service.py`; never restore `AutoAddPolicy`.
+- Pi sudo passwords are written only to Paramiko stdin and never interpolated into remote shell commands. `deploy_pi_edge.py` uploads canonical `hub/main.py` and sets remote `.env` mode `0600`.
 - `setup_postgres_wsl.sh` opens `pg_hba.conf` to `0.0.0.0/0 md5` — WSL dev bootstrap only, never production
 
 ### Benchmark & Migration Tooling

@@ -3,7 +3,7 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-hubgate-v5.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-alert-engine.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/modelsv5.py, server/init_sqlv5.py, server/alembic/versions/c1a8b9f0e2d3_schema_indexing_and_nullability.py, server/alembic/versions/a9d4c2e7f601_add_tiered_telemetry_rollups.py, server/app/services/telemetry_retention.py, server/AGENTS.md, commit:8f8f6cd, commit:9961f5c]
-updated: 2026-09-14
+updated: 2026-09-26
 ---
 
 # HubGate V5 Data Model
@@ -37,7 +37,7 @@ All ORM entities live in `server/modelsv5.py`. The database architecture targets
   - Columns: `event_id` (PK), `alarm`, `timestamp` (UTC datetime), `message`, `dev_id`, `room_id`, `metric`, `severity`, `value`, `threshold`, `resolved_at` (UTC datetime, nullable).
   - Indexing: `ix_event_log_dev_metric_ts(dev_id, metric, timestamp DESC)`, `ix_event_log_room_ts(room_id, timestamp DESC)`, `ix_event_log_dev_resolved(dev_id, resolved_at)`, `ix_event_log_ts_desc(timestamp DESC)`.
 - `pending_commands`: Downlink queue for edge hub dispatch.
-  - Columns: `command_id` (PK), `dev_id` (FK `dev_table.dev_id`), `hub_id` (FK `hub_table.hub_id`), `payload` (JSON), `status` (`pending`/`delivered`), `created_at` (UTC datetime), `delivered_at` (UTC datetime, nullable).
+  - Columns: `command_id` (PK), `dev_id` (FK `dev_table.dev_id`), `hub_id` (FK `hub_table.hub_id`), `payload` (JSON), `status` (`pending`/`dispatched`), `created_at` (UTC datetime), `delivered_at` (UTC datetime, nullable; currently the broker-dispatch timestamp retained under its legacy column name).
   - Indexing: `ix_pending_commands_hub_status_created(hub_id, status, created_at)`.
 - `schedules`: Warmup and generator maintenance cron jobs.
   - Columns: `id` (PK), `name`, `cron_expr`, `payload` (JSON), `tz` (default `Asia/Jakarta`), `enabled`, `last_run_at`, `next_run_at`.

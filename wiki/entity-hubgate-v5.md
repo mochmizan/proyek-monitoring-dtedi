@@ -3,7 +3,7 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-data-model.md, wiki/entity-security-auth.md, wiki/concept-database-lifecycle.md, wiki/concept-telemetry-pipeline.md, wiki/concept-downsampling-v2.md, wiki/concept-presence-engine.md, wiki/concept-command-path.md, wiki/concept-alert-engine.md, wiki/concept-time-conventions.md, wiki/workstream-backend-hardening-v5.md]
 sources: [server/app/main.py, server/databasev5.py, server/modelsv5.py, server/auth.py, server/app/dependencies.py, server/app/core/config.py, server/app/core/csrf.py, server/app/core/logging.py, server/app/core/rate_limit.py, server/app/routers/auth.py, server/app/routers/iot.py, server/app/routers/devices.py, server/app/routers/rooms.py, server/app/routers/hubs.py, server/app/routers/commands.py, server/app/routers/schedules.py, server/app/routers/alerts.py, server/app/services/alert_engine.py, server/app/services/presence.py, server/app/services/scheduler.py, server/app/services/telemetry.py, server/schemasv5.py, server/init_sqlv5.py, server/alembic/env.py]
-updated: 2026-09-14
+updated: 2026-09-26
 ---
 
 # HubGate V5 (server/)
@@ -111,7 +111,7 @@ HubGate V5 decouples route handling (`server/app/routers/`) from domain logic (`
 - **`devices.py`**: Coordinates device approval (`POST /api/devices/{id}/approve`), pairing coordinates (`POST /api/devices/{id}/pair`), threshold configurations (`PUT /api/devices/{id}/thresholds`), live inventory querying (`GET /api/devices`), and Downsampling V2 telemetry retrieval (`GET /api/devices/{id}/history`).
 - **`alerts.py`**: Serves paginated, filtered audit logs (`GET /api/alerts`) over `event_log` with multi-room, multi-device, severity (`warning`, `critical`), and status (`open`, `resolved`) filter dimensions.
 - **`iot.py`**: High-throughput telemetry ingestion terminating single-item payloads (`POST /api/iot`), batch payloads (`POST /api/iot/batch`), and unapproved device alerts (`POST /api/iot/unapproved`).
-- **`commands.py`**: Queues downlink hardware commands (`POST /api/devices/{id}/command`) with role gating (`admin` for reset, `operator` for state change), provides edge command polling (`GET /api/hub/commands`), and delivery acknowledgment (`POST /api/hub/commands/{id}/delivered`).
+- **`commands.py`**: Queues downlink hardware commands (`POST /api/devices/{id}/command`) with role gating (`admin` for reset, `operator` for state change), provides edge command polling (`GET /api/hub/commands`), and records local MQTT broker dispatch through `POST /api/hub/commands/{id}/dispatched` (`/delivered` is a deprecated compatibility alias).
 - **`schedules.py`**: CRUD interface for cron automation jobs (`POST`, `GET`, `PATCH`, `DELETE /api/schedules`), cron fire preview calculations (`GET /api/schedules/preview`), and manual triggers (`POST /api/schedules/{id}/run-now`).
 
 ### 2. Service Subsystems (`server/app/services/`)

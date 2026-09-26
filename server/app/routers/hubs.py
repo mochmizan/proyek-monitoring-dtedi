@@ -112,6 +112,7 @@ def list_hubs(
                 hub_name=h.hub_name,
                 room=h.room,
                 status=hub_status,
+                is_active=h.is_active,
                 last_seen=h.last_seen,
                 device_count=dev_count,
                 devices=devices_by_hub.get(h.hub_id, []),
@@ -161,7 +162,9 @@ def pair_hub(
         new_hub = hub_table(
             hub_id=payload.hub_id,
             hub_name=clean_name,
-            hub_key=x_hub_key,
+            # A pending hub must never inherit the shared bootstrap credential.
+            # This unusable random value is replaced exactly once on approval.
+            hub_key=secrets.token_urlsafe(48),
             is_active=False,
             status="offline",
             created_at=now_utc,
@@ -185,6 +188,14 @@ def approve_hub(
     if not hub:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hub tidak ditemukan")
 
+    if hub.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Hub sudah aktif; gunakan rotasi kredensial untuk mengganti key",
+        )
+
+    permanent_hub_key = secrets.token_hex(32)
+    hub.hub_key = permanent_hub_key
     hub.is_active = True
     log_user_activity(
         db,
@@ -197,7 +208,12 @@ def approve_hub(
     )
     db.commit()
     hub_auth_cache.invalidate(hub_id)
-    return {"status": "approved", "hub_id": hub_id}
+    return {
+        "status": "approved",
+        "hub_id": hub_id,
+        # Returned once so the administrator can provision the edge .env.
+        "hub_key": permanent_hub_key,
+    }
 
 
 @router.post("/api/hubs/{hub_id}/revoke", dependencies=[Depends(validate_csrf_request)])

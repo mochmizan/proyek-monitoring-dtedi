@@ -129,7 +129,7 @@ export function useCommandLifecycle(options: UseCommandLifecycleOptions = {}): U
         const now = new Date();
         const initialStatus = response.status?.toLowerCase();
 
-        if (initialStatus === 'delivered' || initialStatus === 'ack') {
+        if (initialStatus === 'dispatched' || initialStatus === 'delivered' || initialStatus === 'ack') {
           // Directly delivered
           setCommandStatus('delivered');
           statusRef.current = 'delivered';
@@ -197,7 +197,7 @@ export function useCommandLifecycle(options: UseCommandLifecycleOptions = {}): U
             if (!isMountedRef.current || statusRef.current !== 'queued') return;
 
             const status = statusRes.status?.toLowerCase();
-            if (status === 'delivered' || status === 'ack') {
+            if (status === 'dispatched' || status === 'delivered' || status === 'ack') {
               clearAllTimers();
               activeCmdIdRef.current = null;
               const deliveredTime = statusRes.delivered_at ? new Date(statusRes.delivered_at) : new Date();

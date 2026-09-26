@@ -3,7 +3,7 @@ type: entity
 governed_by: AGENTS.md
 links: [wiki/concept-edge-resilience.md, wiki/concept-telemetry-pipeline.md, wiki/concept-command-path.md, wiki/entity-ats-firmware-chain.md, wiki/entity-firmware-fleet.md, wiki/entity-hubgate-v5.md]
 sources: [hub/main.py, hub/AGENTS.md, hub/requirements.txt, hub/test_edge_resilience.py]
-updated: 2026-09-03
+updated: 2026-09-26
 ---
 
 # HubBrain V5 (hub/)
@@ -19,7 +19,7 @@ HubBrain V5 executes four asynchronous daemon worker threads alongside the prima
 | Thread Name | Function | Cycle / Trigger | Operations & Network Interactions |
 |---|---|---|---|
 | **Whitelist Sync** | `sync_whitelist()` | Periodic (30s) | Queries `GET /api/devices` with `X-Hub-ID` and `X-Hub-Key`. Updates in-memory `WHITELIST_DEVICES` (set of MAC strings) and `DEVICE_REGISTRY` (metadata mapping) under `DEVICE_REGISTRY_LOCK`. |
-| **Command Poller** | `poll_commands()` | Periodic (2s) | Polls pending commands via `GET /api/hub/commands`. Resolves MQTT downlink topic dynamically (`{hub_name}/{dev_type}/command`), validates payloads by device type, dispatches via local MQTT broker, and acknowledges delivery via `POST /api/hub/commands/{id}/delivered`. |
+| **Command Poller** | `poll_commands()` | Periodic (2s) | Polls pending commands via `GET /api/hub/commands`. Resolves MQTT downlink topic dynamically (`{hub_name}/{dev_type}/command`), validates payloads by device type, dispatches via local MQTT broker, and reports broker acceptance via `POST /api/hub/commands/{id}/dispatched`; this does not assert device execution. |
 | **WAL Replay Worker** | `replay_backlog_thread()` | Periodic (5s) | Drains offline SQLite cache in strict FIFO batches of 25 (`REPLAY_BATCH_SIZE`). Applies mandatory 0.35s pacing delay (`REPLAY_PACING_DELAY`) between records (~2.85 req/s). Injects original enqueue timestamp as `_hub_created_at` epoch. |
 | **MQTT Client Loop** | `paho.mqtt.client.loop_start()` | Event-driven | Subscribes to `hs109rs/#` on local Mosquitto broker (`localhost:1883`, credentials `hubadmin`). Uses `paho-mqtt==2.2.1` with `CallbackAPIVersion.VERSION1`. Processes telemetry in `on_message()`. |
 | **Main Thread** | `main()` | Continuous / Signal | Coordinates startup, database schema initialization (`init_db()`), TLS certificate preflight (`verify_tls_cert_file()`), thread spawning, and interactive CLI (`--interactive`) or headless daemon sleep loop. |

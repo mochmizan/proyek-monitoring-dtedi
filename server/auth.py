@@ -161,6 +161,21 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not user.is_active:
         raise HTTPException(status_code=401, detail="Akun Anda telah dinonaktifkan")
 
+    password_change_allowed_paths = {
+        "/api/auth/me",
+        "/api/auth/csrf-token",
+        "/api/auth/change-password",
+        "/api/auth/logout",
+    }
+    if user.must_change_password and request.url.path not in password_change_allowed_paths:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "PASSWORD_CHANGE_REQUIRED",
+                "message": "Password must be changed before accessing this resource.",
+            },
+        )
+
     return user
 
 

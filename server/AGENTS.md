@@ -27,6 +27,11 @@ Python 3.14, FastAPI 0.136.1, Uvicorn 0.46.0, Pydantic 2.13.3, SQLAlchemy 2.0.49
 - **Hourly WAL Maintenance Job**: APScheduler registers `engine-sqlite-wal-checkpoint` in `app/services/scheduler.py` executing `checkpoint_sqlite_wal` (`PRAGMA wal_checkpoint(TRUNCATE);`) every hour when running on SQLite, actively preventing unbounded WAL disk bloat.
 - **Tiered Telemetry Retention**: APScheduler runs `engine-telemetry-retention` daily at 02:15 UTC. `app/services/telemetry_retention.py` compacts raw telemetry older than 31 days into hourly rows, hourly rows older than 3 calendar months into daily rows, and daily rows older than 1 calendar year into monthly rows. Rollups preserve per-metric SUM/count/AVG/MIN/MAX; ATS rollups also preserve first/last state, state-change count, and emergency-event count. Each source bucket is deleted only in the same successful transaction as its idempotent upsert; PostgreSQL uses an advisory lock and SQLite uses a process lock.
 - **Session Management (`get_db` & `verify_session`)**: FastAPI dependency generator in `databasev5.py` providing request-scoped sessions with automatic `db.rollback()` on exceptions and guaranteed `db.close()` in `finally`. `verify_session` in `server/auth.py` enforces `SEC-10` session window throttling: only executes an `UPDATE sessions` write transaction if remaining validity is `< 90 minutes` (`remaining_validity < timedelta(minutes=90)`). Fresh sessions skip DB writes completely, eliminating write-on-read lock serialization.
+- **User Management Transactions**: Admin create-user and reset-password stage the account mutation, `user_audit_logs`, and `activity_logs` in one request transaction. The complete one-time-password response is validated before the single commit, so logging or response-construction failures roll back the account/password change instead of returning HTTP 500 after a partial success.
+- **Forced Password Change**: `get_current_user` blocks users with `must_change_password=True` from every authenticated resource except `/api/auth/me`, `/api/auth/csrf-token`, `/api/auth/change-password`, and `/api/auth/logout`, returning coded HTTP 403 `PASSWORD_CHANGE_REQUIRED`.
+- **Hub Bootstrap Separation**: `HUB_BOOTSTRAP_KEY` only creates inactive enrollment records and is never persisted as their operational credential. Admin approval generates a 64-hex per-hub key returned once for edge provisioning.
+- **Floor Plan Uploads**: Only PNG, JPEG, and WebP are accepted; both declared MIME type and filename extension must be allowed. SVG is rejected because static same-origin SVG can contain active content.
+- **Command Semantics**: Hub MQTT publish acknowledgments set `pending_commands.status="dispatched"`; this means the local broker accepted the publish and does not claim field-device execution. `/delivered` remains a deprecated compatibility alias for `/dispatched`.
 
 ### Entry & Architecture
 
@@ -90,7 +95,7 @@ Composite SARGable performance indexes:
 
 ## Verification
 
-- `pytest server/ -q` — runs 231 test cases covering engine hardening, downsampling v2, tiered telemetry retention, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, auth/RBAC/CSRF, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
+- `pytest server/ -q` — covers engine hardening, downsampling v2, tiered telemetry retention, schema indexing, batch ingestion, read-only presence, room map query optimization, two-pass room sparklines, schedules regression, user-management mutation atomicity, auth/RBAC/CSRF, SEC-06 device ownership, SEC-10 session window throttling, hourly WAL checkpoint truncation, and benchmark verification.
 - `python tools/seed_benchmark_telemetry.py --total-rows 1000000 --days 30 --clean --verify` — seeds 1,000,000 synthetic rows in ~60s and verifies composite index query plans.
 - `python tools/benchmark_concurrency_stress.py` — executes 15s multi-worker stress test validating all read, write, throughput, and zero-lock SLAs.
 

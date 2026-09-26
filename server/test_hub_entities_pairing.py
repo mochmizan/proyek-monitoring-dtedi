@@ -157,14 +157,14 @@ def test_pair_new_hub_pending_approve_paired():
     assert data["status"] == "pending_approval"
     assert data["hub_id"] == "HUB_NEW_01"
 
-    # Verify DB: row created inactive with the provided key stored
+    # Verify DB: bootstrap credential is never persisted as the operational key.
     db = SessionLocal()
     try:
         h = db.get(hub_table, "HUB_NEW_01")
         assert h is not None
         assert h.is_active is False
         assert h.hub_name == "New Hub 01"
-        assert h.hub_key == BOOTSTRAP_KEY
+        assert h.hub_key != BOOTSTRAP_KEY
     finally:
         db.close()
 
@@ -180,12 +180,17 @@ def test_pair_new_hub_pending_approve_paired():
     # D. Admin approves -> hub becomes active
     resp_approve = client.post("/api/hubs/HUB_NEW_01/approve", cookies=admin_cookies)
     assert resp_approve.status_code == 200
-    assert resp_approve.json() == {"status": "approved", "hub_id": "HUB_NEW_01"}
+    approval = resp_approve.json()
+    assert approval["status"] == "approved"
+    assert approval["hub_id"] == "HUB_NEW_01"
+    permanent_key = approval["hub_key"]
+    assert len(permanent_key) == 64
 
     db = SessionLocal()
     try:
         h = db.get(hub_table, "HUB_NEW_01")
         assert h.is_active is True
+        assert h.hub_key == permanent_key
     finally:
         db.close()
 
@@ -193,10 +198,17 @@ def test_pair_new_hub_pending_approve_paired():
     resp_paired = client.post(
         "/api/hubs/pair",
         json={"hub_id": "HUB_NEW_01", "hub_name": "New Hub 01"},
-        headers={"X-Hub-Key": BOOTSTRAP_KEY}
+        headers={"X-Hub-Key": permanent_key}
     )
     assert resp_paired.status_code == 200
     assert resp_paired.json()["status"] == "paired"
+
+    bootstrap_after_approval = client.post(
+        "/api/hubs/pair",
+        json={"hub_id": "HUB_NEW_01", "hub_name": "New Hub 01"},
+        headers={"X-Hub-Key": BOOTSTRAP_KEY},
+    )
+    assert bootstrap_after_approval.status_code == 401
 
     db = SessionLocal()
     try:

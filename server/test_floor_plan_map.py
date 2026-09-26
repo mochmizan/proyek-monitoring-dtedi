@@ -233,6 +233,18 @@ def test_upload_floor_plan_invalid_file_type():
     resp_py = client.post(f"/api/rooms/{room_id}/floor-plan", files=files_py, cookies=admin_cookies)
     assert resp_py.status_code == 400
 
+    files_svg = {"file": ("active.svg", io.BytesIO(DUMMY_SVG_BYTES), "image/svg+xml")}
+    resp_svg = client.post(f"/api/rooms/{room_id}/floor-plan", files=files_svg, cookies=admin_cookies)
+    assert resp_svg.status_code == 400
+
+    spoofed = {"file": ("spoofed.png", io.BytesIO(DUMMY_PNG_BYTES), "text/plain")}
+    resp_spoofed = client.post(f"/api/rooms/{room_id}/floor-plan", files=spoofed, cookies=admin_cookies)
+    assert resp_spoofed.status_code == 400
+
+    mismatched_image = {"file": ("mismatch.jpg", io.BytesIO(DUMMY_PNG_BYTES), "image/png")}
+    resp_mismatch = client.post(f"/api/rooms/{room_id}/floor-plan", files=mismatched_image, cookies=admin_cookies)
+    assert resp_mismatch.status_code == 400
+
 
 def test_upload_floor_plan_validation_errors():
     admin_cookies = get_auth_cookies("admin_m3", "adminpass")
@@ -282,8 +294,8 @@ def test_upload_floor_plan_replace_existing():
     disk_path_1 = resolve_static_disk_path(url_1)
     assert os.path.exists(disk_path_1)
 
-    # 3. Replace with second floor plan (SVG)
-    files_2 = {"file": ("second_plan.svg", io.BytesIO(DUMMY_SVG_BYTES), "image/svg+xml")}
+    # 3. Replace with a second raster floor plan.
+    files_2 = {"file": ("second_plan.png", io.BytesIO(DUMMY_PNG_BYTES), "image/png")}
     resp_2 = client.post(f"/api/rooms/{room_id}/floor-plan", files=files_2, cookies=admin_cookies)
     assert resp_2.status_code == 200
     url_2 = resp_2.json()["floor_plan_url"]
@@ -296,7 +308,7 @@ def test_upload_floor_plan_replace_existing():
     assert os.path.exists(disk_path_2)
     assert disk_path_1 != disk_path_2
     with open(disk_path_2, "rb") as f:
-        assert f.read() == DUMMY_SVG_BYTES
+        assert f.read() == DUMMY_PNG_BYTES
 
 
 # ==========================================

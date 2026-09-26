@@ -3,7 +3,7 @@ type: concept
 governed_by: AGENTS.md
 links: [wiki/entity-dashboard-spa.md, wiki/concept-frontend-navigation.md, wiki/concept-frontend-resilience.md, wiki/concept-command-path.md, wiki/concept-telemetry-pipeline.md, wiki/workstream-flexible-scheduling.md]
 sources: [dashboard/src/lib/queryClient.ts, dashboard/src/lib/queryKeys.ts, dashboard/src/lib/constants.ts, dashboard/src/lib/dateUtils.ts, dashboard/src/lib/api.ts, dashboard/src/lib/sidebarStore.ts, dashboard/src/types/api.ts, dashboard/src/hooks/useCommandLifecycle.ts, dashboard/src/hooks/useDeviceHistory.ts, dashboard/src/components/device/Controls.tsx, dashboard/src/routes/schedules.tsx, dashboard/src/routes/index.tsx, dashboard/src/routes/alerts.tsx, dashboard/src/routes/settings.tsx, dashboard/vite.config.ts, dashboard/src/App.tsx, server/schemasv5.py, server/app/routers/schedules.py, server/app/routers/devices.py]
-updated: 2026-09-04
+updated: 2026-09-26
 ---
 
 # Frontend State Management Architecture
@@ -262,8 +262,8 @@ This lifecycle is governed by the custom hook `useCommandLifecycle` (`src/hooks/
 
 1. **Queuing**: Dispatcher calls `POST /api/devices/{dev_id}/command`. State transitions to `queuing`, disabling buttons to prevent double-clicks (`isPending = true`).
 2. **Queued**: If the response returns status `queued` with a `command_id`, the hook records `queuedAt = new Date()`, starts an elapsed-time seconds counter, and begins polling `GET /api/commands/{command_id}` every `1,500ms`.
-3. **Delivered**: When `fetchCommandStatus` returns `status: "delivered"`, the hook stops polling, records `deliveredAt`, triggers `onSuccess(cmdId)`, and invalidates `devices.all`, `rooms.all`, and `alerts.all`. An auto-dismiss timer cleans the state after 8 seconds.
-4. **Timeout Fallback**: If delivery confirmation is not received within `12,000ms`, the poll timer is aborted, status transitions to `timeout`, and a retry callback is primed.
+3. **Dispatched**: When `fetchCommandStatus` returns `status: "dispatched"`, the hook stops polling, records the legacy `deliveredAt` timestamp field, triggers `onSuccess(cmdId)`, and invalidates `devices.all`, `rooms.all`, and `alerts.all`. The UI describes this as local MQTT broker acceptance and does not claim field-device execution. An auto-dismiss timer cleans the state after 8 seconds.
+4. **Timeout Fallback**: If broker-dispatch confirmation is not received within `12,000ms`, the poll timer is aborted, status transitions to `timeout`, and a retry callback is primed.
 5. **Memory Safety**: `useCommandLifecycle` tracks `isMountedRef` and cleans all active `setInterval` and `setTimeout` references on unmount.
 
 ---

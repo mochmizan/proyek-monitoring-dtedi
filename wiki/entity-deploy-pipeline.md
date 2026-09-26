@@ -2,13 +2,15 @@
 type: entity
 governed_by: AGENTS.md
 links: [wiki/entity-devops-infrastructure.md, wiki/entity-hubgate-v5.md, wiki/entity-data-model.md, wiki/concept-production-readiness.md, wiki/workstream-production-grade-roadmap.md]
-sources: [deploy/setup_push_deploy.sh, deploy/smsb-api.service, deploy/nginx_smsb.conf, deploy/AGENTS.md, tools/rotate_credentials.py, commit:acd4f00, commit:6bf89e6]
-updated: 2026-09-03
+sources: [deploy/setup_push_deploy.sh, deploy/smsb-api.service, deploy/nginx_smsb.conf, deploy/AGENTS.md, tools/deploy_pi_edge.py, tools/install_pi_service.py, tools/rotate_credentials.py, commit:acd4f00, commit:6bf89e6]
+updated: 2026-09-26
 ---
 
 # Deploy Pipeline & Release Operations
 
 The SMSB deployment pipeline manages source code synchronization, automated runtime builds, service recycling, and cryptographic credential rotation between development workstations, the central cloud server, and edge gateways.
+
+Edge staging deployment uses canonical `hub/main.py`. Paramiko clients load trusted OpenSSH host keys and reject unknown hosts; sudo passwords travel through SSH stdin rather than being interpolated into shell commands. The uploaded edge `.env` is explicitly mode `0600`.
 
 ---
 

@@ -422,6 +422,7 @@ class HubResponse(BaseModel):
     hub_name: str
     room: Optional[str] = None
     status: str = "offline"
+    is_active: bool = False
     last_seen: OptionalUtcDateTime = None
     device_count: int = 0
     devices: list[HubDeviceSummary] = Field(default_factory=list)

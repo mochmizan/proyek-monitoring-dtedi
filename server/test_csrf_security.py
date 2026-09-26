@@ -130,6 +130,7 @@ def test_cookie_mutations_have_csrf_dependencies_and_hub_routes_do_not():
         ("POST", "/api/iot"),
         ("POST", "/api/iot/batch"),
         ("POST", "/api/hub/commands/{command_id}/delivered"),
+        ("POST", "/api/hub/commands/{command_id}/dispatched"),
     }
 
     found_cookie_routes = set()

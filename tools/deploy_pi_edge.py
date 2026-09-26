@@ -55,6 +55,7 @@ def main():
     parser.add_argument("--password", default=None, help="SSH password (env PI_PASSWORD, required)")
     parser.add_argument("--mqtt-pass", default=None, help="MQTT password (env MQTT_PASS, required)")
     parser.add_argument("--hub-key", default=None, help="Hub key (env HUB_KEY, required)")
+    parser.add_argument("--known-hosts", default=None, help="Optional OpenSSH known_hosts file")
     args = parser.parse_args()
 
     host = args.host
@@ -75,12 +76,15 @@ def main():
     print(f"Connecting to {user}@{host}...")
 
     ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.load_system_host_keys()
+    if args.known_hosts:
+        ssh.load_host_keys(args.known_hosts)
+    ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     ssh.connect(host, port=22, username=user, password=password, timeout=10)
     sftp = ssh.open_sftp()
 
     # Step 1: Upload latest hub/main.py
-    local_main = Path(__file__).resolve().parent.parent / "hub" / "V5" / "main.py"
+    local_main = Path(__file__).resolve().parent.parent / "hub" / "main.py"
     remote_dir = f"/home/{user}/hub"
     remote_main = f"{remote_dir}/main.py"
     remote_env = f"{remote_dir}/.env"
@@ -111,12 +115,15 @@ EDGE_CACHE_DB_PATH=edge_cache.db
     print(f"[*] Writing updated .env to {remote_env}...")
     with sftp.open(remote_env, "w") as f:
         f.write(staging_env_content)
+    sftp.chmod(remote_env, 0o600)
 
     sftp.close()
 
     # Step 3: Restart Mosquitto Broker
     print("[*] Ensuring Mosquitto service is running on the Pi...")
-    stdin, stdout, stderr = ssh.exec_command(f"echo {password} | sudo -S systemctl restart mosquitto")
+    stdin, stdout, stderr = ssh.exec_command("sudo -S -p '' systemctl restart mosquitto")
+    stdin.write(password + "\n")
+    stdin.flush()
     stdout.channel.recv_exit_status()
 
     # Step 4: Start HubBrain V5 daemon on the Pi

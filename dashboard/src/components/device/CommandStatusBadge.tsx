@@ -91,7 +91,7 @@ export function CommandStatusBadge({
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
             <div className="truncate">
               <span className="font-semibold text-emerald-200">
-                Delivered to edge hub at {formatWIBTime(deliveredAt || new Date())}
+                Published to the local MQTT broker at {formatWIBTime(deliveredAt || new Date())}; device execution is not confirmed
               </span>
               {commandId && (
                 <span className="hidden sm:inline-block ml-2 text-[10px] font-mono text-emerald-400/70 truncate">
