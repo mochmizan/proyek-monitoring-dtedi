@@ -223,6 +223,11 @@ void processCommand(const char* msg) {
         Serial.print(F("<EMERGENCY,"));
         Serial.print(emergencyNotified);
         Serial.println(F(">"));
+
+        Serial.print(F("<WARMUP,"));
+        Serial.print(isWarmup);
+        Serial.println(F(">"));
+
     }
     else if (typeLen == 3 && strncmp(type, "RST", 3) == 0 && dataLen == 3 && strncmp(data, "rst", 3) == 0){
       emergencyNotified = false;
@@ -307,6 +312,18 @@ void do_lcd(){
       lcd.print(F("GENSET: "));
       lcd.setCursor(8, 1);
       lcd.print(teganganGenset, 0);
+    }
+    else if (menu >= 2) {
+      menu = 2;
+      lcd.setCursor(0, 0);
+      lcd.print(F("MODE: "));
+      lcd.setCursor(2, 1);
+      if (autoMode) {
+        lcd.print(F("Auto"));
+      }
+      else {
+        lcd.print(F("Manual"));
+      }
     }
   }
   else if (emergencyNotified == true){

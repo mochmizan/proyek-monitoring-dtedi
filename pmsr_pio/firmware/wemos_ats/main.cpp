@@ -85,10 +85,7 @@ unsigned long burstUntil = 0;
 char nowState[32] = "";
 bool autoMode = false;
 bool emergency = false;
-bool rtcOk = false;
 bool isOledPresent = false;
-char nowDate[16] = "";
-char nowTime[16] = "";
 
 double teganganPln = 0;
 double teganganGenset = 0;
@@ -100,14 +97,11 @@ bool isAkiOn = false;
 bool isWarmup = false;
 bool isAlarm = false;
 
-long sisaDetik = 0;
-long sisaMenit = 0;
-long sisaJam = 0;
-
 // Last published values for deadband & state change detection
 char lastPublishedState[32] = "";
 bool lastPublishedAutoMode = false;
 bool lastPublishedEmergency = false;
+bool lastPublishedWarmup = false;
 bool lastPublishedPlnRelay = false;
 bool lastPublishedGenRelay = false;
 bool lastPublishedAlarm = false;
@@ -201,6 +195,25 @@ void callback(char* topic, byte* payload, unsigned int length) {
       if (rst != nullptr) {
         if (strcmp(rst, "rst") == 0) {
           Serial.println("<RST,rst>");
+        }
+      }
+    }
+
+    if (doc.containsKey("warmup")) {
+      const char* warmup = doc["warmup"];
+
+      if (warmup != nullptr) {
+        if (strcmp(warmup, "warmup") == 0) {
+
+          if (!autoMode) {
+            Serial.println("<WARMUP blocked autoMode=0>");
+          }
+          else if (emergency) {
+            Serial.println("<WARMUP blocked emergency>");
+          }
+          else {
+            Serial.println("<W,warmup>");
+          }
         }
       }
     }
@@ -378,39 +391,17 @@ void processData(const char* msg) {
     else if (typeLen == 9 && strncmp(type, "IS_AKI_ON", 9) == 0) {
       isAkiOn = (tmp[0] == '1');
     }
-    else if (typeLen == 9 && strncmp(type, "IS_WARMUP", 9) == 0) {
+    else if (typeLen == 6 && strncmp(type, "WARMUP", 6) == 0) {
       isWarmup = (tmp[0] == '1');
     }
     else if (typeLen == 5 && strncmp(type, "ALARM", 5) == 0) {
       isAlarm = (tmp[0] == '1');
-    }
-    else if (typeLen == 7 && strncmp(type, "REM_SEC", 7) == 0) {
-      sisaDetik = atol(tmp);
-    }
-    else if (typeLen == 7 && strncmp(type, "REM_MIN", 7) == 0) {
-      sisaMenit = atol(tmp);
-    }
-    else if (typeLen == 8 && strncmp(type, "REM_HOUR", 8) == 0) {
-      sisaJam = atol(tmp);
     }
     else if (typeLen == 9 && strncmp(type, "AUTO_MODE", 9) == 0) {
       autoMode = (tmp[0] == '1');
     }
     else if (typeLen == 9 && strncmp(type, "EMERGENCY", 9) == 0) {
       emergency = (tmp[0] == '1');
-    }
-    else if (typeLen == 6 && strncmp(type, "RTC_OK", 6) == 0) {
-      rtcOk = (tmp[0] == '1');
-    }
-    else if (typeLen == 4 && strncmp(type, "DATE", 4) == 0) {
-      int n = copyLen < (int)sizeof(nowDate)-1 ? copyLen : (int)sizeof(nowDate)-1;
-      memcpy(nowDate, data, n);
-      nowDate[n] = '\0';
-    }
-    else if (typeLen == 4 && strncmp(type, "TIME", 4) == 0) {
-      int n = copyLen < (int)sizeof(nowTime)-1 ? copyLen : (int)sizeof(nowTime)-1;
-      memcpy(nowTime, data, n);
-      nowTime[n] = '\0';
     }
   }
   else if (comma == NULL && end != NULL) {
@@ -445,12 +436,9 @@ bool publishData(){
   doc["PLN_RELAY"] = (bool)isPlnOn;
   doc["GEN_RELAY"] = (bool)isGensetOn;
   doc["ALARM"] = (bool)isAlarm;
-  doc["REM_SEC"] = sisaDetik; 
-  doc["REM_MIN"] = sisaMenit;
-  doc["REM_HOUR"] = sisaJam;
   doc["AUTO_MODE"] = (bool)autoMode;
   doc["EMERGENCY"] = (bool)emergency;
-  doc["RTC_OK"] = (bool)rtcOk;
+  doc["WARMUP"] = (bool)isWarmup;
 
   char buffer_json[512];
   serializeJson(doc, buffer_json);
@@ -467,6 +455,7 @@ bool publishData(){
       lastPublishedPlnRelay  = isPlnOn;
       lastPublishedGenRelay  = isGensetOn;
       lastPublishedAlarm     = isAlarm;
+      lastPublishedWarmup    = isWarmup;
       lastPublishedPln       = teganganPln;
       lastPublishedGenset    = teganganGenset;
       lastPublishedAki       = teganganAki;
@@ -492,7 +481,8 @@ void checkAndPublishTelemetry(unsigned long now) {
         emergency != lastPublishedEmergency ||
         isPlnOn != lastPublishedPlnRelay ||
         isGensetOn != lastPublishedGenRelay ||
-        isAlarm != lastPublishedAlarm) {
+        isAlarm != lastPublishedAlarm ||
+        isWarmup != lastPublishedWarmup) {
       stateChanged = true;
     }
   }
