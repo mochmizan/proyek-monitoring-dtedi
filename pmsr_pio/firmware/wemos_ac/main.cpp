@@ -56,6 +56,15 @@ const uint16_t IR1_PIN = D5;
 const uint16_t IR2_PIN = D6;
 
 //========================
+// Magnetic Sensor Pins
+//========================
+const uint16_t MAG1_PIN = D0;
+const uint16_t MAG2_PIN = D7;
+
+bool isAC1ON    = false;
+bool isAC2ON    = false;
+
+//========================
 // WiFi Config
 //========================
 const char* NAMA_WIFI     = WIFI_SSID;
@@ -353,6 +362,8 @@ bool publishACStatus(const IRGreeAC *ac1_inst, const IRGreeAC *ac2_inst)
     doc["AC1_TEMP"]  = ac1_inst->getTemp();
     doc["AC2_POWER"] = ac2_inst->getPower() ? "ON" : "OFF";
     doc["AC2_TEMP"]  = ac2_inst->getTemp();
+    doc["IS_AC1_ON"]  = isAC1ON ? "ON" : "OFF";
+    doc["IS_AC2_ON"]  = isAC2ON ? "ON" : "OFF";
 
     bool sensorError = (!isShtPresent || isnan(temperature) || isnan(humidity));
     if (sensorError)
@@ -527,6 +538,12 @@ void setup()
     Wire.begin(D2, D1);
     Wire.setClock(100000);
 
+    pinMode(MAG1_PIN, INPUT);
+    pinMode(MAG2_PIN, INPUT);
+
+    isAC1ON = digitalRead(MAG1_PIN);
+    isAC2ON = digitalRead(MAG2_PIN);
+
     scanAndInitI2C();
 
     if (isShtPresent) {
@@ -565,6 +582,16 @@ void loop()
     client.loop();
 
     unsigned long now = millis();
+
+    bool newIsAC1ON = digitalRead(MAG1_PIN);
+    bool newIsAC2ON = digitalRead(MAG2_PIN);
+
+    bool acStatusChanged =
+        (newIsAC1ON != isAC1ON) ||
+        (newIsAC2ON != isAC2ON);
+
+    isAC1ON = newIsAC1ON;
+    isAC2ON = newIsAC2ON;
 
     // 1. Throttled Sensor Reading
     if (now - lastSensorRead >= SENSOR_INTERVAL_MS)
@@ -680,7 +707,7 @@ void loop()
     bool heartbeatExpired = (!hasPublishedOnce || (now - lastPublish >= HEARTBEAT_INTERVAL_MS));
 
     bool shouldPublish = false;
-    if (minIntervalElapsed && (heartbeatExpired || sensorStatusChanged || deadbandExceeded))
+    if ((minIntervalElapsed && (heartbeatExpired || sensorStatusChanged || deadbandExceeded)) || acStatusChanged)
     {
         shouldPublish = true;
     }
