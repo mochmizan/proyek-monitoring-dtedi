@@ -805,5 +805,6 @@ double readVDC(int pin){
   else m = v3;
   double vdc = map(m, 0, 1023, 0, 2500);
   vdc /= 100;
+  vdc *= 0.84830;
   return vdc;
 }
