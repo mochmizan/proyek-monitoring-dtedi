@@ -1,21 +1,10 @@
-#include <ZMPT101B.h>
+#include "sensing/sensing.h"
+#include "lcd/lcd.h"
+#include "command/command.h"
+#include "actuator/actuator.h"
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-#include <RTClib.h>
-#include <EEPROM.h>
+#include "rtc/rtc.h"
 #include <avr/wdt.h>
-
-#define SENSITIVITAS_SENSOR_AC 500.0f
-#define BATAS_VAC 200.0f
-#define BATAS_AKI 12.0f
-#define VAC_ON 210.0f
-#define VAC_OFF 190.0f
-#define AKI_ON 12.5f
-#define AKI_OFF 11.5f
-
-LiquidCrystal_I2C lcd(0x27, 16, 2);
-bool lcdAvailable = false;
-unsigned long serialOverflowCount = 0;
 
 enum State {
   WAIT_AKI,
@@ -62,55 +51,21 @@ enum gensetOffFSM {
 
 gensetOffFSM gensetOffState = AWAL_OFF;
 
-RTC_DS3231 rtc;
-ZMPT101B sensorPLN (A1, 50.0);
-ZMPT101B sensorGenset (A0, 50.0);
-DateTime nowTime;
-DateTime nextWarmup;
-
-// Weekly warmup scheduler (hardware-team v2): warmup setiap hari yang dipilih
-const int WARMUP_DAY = 0;   // 0 = Sunday
-const int WARMUP_HOUR = 18;
-
-struct warmupCountdown{
-  long remSecTotal;
-  long remSec;
-  long remMin;
-  long remHour;
-};
-
-const int relay1 = 4;
-const int relay2 = 5;
-const int akiPin = A2;
-const int emergencyGensetPin = 2;
-const int BTN_LEFT = 7;
-const int BTN_RIGHT = 8;
-int menu = 0;
-unsigned long debounce_left = 0;
-unsigned long debounce_right = 0;
-
-const int CMD_BUF_LEN = 64;
-char cmdBuffer[CMD_BUF_LEN + 1];
-int cmdBufferLen = 0;
-
 bool autoMode = true;
 bool lastMode = autoMode;
-bool isPlnOn = false;
-bool isGensetOn = false;
-bool isAkiOn = false;
 bool hasilWait = false;
 bool isWarmup = false;
 bool warmupStarted = false;
 bool rtcAvailable = false;
 unsigned int relayOrder = 0;
 
-double teganganPln = 0;
-double teganganGenset = 0;
-double teganganAki = 0;
-
 long sisaDetik = 0;
 long sisaMenit = 0;
 long sisaJam = 0;
+
+double teganganPln = 0;
+double teganganGenset = 0;
+double teganganAki = 0;
 
 const int SIZE = 20;
 const int LONG_SIZE = 60; //default 120 proofed 10->20 20->60 for 10s/30s vote
@@ -134,9 +89,6 @@ bool emergencyNotified = false;
 
 // ==================== FUNCTION PROTOTYPES ====================
 
-void processCommand(const char* msg);
-void do_lcd();
-
 void wait_next_genset_on_state(unsigned long waktuGlobal, gensetOnFSM state);
 void wait_next_genset_off_state(unsigned long waktuGlobal, gensetOffFSM state);
 
@@ -145,39 +97,7 @@ const __FlashStringHelper* stateToString(State s);
 bool cariModus(bool arr[], int size);
 bool checkVolt(double volt, double batas);
 
-double readVAC(ZMPT101B &VAC);
-double readVDC(int pin);
-
-warmupCountdown getWarmupCountdown();
-DateTime getNextWarmup(DateTime now);
-void saveNextWarmup(DateTime dt);
-bool loadNextWarmup();
-
 // =================================================================
-
-void nyalakan_genset(){
-  digitalWrite(relay1, LOW);
-}
-
-void matikan_genset(){
-  digitalWrite(relay1, HIGH);
-}
-
-void mulai_starter_genset(){
-  digitalWrite(relay2, LOW);
-}
-
-void lepas_starter_genset(){
-  digitalWrite(relay2, HIGH);
-}
-
-void nyalakan_lampu_emergency(){
-  digitalWrite(emergencyGensetPin, LOW);
-}
-
-void matikan_lampu_emergency(){
-  digitalWrite(emergencyGensetPin, HIGH);
-}
 
 void setup() {
   MCUSR = 0;
@@ -185,58 +105,19 @@ void setup() {
   wdt_reset();
 
   Serial.begin(9600);
+  commandInit();
 
   Wire.begin();
-  Wire.beginTransmission(0x27);
-  lcdAvailable = (Wire.endTransmission() == 0);
-  if (lcdAvailable) { lcd.init(); lcd.backlight(); lcd.setCursor(0,0); lcd.print(F("Hello World!")); }
+
+  lcdInit();
 
   // Relay glitch-safe: drive HIGH before OUTPUT
-  digitalWrite(emergencyGensetPin, HIGH);
-  digitalWrite(relay1, HIGH);
-  digitalWrite(relay2, HIGH);
-  pinMode(BTN_LEFT, INPUT_PULLUP);
-  pinMode(BTN_RIGHT, INPUT_PULLUP);
-  pinMode(emergencyGensetPin, OUTPUT);
-  pinMode(relay1, OUTPUT);
-  pinMode(relay2, OUTPUT);
 
-  matikan_genset();
-  lepas_starter_genset();
-  matikan_lampu_emergency();
+  actuatorInit();
 
-  sensorPLN.setSensitivity(SENSITIVITAS_SENSOR_AC);
-  sensorGenset.setSensitivity(SENSITIVITAS_SENSOR_AC);
+  sensingInit();
 
-  if (!rtc.begin()) {
-    rtcAvailable = false;
-    Serial.println(F("<RTC tidak ditemukan! Mode degradasi: warmup countdown nonaktif, FSM tetap jalan>"));
-    // Tidak ada while(1); - sistem lanjut operasi normal tanpa RTC
-  }
-  else {
-    rtcAvailable = true;
-
-    // Jika RTC kehilangan power
-    if (rtc.lostPower()) {
-      Serial.println(F("<RTC kehilangan power, set waktu!>"));
-
-      // SET waktu sesuai waktu compile
-      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
-      // ATAU set manual:
-      // rtc.adjust(DateTime(2026, 4, 18, 19, 39, 0));
-    }
-
-    // Muat jadwal warmup mingguan dari EEPROM; jika invalid, hitung & simpan
-    if (!loadNextWarmup()) {
-      nextWarmup = getNextWarmup(rtc.now());
-      saveNextWarmup(nextWarmup);
-      Serial.println(F("<Data EEPROM kosong / invalid, jadwal warmup awal disimpan>"));
-    }
-    else {
-      Serial.println(F("<Jadwal warmup berhasil dimuat>"));
-    }
-  }
+  rtcAvailable = rtcInit();
 
   wdt_reset();
   delay(1000);
@@ -244,219 +125,101 @@ void setup() {
   wdt_enable(WDTO_8S);
 }
 
-void processCommand(const char* msg) {
-
-  const char* comma = strchr(msg, ',');
-  const char* end = strchr(msg, '>');
-
-  if (comma != NULL && end != NULL) {
-
-    int typeLen = comma - msg - 1;
-    int dataLen = end - comma - 1;
-    const char* type = msg + 1;
-    const char* data = comma + 1;
-
-    if (typeLen == 1 && type[0] == 'C' && dataLen == 3 && strncmp(data, "GET", 3) == 0) {
-        Serial.print(F("<STATE,"));
-        Serial.print(stateToString(nowState));
-        Serial.println(F(">"));
-
-        Serial.print(F("<PLN,"));
-        Serial.print(teganganPln);
-        Serial.println(F(">"));
-        Serial.print(F("<GENSET,"));
-        Serial.print(teganganGenset);
-        Serial.println(F(">"));
-        Serial.print(F("<AKI,"));
-        Serial.print(teganganAki);
-        Serial.println(F(">"));
-
-        Serial.print(F("<REM_SEC,"));
-        Serial.print(sisaDetik);
-        Serial.println(F(">"));
-        Serial.print(F("<REM_MIN,"));
-        Serial.print(sisaMenit);
-        Serial.println(F(">"));
-        Serial.print(F("<REM_HOUR,"));
-        Serial.print(sisaJam);
-        Serial.println(F(">"));
-
-        Serial.print(F("<AUTO_MODE,"));
-        Serial.print(autoMode);
-        Serial.println(F(">"));
-
-        Serial.print(F("<EMERGENCY,"));
-        Serial.print(emergencyNotified);
-        Serial.println(F(">"));
-
-        Serial.print(F("<RTC_OK,"));
-        Serial.print(rtcAvailable ? 1 : 0);
-        Serial.println(F(">"));
-    }
-    else if (typeLen == 3 && strncmp(type, "RST", 3) == 0 && dataLen == 3 && strncmp(data, "rst", 3) == 0){
-      emergencyNotified = false;
-      gensetStartAttempts = 0;
-    }
-    else if (typeLen == 1 && type[0] == 'T') {
-      unsigned long t = atol(data);
-      if (t > 1700000000UL && t < 4100000000UL) {
-        rtc.adjust(DateTime(t));
-        rtcAvailable = true;
-      }
-    }
-    else if (typeLen == 1 && type[0] == 'M') {
-      lastMode = autoMode;
-      if (dataLen == 4 && strncmp(data, "auto", 4) == 0) {
-        autoMode = true;
-      }
-      else if (dataLen == 6 && strncmp(data, "manual", 6) == 0) {
-        autoMode = false;
-      }
-    }
-
-    else if (typeLen == 3 && strncmp(type, "SGM", 3) == 0){ // SGM = Start Genset Manually
-      if (autoMode) { Serial.println(F("<SGM blocked autoMode=1>")); return; }
-      if (gensetOnState == AWAL_ON && gensetOffState == AWAL_OFF){
-        if (dataLen == 3 && strncmp(data, "off", 3) == 0){
-          nowManualState = GENSET_OFF;
-        }
-        else if (dataLen == 2 && strncmp(data, "on", 2) == 0){
-          nowManualState = GENSET_ON;// start_genset_manually
-        }
-      }
-    }
-  }
-}
-
-void do_lcd(){
-  if (!lcdAvailable) return;
-  wdt_reset();
-  static int lastMenu = -1; static bool lastEmerg = false;
-  if (digitalRead(BTN_LEFT) == LOW) {
-    if (millis() - debounce_left >= 100) { menu--; debounce_left = millis(); }
-  } else if (digitalRead(BTN_RIGHT) == LOW) {
-    if (millis() - debounce_right >= 100) { menu++; debounce_right = millis(); }
-  }
-  bool blink = (millis() / 1000) % 2;
-  if (lastMenu==menu && lastEmerg==emergencyNotified && !blink) { /* throttle */ }
-  lastMenu=menu; lastEmerg=emergencyNotified;
-  lcd.clear();
-
-  if (emergencyNotified == false){
-    if (menu <= 0) {
-      menu = 0;
-      lcd.setCursor(0,0);
-      lcd.print(F("STATE:"));
-      lcd.setCursor(0, 1);
-      lcd.print(stateToString(nowState));
-    }
-    else if (menu == 1) {
-      lcd.setCursor(0, 0);
-      lcd.print(F("PLN: "));
-      lcd.setCursor(5, 0);
-      lcd.print(teganganPln, 0);
-
-      lcd.setCursor(8, 0);
-      lcd.print(F("AKI: "));
-      lcd.setCursor(13, 0);
-      lcd.print(teganganAki, 0);
-
-      lcd.setCursor(0, 1);
-      lcd.print(F("GENSET: "));
-      lcd.setCursor(8, 1);
-      lcd.print(teganganGenset, 0);
-    }
-    else if (menu == 2) {
-      
-      lcd.setCursor(0, 0);
-      lcd.print(F("Warmup Rem. Time"));
-
-      char line2[17];
-
-      long jamCap = sisaJam > 99 ? 99 : sisaJam;
-      sprintf(line2, "%02ld:%02ld:%02ld", jamCap, sisaMenit, sisaDetik);
-      lcd.setCursor(0, 1);
-      lcd.print(line2);
-
-    }
-    else if (menu >= 3) {
-      menu = 3;
-
-      if (!rtcAvailable) {
-        lcd.setCursor(0, 0);
-        lcd.print(F("RTC offline"));
-      }
-      else {
-        char line1[17];
-        char line2[17];
-
-        sprintf(line1, "D:%02d/%02d/%02d",
-                nowTime.day(),
-                nowTime.month(),
-                nowTime.year() % 100);   // hanya 2 digit tahun
-
-        sprintf(line2, "T:%02d:%02d:%02d",
-                nowTime.hour(),
-                nowTime.minute(),
-                nowTime.second());
-
-        lcd.setCursor(0, 0);
-        lcd.print(line1);
-
-        lcd.setCursor(0, 1);
-        lcd.print(line2);
-      }
-    }
-  }
-  else if (emergencyNotified == true){
-    if ((millis()/1000)%2==0){
-      lcd.setCursor(2,0); lcd.print(F("EMERGENCY!"));
-      lcd.setCursor(0,1); lcd.print(F("GENSET FAILURE!"));
-    } else {
-      lcd.setCursor(0,0); lcd.print(F("STATE:")); lcd.setCursor(0,1); lcd.print(stateToString(nowState));
-    }
-  }
-}
 
 void loop() {
 
   wdt_reset();
 
-  if (rtcAvailable) {
-    nowTime = rtc.now();
-  }
+  rtcTask();
 
-  warmupCountdown countdown = getWarmupCountdown();
+  WarmupCountdown countdown = getWarmupCountdown();
 
   sisaDetik = countdown.remSec;
   sisaMenit = countdown.remMin;
   sisaJam = countdown.remHour;
 
-  teganganPln = readVAC(sensorPLN);
-  teganganGenset = readVAC(sensorGenset);
-  teganganAki = readVDC(akiPin);
+  sensingTask();
 
-  isPlnOn = isPlnOn ? (teganganPln >= VAC_OFF) : (teganganPln >= VAC_ON);
-  isGensetOn = isGensetOn ? (teganganGenset >= VAC_OFF) : (teganganGenset >= VAC_ON);
-  isAkiOn = isAkiOn ? (teganganAki >= 11.5f) : (teganganAki >= 12.5f);
+  const SensingData& sensing = getSensingData();
 
-  while (Serial.available()) {
-    char c = Serial.read();
+  teganganPln = sensing.pln;
+  teganganGenset = sensing.genset;
+  teganganAki = sensing.aki;
 
-    if (c == '<'){
-      cmdBufferLen = 0;
-      cmdBuffer[cmdBufferLen++] = c;
-    }
-    else if (c == '>') {
-      if (cmdBufferLen < CMD_BUF_LEN) cmdBuffer[cmdBufferLen++] = c;
-      cmdBuffer[cmdBufferLen] = '\0';
-      processCommand(cmdBuffer);
-      cmdBufferLen = 0;
-    }
-    else {
-      if (cmdBufferLen < CMD_BUF_LEN) cmdBuffer[cmdBufferLen++] = c;
-      else { serialOverflowCount++; Serial.print(F("<ERR,overflow,")); Serial.print(serialOverflowCount); Serial.println(F(">")); cmdBufferLen = 0; }
-    }
+  bool isPlnOn = sensing.plnOn;
+  bool isGensetOn = sensing.gensetOn;
+  bool isAkiOn = sensing.akiOn;
+
+  CommandStatus commandStatus = {
+    stateToString(nowState),
+    teganganPln,
+    teganganGenset,
+    teganganAki,
+    sisaDetik,
+    sisaMenit,
+    sisaJam,
+    autoMode,
+    emergencyNotified,
+    rtcAvailable,
+    gensetOnState == AWAL_ON,
+    gensetOffState == AWAL_OFF
+  };
+
+  CommandResult commandResult = commandTask(commandStatus);
+
+  switch (commandResult.action) {
+
+    case CMD_RESET_EMERGENCY:
+
+        emergencyNotified = false;
+        gensetStartAttempts = 0;
+
+        break;
+
+
+    case CMD_SET_TIME:
+
+        if (setRtcUnixTime(commandResult.unixTime)) {
+            rtcAvailable = true;
+        }
+
+        break;
+
+
+    case CMD_SET_AUTO:
+
+        lastMode = autoMode;
+        autoMode = true;
+
+        break;
+
+
+    case CMD_SET_MANUAL:
+
+        lastMode = autoMode;
+        autoMode = false;
+
+        break;
+
+
+    case CMD_GENSET_ON:
+
+        nowManualState = GENSET_ON;
+
+        break;
+
+
+    case CMD_GENSET_OFF:
+
+        nowManualState = GENSET_OFF;
+
+        break;
+
+
+    case CMD_NONE:
+    default:
+
+        break;
   }
 
   unsigned long waktuGlobal = millis();
@@ -482,11 +245,8 @@ void loop() {
           nowState = WAIT_GENSET;
           waktuGlobal_last2 = waktuGlobal;
           isWarmup = true;
-          if (rtcAvailable) { // persist at start to avoid retrigger on brownout
-            DateTime n = rtc.now();
-            DateTime nxt = getNextWarmup(n);
-            unsigned long cur; EEPROM.get(0, cur);
-            if (cur != nxt.unixtime()) saveNextWarmup(nxt);
+          if (rtcAvailable) {
+            scheduleNextWarmup();
           }
         }
         else if (isAkiOn == false) {
@@ -721,9 +481,7 @@ void loop() {
 
               // Warmup selesai: jadwalkan siklus mingguan berikutnya
               if (rtcAvailable) {
-                DateTime now = rtc.now();
-                nextWarmup = getNextWarmup(now);
-                saveNextWarmup(nextWarmup);
+                scheduleNextWarmup();
               }
 
             }
@@ -806,7 +564,18 @@ void loop() {
     }
   }
 
-  do_lcd();
+  lcdTask(
+    stateToString(nowState),
+    teganganPln,
+    teganganGenset,
+    teganganAki,
+    sisaJam,
+    sisaMenit,
+    sisaDetik,
+    emergencyNotified,
+    rtcAvailable,
+    getRtcNow()
+  );
 }
 
 void wait_next_genset_on_state(unsigned long waktuGlobal, gensetOnFSM state) {
@@ -862,86 +631,4 @@ bool checkVolt (double volt, double batas){
     status = true;
   }
   return status;
-}
-
-double readVAC(ZMPT101B &VAC) {
-  double a = VAC.getRmsVoltage(); delay(10);
-  double b = VAC.getRmsVoltage(); delay(10);
-  double c = VAC.getRmsVoltage();
-  // median 3
-  if ((a <= b && b <= c) || (c <= b && b <= a)) return b;
-  if ((b <= a && a <= c) || (c <= a && a <= b)) return a;
-  return c;
-}
-
-double readVDC(int pin){
-  int v1 = analogRead(pin); delay(10);
-  int v2 = analogRead(pin); delay(10);
-  int v3 = analogRead(pin);
-  // median map
-  int m;
-  if ((v1 <= v2 && v2 <= v3) || (v3 <= v2 && v2 <= v1)) m = v2;
-  else if ((v2 <= v1 && v1 <= v3) || (v3 <= v1 && v1 <= v2)) m = v1;
-  else m = v3;
-  double vdc = map(m, 0, 1023, 0, 2500);
-  vdc /= 100;
-  return vdc;
-}
-
-warmupCountdown getWarmupCountdown(){
-
-  if (!rtcAvailable) {
-    // Mode degradasi: warmup dianggap selesai, FSM langsung lanjut tanpa RTC
-    return {0, 0, 0, 0};
-  }
-
-  long rem_sec_total = (long)nextWarmup.unixtime() - (long)nowTime.unixtime();
-
-  if (rem_sec_total < 0) rem_sec_total = 0;
-
-  long rem_hour = (rem_sec_total - (rem_sec_total % 3600)) / 3600;
-
-  long hour_in_sec = rem_hour * 3600;
-
-  long rem_sec = (rem_sec_total - hour_in_sec) % 60;
-
-  long rem_min = ((rem_sec_total - hour_in_sec) - rem_sec) / 60;
-
-  return {rem_sec_total, rem_sec, rem_min, rem_hour};
-}
-
-// Hitung kejadian WARMUP_DAY jam WARMUP_HOUR berikutnya yang > now
-DateTime getNextWarmup(DateTime now) {
-  DateTime candidate(now.year(), now.month(), now.day(), WARMUP_HOUR, 0, 0);
-
-  int daysAhead = (WARMUP_DAY - candidate.dayOfTheWeek() + 7) % 7;
-  candidate = candidate + TimeSpan(daysAhead, 0, 0, 0);
-
-  if (candidate.unixtime() <= now.unixtime()) {
-    candidate = candidate + TimeSpan(7, 0, 0, 0);
-  }
-
-  return candidate;
-}
-
-void saveNextWarmup(DateTime dt) {
-  EEPROM.put(0, dt.unixtime());
-}
-
-bool loadNextWarmup() {
-  unsigned long savedTime;
-  EEPROM.get(0, savedTime);
-  if (savedTime > 1700000000UL) {
-    if (rtcAvailable) {
-      unsigned long now = rtc.now().unixtime();
-      if (savedTime < now + 8UL*86400UL && savedTime > now - 86400UL) {
-        nextWarmup = DateTime(savedTime);
-        return true;
-      }
-    } else {
-      nextWarmup = DateTime(savedTime);
-      return true;
-    }
-  }
-  return false;
 }
