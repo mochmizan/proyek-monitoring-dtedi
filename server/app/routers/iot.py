@@ -255,11 +255,19 @@ def receive_iot(
                 "pln": float(getattr(device, "PLN", 0.0) or 0.0),
                 "genset": float(getattr(device, "GENSET", 0.0) or 0.0),
                 "aki": float(getattr(device, "AKI", 0.0) or 0.0),
-                "rem_hour": float(getattr(device, "REM_HOUR", 0.0) or 0.0),
-                "rem_min": float(getattr(device, "REM_MIN", 0.0) or 0.0),
-                "rem_sec": float(getattr(device, "REM_SEC", 0.0) or 0.0),
                 "auto_mode": bool(getattr(device, "AUTO_MODE", False)),
                 "emergency": bool(getattr(device, "EMERGENCY", False)),
+
+                #Legacy fields for backward compatibility
+                "rem_hour": getattr(device, "REM_HOUR", None),
+                "rem_min": getattr(device, "REM_MIN", None),
+                "rem_sec": getattr(device, "REM_SEC", None),
+
+                #New Data
+                "pln_relay": bool(getattr(device, "PLN_RELAY", False)),
+                "gen_relay": bool(getattr(device, "GEN_RELAY", False)),
+                "alarm": bool(getattr(device, "ALARM", False)),
+                "warmup": bool(getattr(device, "WARMUP", False))
             }]
             bulk_insert_or_ignore(db, ats_data, records, ["dev_id", "timestamp"])
         else:
@@ -397,11 +405,19 @@ def receive_iot_batch(
                         "pln": float(getattr(item, "PLN", 0.0) or 0.0),
                         "genset": float(getattr(item, "GENSET", 0.0) or 0.0),
                         "aki": float(getattr(item, "AKI", 0.0) or 0.0),
-                        "rem_hour": float(getattr(item, "REM_HOUR", 0.0) or 0.0),
-                        "rem_min": float(getattr(item, "REM_MIN", 0.0) or 0.0),
-                        "rem_sec": float(getattr(item, "REM_SEC", 0.0) or 0.0),
                         "auto_mode": bool(getattr(item, "AUTO_MODE", False)),
                         "emergency": bool(getattr(item, "EMERGENCY", False)),
+
+                        #Legacy fields for backward compatibility
+                        "rem_hour": getattr(item, "REM_HOUR", None),
+                        "rem_min": getattr(item, "REM_MIN", None),
+                        "rem_sec": getattr(item, "REM_SEC", None),
+
+                        #New Data
+                        "pln_relay": bool(getattr(item, "PLN_RELAY", False)),
+                        "gen_relay": bool(getattr(item, "GEN_RELAY", False)),
+                        "alarm": bool(getattr(item, "ALARM", False)),
+                        "warmup": bool(getattr(item, "WARMUP", False)),
                     })
             else:
                 if key not in seen_data:

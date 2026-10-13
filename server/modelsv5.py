@@ -174,11 +174,19 @@ class ats_data(Base):
     pln = Column(Float, nullable=False)
     genset = Column(Float, nullable=False)
     aki = Column(Float, nullable=False)
-    rem_hour = Column(Float, nullable=False)
-    rem_min = Column(Float, nullable=False)
-    rem_sec = Column(Float, nullable=False)
-    auto_mode = Column(Boolean, nullable=False)
-    emergency = Column(Boolean, nullable=False)
+
+    #Legacy parameter, sudah tidak digunakan, tapi tetap disimpan untuk kompatibilitas data lama
+    rem_hour = Column(Float, nullable=True)
+    rem_min = Column(Float, nullable=True)
+    rem_sec = Column(Float, nullable=True)
+
+    #Parameter baru untuk status ATS
+    auto_mode = Column(Boolean, nullable=False, default=False)
+    emergency = Column(Boolean, nullable=False, default=False)
+    pln_relay = Column(Boolean, nullable=False, default=False)
+    gen_relay = Column(Boolean, nullable=False, default=False)
+    alarm = Column(Boolean, nullable=False, default=False)
+    warmup = Column(Boolean, nullable=False, default=False)
 
     # Relationship to dev_table
     device = relationship("dev_table", back_populates="ats_records")
@@ -290,4 +298,4 @@ EventLog = event_log
 PendingCommand = pending_commands
 DeviceThresholdConfig = device_threshold_config
 Schedule = schedules
-
+

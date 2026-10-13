@@ -85,11 +85,19 @@ def get_latest_readings_for_devices(
                 "pln": row.pln,
                 "genset": row.genset,
                 "aki": row.aki,
+                "auto_mode": row.auto_mode,
+                "emergency": row.emergency,
+
+                #Legacy fields, for compatibility with older database entries. These fields may not be present in newer entries.
                 "rem_hour": row.rem_hour,
                 "rem_min": row.rem_min,
                 "rem_sec": row.rem_sec,
-                "auto_mode": row.auto_mode,
-                "emergency": row.emergency,
+
+                #New fields, for compatibility with newer database entries. These fields may not be present in older entries.
+                "pln_relay": row.pln_relay,
+                "gen_relay": row.gen_relay,
+                "alarm": row.alarm,
+                "warmup": row.warmup,
             }
 
     # 3. Batched data_table for AC payload merge and fallback devices
@@ -122,7 +130,7 @@ def get_latest_readings_for_devices(
                     if cur_ts:
                         cur["timestamp"] = cur_ts
                     readings[row.dev_id] = cur
-                for k in ("AC1_POWER", "AC1_TEMP", "AC2_POWER", "AC2_TEMP"):
+                for k in ("AC1_POWER", "AC1_TEMP", "AC2_POWER", "AC2_TEMP", "IS_AC1_ON", "IS_AC2_ON", "TEMP", "HUMID"):
                     val = p.get(k)
                     if val is None:
                         val = p.get(k.lower())
