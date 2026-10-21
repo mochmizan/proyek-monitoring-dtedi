@@ -15,6 +15,7 @@ import { Route as SchedulesRouteImport } from './routes/schedules'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HubsRouteImport } from './routes/hubs'
+import { Route as ClustersRouteImport } from './routes/clusters'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as ActivityLogsRouteImport } from './routes/activity-logs'
@@ -50,6 +51,11 @@ const LoginRoute = LoginRouteImport.update({
 const HubsRoute = HubsRouteImport.update({
   id: '/hubs',
   path: '/hubs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClustersRoute = ClustersRouteImport.update({
+  id: '/clusters',
+  path: '/clusters',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/activity-logs': typeof ActivityLogsRoute
   '/alerts': typeof AlertsRoute
   '/change-password': typeof ChangePasswordRoute
+  '/clusters': typeof ClustersRoute
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/activity-logs': typeof ActivityLogsRoute
   '/alerts': typeof AlertsRoute
   '/change-password': typeof ChangePasswordRoute
+  '/clusters': typeof ClustersRoute
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/activity-logs': typeof ActivityLogsRoute
   '/alerts': typeof AlertsRoute
   '/change-password': typeof ChangePasswordRoute
+  '/clusters': typeof ClustersRoute
   '/hubs': typeof HubsRoute
   '/login': typeof LoginRoute
   '/map': typeof MapRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/activity-logs'
     | '/alerts'
     | '/change-password'
+    | '/clusters'
     | '/hubs'
     | '/login'
     | '/map'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/activity-logs'
     | '/alerts'
     | '/change-password'
+    | '/clusters'
     | '/hubs'
     | '/login'
     | '/map'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/activity-logs'
     | '/alerts'
     | '/change-password'
+    | '/clusters'
     | '/hubs'
     | '/login'
     | '/map'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   ActivityLogsRoute: typeof ActivityLogsRoute
   AlertsRoute: typeof AlertsRoute
   ChangePasswordRoute: typeof ChangePasswordRoute
+  ClustersRoute: typeof ClustersRoute
   HubsRoute: typeof HubsRoute
   LoginRoute: typeof LoginRoute
   MapRoute: typeof MapRoute
@@ -230,6 +243,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HubsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clusters': {
+      id: '/clusters'
+      path: '/clusters'
+      fullPath: '/clusters'
+      preLoaderRoute: typeof ClustersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/change-password': {
       id: '/change-password'
       path: '/change-password'
@@ -280,6 +300,7 @@ const rootRouteChildren: RootRouteChildren = {
   ActivityLogsRoute: ActivityLogsRoute,
   AlertsRoute: AlertsRoute,
   ChangePasswordRoute: ChangePasswordRoute,
+  ClustersRoute: ClustersRoute,
   HubsRoute: HubsRoute,
   LoginRoute: LoginRoute,
   MapRoute: MapRoute,

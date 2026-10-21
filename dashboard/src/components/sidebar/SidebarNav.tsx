@@ -8,6 +8,7 @@ import {
   Settings as SettingsIcon,
   Users as UsersIcon,
   ScrollText,
+  Layers,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useSidebarStore } from '@/lib/sidebarStore'
@@ -69,10 +70,16 @@ export function SidebarNav({
       visible: true,
     },
     {
+      to: '/clusters',
+      label: 'Clusters',
+      icon: Layers,
+      visible: role === 'root',
+    },
+    {
       to: '/schedules',
       label: 'Schedules',
       icon: CalendarClock,
-      visible: role === 'admin' || role === 'operator',
+      visible: role === 'admin' || role === 'operator' || role === 'root',
     },
     {
       to: '/users',

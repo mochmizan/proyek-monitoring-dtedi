@@ -35,7 +35,7 @@ function MapPage() {
 
   const { data: rooms = [] } = useQuery({
     queryKey: queryKeys.rooms.list(),
-    queryFn: fetchRooms,
+    queryFn: () => fetchRooms(),
     staleTime: STALE_METADATA_MS,
   });
 

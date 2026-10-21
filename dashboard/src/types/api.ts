@@ -1,4 +1,10 @@
-export type UserRole = 'admin' | 'operator' | 'viewer';
+export type UserRole = 'root' | 'admin' | 'operator' | 'viewer';
+
+export interface UserClusterMembershipInfo {
+  cluster_id: string;
+  cluster_name: string;
+  role: string;
+}
 
 // Bentuk asli sesuai schemas_auth.py (UserResponse kedua, yang dipakai
 // login/me/admin — Python override class pertama yang cuma 3 field).
@@ -13,6 +19,7 @@ export interface UserResponse {
   last_login_at?: string | null;
   created_at: string;
   updated_at?: string | null;
+  cluster_memberships?: UserClusterMembershipInfo[];
 }
 
 export interface UserWithTempPasswordResponse extends UserResponse {
@@ -42,6 +49,8 @@ export interface AdminUserCreatePayload {
   display_name: string;
   role: UserRole;
   temp_password?: string;
+  cluster_id?: string;
+  cluster_role?: 'admin' | 'operator' | 'viewer';
 }
 
 export interface AdminUserUpdatePayload {
@@ -56,6 +65,7 @@ export interface AdminUserStatusPayload {
 export interface AdminUserListParams {
   search?: string;
   role?: UserRole;
+  cluster_id?: string;
   is_active?: boolean;
   page?: number;
   page_size?: number;
@@ -112,18 +122,22 @@ export interface RoomResponse {
   floor_plan_image_path?: string | null;
   device_count: number;
   created_at?: string | null;
+  cluster_id?: string | null;
+  cluster_name?: string | null;
 }
 
 export interface RoomCreate {
   name: string;
   hub_id?: string | null;
   floor_plan_image_path?: string | null;
+  cluster_id?: string | null;
 }
 
 export interface RoomUpdate {
   name?: string | null;
   hub_id?: string | null;
   floor_plan_image_path?: string | null;
+  cluster_id?: string | null;
 }
 
 export interface FloorPlanUploadResponse {
@@ -168,6 +182,8 @@ export interface DeviceResponse {
   created_at?: string | null;
   threshold_config?: ThresholdConfig | null;
   latest_reading?: Record<string, any> | null;
+  cluster_id?: string | null;
+  cluster_name?: string | null;
 }
 
 export interface DevicePairRequest {
@@ -179,6 +195,7 @@ export interface DevicePairRequest {
   critical_threshold?: number | null;
   hysteresis?: number | null;
   debounce_seconds?: number | null;
+  cluster_id?: string | null;
 }
 
 export interface ATSCommand {
@@ -249,6 +266,7 @@ export interface AlertFilterParams {
   room?: string;
   devices?: string[];
   device?: string;
+  cluster_id?: string;
   severity?: string;
   status?: string;
   start_time?: string;
@@ -350,4 +368,76 @@ export interface SchedulePreviewResponse {
   next_runs?: string[] | null;
   error?: string | null;
 }
+
+// ==========================================
+// CLUSTERS & MEMBERSHIPS (Multi-Cluster System)
+// ==========================================
+
+export interface Cluster {
+  id: string;
+  name: string;
+  description?: string | null;
+  location?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+  created_by?: string | null;
+  device_count: number;
+  room_count: number;
+  member_count: number;
+}
+
+export interface ClusterDetail extends Cluster {
+  members: Membership[];
+  devices: DeviceResponse[];
+  rooms: RoomResponse[];
+  permissions: Record<string, Record<string, boolean>>;
+}
+
+export interface ClusterListResponse {
+  items: Cluster[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ClusterCreatePayload {
+  name: string;
+  description?: string;
+  location?: string;
+}
+
+export interface ClusterUpdatePayload {
+  name?: string;
+  description?: string;
+  location?: string;
+  is_active?: boolean;
+}
+
+export interface Membership {
+  id: string;
+  user_id: string;
+  username?: string;
+  display_name?: string;
+  cluster_id: string;
+  cluster_name?: string;
+  role: 'admin' | 'operator' | 'viewer';
+  created_at: string;
+}
+
+export interface MembershipCreatePayload {
+  user_id: string;
+  cluster_id: string;
+  role: 'admin' | 'operator' | 'viewer';
+}
+
+export interface MembershipUpdatePayload {
+  role: 'admin' | 'operator' | 'viewer';
+}
+
+export interface ClusterPermissionMatrix {
+  cluster_id: string;
+  permissions: Record<string, Record<string, boolean>>;
+}
+
 

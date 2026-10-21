@@ -5,7 +5,7 @@ export const queryKeys = {
   },
   devices: {
     all: ['devices'] as const,
-    list: (status?: string, dev_type?: string) => [...queryKeys.devices.all, 'list', { status, dev_type }] as const,
+    list: (status?: string, dev_type?: string, cluster_id?: string) => [...queryKeys.devices.all, 'list', { status, dev_type, cluster_id }] as const,
     detail: (id: string) => [...queryKeys.devices.all, 'detail', id] as const,
     history: (id: string, range?: string) => [...queryKeys.devices.all, 'history', id, { range }] as const,
     pending: () => [...queryKeys.devices.all, 'pending'] as const,
@@ -13,7 +13,7 @@ export const queryKeys = {
   },
   rooms: {
     all: ['rooms'] as const,
-    list: () => [...queryKeys.rooms.all, 'list'] as const,
+    list: (cluster_id?: string) => [...queryKeys.rooms.all, 'list', { cluster_id }] as const,
     detail: (id: string) => [...queryKeys.rooms.all, 'detail', id] as const,
     map: (id: string) => [...queryKeys.rooms.all, 'map', id] as const,
     sparklines: (range = '6h', maxPoints = 24) => ['rooms', 'sparklines', range, maxPoints] as const,
@@ -21,6 +21,13 @@ export const queryKeys = {
   alerts: {
     all: ['alerts'] as const,
     list: (filters?: Record<string, unknown>) => [...queryKeys.alerts.all, 'list', filters] as const,
+  },
+  clusters: {
+    all: ['clusters'] as const,
+    list: (params?: Record<string, unknown>) => [...queryKeys.clusters.all, 'list', params] as const,
+    detail: (id: string) => [...queryKeys.clusters.all, 'detail', id] as const,
+    members: (id: string) => [...queryKeys.clusters.all, 'members', id] as const,
+    permissions: (id: string) => [...queryKeys.clusters.all, 'permissions', id] as const,
   },
   hubs: {
     all: ['hubs'] as const,

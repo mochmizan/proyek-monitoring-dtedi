@@ -14,7 +14,14 @@ import {
 import { cn } from '../lib/utils';
 import { z } from 'zod';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchRooms, fetchDevices, fetchAlerts, fetchRoomSparklines } from '../lib/api';
+import {
+  fetchRooms,
+  fetchDevices,
+  fetchAlerts,
+  fetchRoomSparklines,
+  fetchCurrentUser,
+  fetchClusters,
+} from '../lib/api';
 import {
   POLL_TIER2_ALERTS_MS,
   STALE_TIER2_ALERTS_MS,
@@ -33,6 +40,7 @@ import { StatusDot } from '../components/StatusDot';
 const dashboardSearchSchema = z.object({
   sortBy: z.enum(['name', 'type', 'room', 'devId', 'status', 'created']).optional().catch('name'),
   sortOrder: z.enum(['asc', 'desc']).optional().catch('asc'),
+  cluster: z.string().optional(),
 });
 
 export const Route = createFileRoute('/')({
@@ -41,12 +49,25 @@ export const Route = createFileRoute('/')({
 });
 
 function DashboardPage() {
-  const navigate = useNavigate();
-  const { sortBy, sortOrder } = Route.useSearch();
+  const navigate = useNavigate({ from: '/' });
+  const { sortBy, sortOrder, cluster } = Route.useSearch();
+
+  const { data: currentUser } = useQuery({
+    queryKey: queryKeys.auth.me(),
+    queryFn: fetchCurrentUser,
+  });
+
+  const isRoot = currentUser?.role === 'root';
+
+  const { data: clustersData } = useQuery({
+    queryKey: queryKeys.clusters.list(),
+    queryFn: () => fetchClusters({ page_size: 100 }),
+    enabled: isRoot,
+  });
 
   const { data: rooms = [], status: roomsStatus } = useQuery({
-    queryKey: queryKeys.rooms.list(),
-    queryFn: fetchRooms,
+    queryKey: queryKeys.rooms.list(cluster),
+    queryFn: () => fetchRooms(cluster),
     refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
@@ -54,8 +75,8 @@ function DashboardPage() {
   });
 
   const { data: devices = [] } = useQuery({
-    queryKey: queryKeys.devices.list('all'),
-    queryFn: () => fetchDevices('all'),
+    queryKey: queryKeys.devices.list('all', undefined, cluster),
+    queryFn: () => fetchDevices('all', undefined, cluster),
     refetchInterval: () => getJitteredInterval(POLL_TIER3_PRESENCE_MS),
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
@@ -63,8 +84,8 @@ function DashboardPage() {
   });
 
   const { data: alertsData } = useQuery({
-    queryKey: queryKeys.alerts.list({ limit: 100 }),
-    queryFn: () => fetchAlerts({ limit: 100 }),
+    queryKey: queryKeys.alerts.list({ limit: 100, cluster_id: cluster }),
+    queryFn: () => fetchAlerts({ limit: 100, cluster_id: cluster }),
     refetchInterval: () => getJitteredInterval(POLL_TIER2_ALERTS_MS),
     refetchIntervalInBackground: false,
     placeholderData: keepPreviousData,
@@ -180,6 +201,59 @@ function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      {/* Cluster Context Banner */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+            <Layers className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              {isRoot ? 'Tampilan Multi-Cluster' : 'Cluster Monitoring Terhubung'}
+              {isRoot && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  ROOT
+                </span>
+              )}
+            </h2>
+            <p className="text-xs text-zinc-400">
+              {isRoot
+                ? cluster
+                  ? `Menampilkan data untuk cluster: ${clustersData?.items.find((c) => c.id === cluster)?.name || cluster}`
+                  : 'Menampilkan data dari seluruh cluster lokasi (Global View)'
+                : currentUser?.cluster_memberships && currentUser.cluster_memberships.length > 0
+                ? currentUser.cluster_memberships.map((m) => `${m.cluster_name} (${m.role})`).join(', ')
+                : 'Belum ditugaskan ke cluster'}
+            </p>
+          </div>
+        </div>
+
+        {isRoot && clustersData?.items && clustersData.items.length > 0 && (
+          <div className="flex items-center gap-2 self-stretch sm:self-auto">
+            <label className="text-xs text-zinc-400 whitespace-nowrap">Filter Cluster:</label>
+            <select
+              value={cluster || ''}
+              onChange={(e) => {
+                navigate({
+                  search: (prev) => ({
+                    ...prev,
+                    cluster: e.target.value || undefined,
+                  }),
+                });
+              }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Semua Cluster Lokasi</option>
+              {clustersData.items.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
       {/* Overview stats bar */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 flex items-center justify-between">

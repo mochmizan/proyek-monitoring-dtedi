@@ -32,6 +32,15 @@ import type {
   ScheduleCreate,
   ScheduleUpdate,
   SchedulePreviewResponse,
+  Cluster,
+  ClusterDetail,
+  ClusterListResponse,
+  ClusterCreatePayload,
+  ClusterUpdatePayload,
+  Membership,
+  MembershipCreatePayload,
+  MembershipUpdatePayload,
+  ClusterPermissionMatrix,
 } from '../types/api';
 
 export class ApiError extends Error {
@@ -235,6 +244,7 @@ export async function fetchAdminUsers(params?: AdminUserListParams): Promise<Use
   const url = new URL(`${BASE}/api/admin/users`, window.location.origin);
   if (params?.search) url.searchParams.set('search', params.search);
   if (params?.role) url.searchParams.set('role', params.role);
+  if (params?.cluster_id) url.searchParams.set('cluster_id', params.cluster_id);
   if (typeof params?.is_active === 'boolean') url.searchParams.set('is_active', String(params.is_active));
   url.searchParams.set('page', String(params?.page ?? 1));
   url.searchParams.set('page_size', String(params?.page_size ?? 10));
@@ -319,8 +329,11 @@ export async function getActivityLogs(params?: ActivityLogsParams): Promise<Acti
 // Rooms API
 // ----------------------------------------------------
 
-export async function fetchRooms(): Promise<RoomResponse[]> {
-  const res = await apiFetch(`${BASE}/api/rooms`);
+export async function fetchRooms(clusterId?: string | unknown): Promise<RoomResponse[]> {
+  const cId = typeof clusterId === 'string' ? clusterId : undefined;
+  const url = new URL(`${BASE}/api/rooms`, window.location.origin);
+  if (cId) url.searchParams.set('cluster_id', cId);
+  const res = await apiFetch(url.toString());
   return handleResponse<RoomResponse[]>(res);
 }
 
@@ -377,13 +390,21 @@ export async function fetchRoomSparklines(range = '6h', maxPoints = 24): Promise
 // Devices & Pairing API
 // ----------------------------------------------------
 
-export async function fetchDevices(status?: 'pending' | 'active' | 'all', dev_type?: string): Promise<DeviceResponse[]> {
+export async function fetchDevices(
+  status?: 'pending' | 'active' | 'all' | unknown,
+  dev_type?: string,
+  clusterId?: string
+): Promise<DeviceResponse[]> {
+  const st = typeof status === 'string' ? status : undefined;
   const url = new URL(`${BASE}/api/devices`, window.location.origin);
-  if (status) {
-    url.searchParams.set('status', status);
+  if (st) {
+    url.searchParams.set('status', st);
   }
   if (dev_type) {
     url.searchParams.set('dev_type', dev_type);
+  }
+  if (clusterId) {
+    url.searchParams.set('cluster_id', clusterId);
   }
   const res = await apiFetch(url.toString());
   return handleResponse<DeviceResponse[]>(res);
@@ -457,6 +478,9 @@ export async function fetchAlerts(params?: AlertFilterParams): Promise<AlertList
     }
     if (params.device) {
       url.searchParams.set('device', params.device);
+    }
+    if (params.cluster_id) {
+      url.searchParams.set('cluster_id', params.cluster_id);
     }
     if (params.severity && params.severity !== 'all' && params.severity !== 'All') {
       url.searchParams.set('severity', params.severity.toLowerCase());
@@ -575,3 +599,91 @@ export async function previewScheduleCron(cronExpr: string, tz?: string): Promis
   const res = await apiFetch(url.toString());
   return handleResponse<SchedulePreviewResponse>(res);
 }
+
+// ----------------------------------------------------
+// Clusters & Memberships API
+// ----------------------------------------------------
+
+export async function fetchClusters(params?: { page?: number; page_size?: number; is_active?: boolean }): Promise<ClusterListResponse> {
+  const url = new URL(`${BASE}/api/clusters`, window.location.origin);
+  if (params?.page !== undefined) url.searchParams.set('page', String(params.page));
+  if (params?.page_size !== undefined) url.searchParams.set('page_size', String(params.page_size));
+  if (params?.is_active !== undefined) url.searchParams.set('is_active', String(params.is_active));
+  const res = await apiFetch(url.toString());
+  return handleResponse<ClusterListResponse>(res);
+}
+
+export async function fetchCluster(clusterId: string): Promise<ClusterDetail> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}`);
+  return handleResponse<ClusterDetail>(res);
+}
+
+export async function createCluster(payload: ClusterCreatePayload): Promise<Cluster> {
+  const res = await apiFetch(`${BASE}/api/clusters`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Cluster>(res);
+}
+
+export async function updateCluster(clusterId: string, payload: ClusterUpdatePayload): Promise<Cluster> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Cluster>(res);
+}
+
+export async function deleteCluster(clusterId: string): Promise<{ status: string; id: string }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}`, {
+    method: 'DELETE',
+  });
+  return handleResponse<{ status: string; id: string }>(res);
+}
+
+export async function fetchClusterMembers(clusterId: string): Promise<Membership[]> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/members`);
+  return handleResponse<Membership[]>(res);
+}
+
+export async function addClusterMember(payload: MembershipCreatePayload): Promise<Membership> {
+  const res = await apiFetch(`${BASE}/api/memberships`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Membership>(res);
+}
+
+export async function updateClusterMemberRole(membershipId: string, payload: MembershipUpdatePayload): Promise<Membership> {
+  const res = await apiFetch(`${BASE}/api/memberships/${encodeURIComponent(membershipId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Membership>(res);
+}
+
+export async function removeClusterMember(membershipId: string): Promise<{ status: string; id: string }> {
+  const res = await apiFetch(`${BASE}/api/memberships/${encodeURIComponent(membershipId)}`, {
+    method: 'DELETE',
+  });
+  return handleResponse<{ status: string; id: string }>(res);
+}
+
+export async function fetchClusterPermissions(clusterId: string): Promise<ClusterPermissionMatrix> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/permissions`);
+  return handleResponse<ClusterPermissionMatrix>(res);
+}
+
+export async function updateClusterRolePermissions(clusterId: string, role: string, permissions: Record<string, boolean>): Promise<{ status: string }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/permissions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role, permissions }),
+  });
+  return handleResponse<{ status: string }>(res);
+}
+

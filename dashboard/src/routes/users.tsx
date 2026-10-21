@@ -23,16 +23,18 @@ import {
   resetAdminUserPassword,
   revokeAdminUserSessions,
   deleteAdminUser,
+  fetchCurrentUser,
+  fetchClusters,
   ApiError,
 } from '../lib/api';
-import type { UserResponse, UserRole } from '../types/api';
+import type { UserResponse, UserRole, Cluster } from '../types/api';
 
 export const Route = createFileRoute('/users')({
   beforeLoad: ({ context }) => {
     const user =
       (context as { user?: UserResponse }).user ??
       context.queryClient.getQueryData<UserResponse>(queryKeys.auth.me());
-    if (!user || user.role !== 'admin') {
+    if (!user || (user.role !== 'admin' && user.role !== 'root')) {
       throw redirect({ to: '/' });
     }
   },
@@ -62,7 +64,22 @@ function UserManagementPage() {
     username: '',
     display_name: '',
     role: 'viewer' as UserRole,
+    cluster_id: '',
+    cluster_role: 'viewer' as 'admin' | 'operator' | 'viewer',
   });
+
+  const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [clusterFilter, setClusterFilter] = useState('');
+
+  useEffect(() => {
+    fetchCurrentUser().then((u) => {
+      setCurrentUser(u);
+      if (u?.role === 'root') {
+        fetchClusters({ page_size: 100 }).then((res) => setClusters(res.items)).catch(() => {});
+      }
+    });
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -73,6 +90,7 @@ function UserManagementPage() {
         page_size: pageSize,
         search: search || undefined,
         role: roleFilter || undefined,
+        cluster_id: clusterFilter || undefined,
         is_active: statusFilter === '' ? undefined : statusFilter === 'true',
       });
       setUsers(data.items);
@@ -85,7 +103,7 @@ function UserManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, roleFilter, statusFilter]);
+  }, [page, pageSize, search, roleFilter, statusFilter, clusterFilter]);
 
   useEffect(() => {
     fetchUsers();
@@ -96,7 +114,7 @@ function UserManagementPage() {
     try {
       const data = await createAdminUser(formData);
       setShowAddModal(false);
-      setFormData({ username: '', display_name: '', role: 'viewer' });
+      setFormData({ username: '', display_name: '', role: 'viewer', cluster_id: '', cluster_role: 'viewer' });
       fetchUsers();
 
       if (!data.temp_password) {
@@ -135,7 +153,7 @@ function UserManagementPage() {
       alert('Role Admin tidak dapat diubah lewat halaman ini.');
       return;
     }
-    const roleLabel: Record<UserRole, string> = { admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
+    const roleLabel: Record<UserRole, string> = { root: 'Root Super Admin', admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
     if (!confirm(`Ubah role ${user.username} dari ${roleLabel[user.role]} menjadi ${roleLabel[newRole]}?`)) return;
     try {
       await updateAdminUser(user.id, { role: newRole });
@@ -262,6 +280,23 @@ function UserManagementPage() {
           <option value="true">Aktif</option>
           <option value="false">Nonaktif</option>
         </select>
+        {currentUser?.role === 'root' && (
+          <select
+            value={clusterFilter}
+            onChange={(e) => {
+              setPage(1);
+              setClusterFilter(e.target.value);
+            }}
+            className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 text-zinc-300"
+          >
+            <option value="">Semua Cluster</option>
+            {clusters.map((c) => (
+              <option key={c.id} value={c.id}>
+                Cluster: {c.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
@@ -271,6 +306,7 @@ function UserManagementPage() {
               <tr>
                 <th className="p-4">Pengguna</th>
                 <th className="p-4">Role</th>
+                <th className="p-4">Cluster / Lokasi</th>
                 <th className="p-4">Status Akun</th>
                 <th className="p-4">Sesi</th>
                 <th className="p-4">Login Terakhir</th>
@@ -299,23 +335,45 @@ function UserManagementPage() {
                       <div className="text-xs text-zinc-500">@{u.username}</div>
                     </td>
                     <td className="p-4">
-                      <select
-                        value={u.role}
-                        onChange={(e) => handleChangeRole(u, e.target.value as UserRole)}
-                        disabled={u.role === 'admin'}
-                        title={u.role === 'admin' ? 'Role Admin tidak dapat diubah lewat sini' : undefined}
-                        className={`px-2.5 py-1 rounded-md text-xs font-semibold capitalize border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
-                          u.role === 'admin'
-                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/30 cursor-not-allowed opacity-70'
-                            : u.role === 'operator'
-                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 cursor-pointer'
-                            : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30 cursor-pointer'
-                        }`}
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="operator">Operator</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
+                      {u.role === 'root' ? (
+                        <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Root Super Admin
+                        </span>
+                      ) : (
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleChangeRole(u, e.target.value as UserRole)}
+                          disabled={u.role === 'admin' && currentUser?.role !== 'root'}
+                          title={u.role === 'admin' && currentUser?.role !== 'root' ? 'Role Admin tidak dapat diubah lewat sini' : undefined}
+                          className={`px-2.5 py-1 rounded-md text-xs font-semibold capitalize border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                            u.role === 'admin'
+                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                              : u.role === 'operator'
+                              ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 cursor-pointer'
+                              : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30 cursor-pointer'
+                          }`}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="operator">Operator</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {u.cluster_memberships && u.cluster_memberships.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {u.cluster_memberships.map((m) => (
+                            <span
+                              key={m.cluster_id}
+                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-800 border border-zinc-700 text-zinc-300"
+                            >
+                              {m.cluster_name} ({m.role})
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-zinc-500">—</span>
+                      )}
                     </td>
                     <td className="p-4">
                       <button
@@ -406,7 +464,7 @@ function UserManagementPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-500 mb-1">Role</label>
+                <label className="block text-xs font-medium text-zinc-500 mb-1">Role Sistem</label>
                 <select
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}
@@ -417,6 +475,23 @@ function UserManagementPage() {
                   <option value="admin">Admin (Akses Penuh Management)</option>
                 </select>
               </div>
+              {currentUser?.role === 'root' && (
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Tugaskan ke Cluster (Opsional)</label>
+                  <select
+                    value={formData.cluster_id}
+                    onChange={(e) => setFormData({ ...formData, cluster_id: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 text-zinc-300"
+                  >
+                    <option value="">-- Tanpa Cluster Awal --</option>
+                    {clusters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
