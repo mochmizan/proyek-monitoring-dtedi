@@ -37,21 +37,35 @@ class ATSData(IotDataBase):
     PLN: float
     GENSET: float
     AKI: float
-    REM_HOUR: float
-    REM_MIN: float
-    REM_SEC: float
     AUTO_MODE: bool
     EMERGENCY: bool
+
+    #Legacy columns, sudah tidak digunakan lagi, tapi tetap disimpan untuk kompatibilitas dengan database lama
+    REM_HOUR: Optional[float] = None
+    REM_MIN: Optional[float] = None
+    REM_SEC: Optional[float] = None
+
+    #Columns baru untuk ATS v5
+    PLN_RELAY: bool = False
+    GEN_RELAY: bool = False
+    ALARM: bool = False
+    WARMUP: bool = False
 
 
 class ATSCommand(BaseModel):
     mode: Optional[Literal["auto", "manual"]] = None
     start_genset: Optional[Literal["on", "off"]] = None
     reset: Optional[Literal["rst"]] = None
+    warmup: Optional[Literal["on", "off"]] = None #Command untuk mengaktifkan/deaktifkan mode warmup genset
 
     @model_validator(mode="after")
     def check_at_least_one(self) -> "ATSCommand":
-        if self.mode is None and self.start_genset is None and self.reset is None:
+        if (
+            self.mode is None
+            and self.start_genset is None
+            and self.reset is None
+            and self.warmup is None
+        ):
             raise ValueError("At least one of mode, start_genset, or reset must be provided.")
         return self
 
@@ -127,8 +141,16 @@ class TSData(IotDataBase):
 
 class ACCData(IotDataBase):
     DEV_TYPE: Literal["ACC"]
-    IS_AC1_ON: bool
-    IS_AC2_ON: bool
+    AC1_POWER: str
+    AC1_TEMP: float
+    AC2_POWER: str
+    AC2_TEMP: float
+
+    IS_AC1_ON: Optional[str] = "OFF"
+    IS_AC2_ON: Optional[str] = "OFF"
+
+    TEMP: Optional[float] = Field(default=None)
+    HUMID: Optional[float] = Field(default=None)
 
 
 class ACData(IotDataBase):
