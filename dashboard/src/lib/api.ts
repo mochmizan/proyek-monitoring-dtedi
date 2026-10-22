@@ -41,6 +41,9 @@ import type {
   MembershipCreatePayload,
   MembershipUpdatePayload,
   ClusterPermissionMatrix,
+  PermissionDefinition,
+  PermissionAuditLogItem,
+  ClusterPermissionCopyPayload,
 } from '../types/api';
 
 export class ApiError extends Error {
@@ -686,4 +689,33 @@ export async function updateClusterRolePermissions(clusterId: string, role: stri
   });
   return handleResponse<{ status: string }>(res);
 }
+
+export async function copyClusterPermissions(clusterId: string, sourceClusterId: string): Promise<{ status: string; copied_count: number }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/permissions/copy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_cluster_id: sourceClusterId }),
+  });
+  return handleResponse<{ status: string; copied_count: number }>(res);
+}
+
+export async function resetClusterPermissions(clusterId: string): Promise<{ status: string; message: string }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/permissions/reset`, {
+    method: 'POST',
+  });
+  return handleResponse<{ status: string; message: string }>(res);
+}
+
+export async function fetchPermissionAuditLogs(clusterId: string, limit: number = 50): Promise<PermissionAuditLogItem[]> {
+  const url = new URL(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/permissions/audit-logs`, window.location.origin);
+  if (limit) url.searchParams.set('limit', String(limit));
+  const res = await apiFetch(url.toString());
+  return handleResponse<PermissionAuditLogItem[]>(res);
+}
+
+export async function fetchPermissionDefinitions(): Promise<PermissionDefinition[]> {
+  const res = await apiFetch(`${BASE}/api/permissions`);
+  return handleResponse<PermissionDefinition[]>(res);
+}
+
 

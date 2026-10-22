@@ -1,4 +1,4 @@
-export type UserRole = 'root' | 'admin' | 'operator' | 'viewer';
+export type UserRole = 'super_admin' | 'root' | 'admin' | 'operator' | 'viewer';
 
 export interface UserClusterMembershipInfo {
   cluster_id: string;
@@ -437,7 +437,33 @@ export interface MembershipUpdatePayload {
 
 export interface ClusterPermissionMatrix {
   cluster_id: string;
+  cluster_name?: string;
   permissions: Record<string, Record<string, boolean>>;
+}
+
+export interface PermissionDefinition {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+}
+
+export interface PermissionAuditLogItem {
+  id: string;
+  cluster_id: string;
+  cluster_name: string;
+  changed_by_user_id: string;
+  changed_by_username: string;
+  target_role: string;
+  permission_key: string;
+  old_value: boolean;
+  new_value: boolean;
+  created_at: string;
+}
+
+export interface ClusterPermissionCopyPayload {
+  source_cluster_id: string;
 }
 
 

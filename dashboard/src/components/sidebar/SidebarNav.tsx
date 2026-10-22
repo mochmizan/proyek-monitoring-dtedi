@@ -73,13 +73,13 @@ export function SidebarNav({
       to: '/clusters',
       label: 'Clusters',
       icon: Layers,
-      visible: role === 'root',
+      visible: role === 'super_admin' || role === 'root',
     },
     {
       to: '/schedules',
       label: 'Schedules',
       icon: CalendarClock,
-      visible: role === 'admin' || role === 'operator' || role === 'root',
+      visible: role === 'super_admin' || role === 'root' || role === 'admin' || role === 'operator',
     },
     {
       to: '/users',

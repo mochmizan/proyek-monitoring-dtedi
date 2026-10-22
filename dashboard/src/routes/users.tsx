@@ -34,7 +34,7 @@ export const Route = createFileRoute('/users')({
     const user =
       (context as { user?: UserResponse }).user ??
       context.queryClient.getQueryData<UserResponse>(queryKeys.auth.me());
-    if (!user || (user.role !== 'admin' && user.role !== 'root')) {
+    if (!user || (user.role !== 'admin' && user.role !== 'root' && user.role !== 'super_admin')) {
       throw redirect({ to: '/' });
     }
   },
@@ -75,7 +75,7 @@ function UserManagementPage() {
   useEffect(() => {
     fetchCurrentUser().then((u) => {
       setCurrentUser(u);
-      if (u?.role === 'root') {
+      if (u?.role === 'root' || u?.role === 'super_admin') {
         fetchClusters({ page_size: 100 }).then((res) => setClusters(res.items)).catch(() => {});
       }
     });
