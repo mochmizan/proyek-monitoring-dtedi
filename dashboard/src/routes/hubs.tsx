@@ -152,7 +152,8 @@ function HubsPage() {
     queryFn: fetchCurrentUser,
     staleTime: 60000,
   });
-  const isAdmin = (currentUser?.role || 'viewer') === 'admin';
+  const role = currentUser?.role || 'viewer';
+  const isAdmin = role === 'admin' || role === 'root' || role === 'super_admin';
 
   const {
     data: hubs = [],

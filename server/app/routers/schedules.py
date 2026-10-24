@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from databasev5 import get_db
 from modelsv5 import User, dev_table, hub_table, schedules
 from schemasv5 import ACCommand, ATSCommand
-from auth import get_current_user, require_role
+from auth import get_current_user, require_role, get_user_cluster_ids
 from app.core.rate_limit import limiter
 from app.core.csrf import validate_csrf_request
 from app.services.scheduler import (
@@ -187,7 +187,7 @@ def create_schedule(
     request: Request,
     body: ScheduleCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     # Validate payload whitelist
     validated_payload = _validate_payload(body.payload)
@@ -202,6 +202,10 @@ def create_schedule(
     device = db.get(dev_table, body.dev_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    if current_user.role != "root" and device.cluster_id:
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters and device.cluster_id not in user_clusters:
+            raise HTTPException(status_code=403, detail="Akses ditolak: Perangkat berada di luar cluster Anda")
     # Validate hub if provided
     hub_id = body.hub_id or device.hub_id
     if hub_id:
@@ -262,6 +266,10 @@ def list_schedules(
     current_user: User = Depends(get_current_user),
 ):
     q = db.query(schedules)
+    if current_user.role != "root":
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters:
+            q = q.join(dev_table, schedules.dev_id == dev_table.dev_id).filter(dev_table.cluster_id.in_(user_clusters))
     if hub_id is not None:
         q = q.filter(schedules.hub_id == hub_id)
     if dev_id is not None:
@@ -283,6 +291,12 @@ def get_schedule(
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    if current_user.role != "root":
+        device = db.get(dev_table, obj.dev_id)
+        if device and device.cluster_id:
+            user_clusters = get_user_cluster_ids(current_user, db)
+            if device.cluster_id not in user_clusters:
+                raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki akses ke jadwal ini")
     return _to_response(obj)
 
 
@@ -293,11 +307,17 @@ def update_schedule(
     schedule_id: str,
     body: ScheduleUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    if current_user.role != "root":
+        device = db.get(dev_table, obj.dev_id)
+        if device and device.cluster_id:
+            user_clusters = get_user_cluster_ids(current_user, db)
+            if device.cluster_id not in user_clusters:
+                raise HTTPException(status_code=403, detail="Akses ditolak: Jadwal berada di luar cluster Anda")
 
     updates = body.model_dump(exclude_unset=True)
     # Validate payload if present
@@ -367,11 +387,17 @@ def delete_schedule(
     request: Request,
     schedule_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    if current_user.role != "root":
+        device = db.get(dev_table, obj.dev_id)
+        if device and device.cluster_id:
+            user_clusters = get_user_cluster_ids(current_user, db)
+            if device.cluster_id not in user_clusters:
+                raise HTTPException(status_code=403, detail="Akses ditolak: Jadwal berada di luar cluster Anda")
     sched_dev_id = obj.dev_id
     sched_cron = obj.cron_expr
     db.delete(obj)
@@ -398,11 +424,17 @@ def run_schedule_now(
     request: Request,
     schedule_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     obj = db.get(schedules, schedule_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    if current_user.role != "root":
+        device = db.get(dev_table, obj.dev_id)
+        if device and device.cluster_id:
+            user_clusters = get_user_cluster_ids(current_user, db)
+            if device.cluster_id not in user_clusters:
+                raise HTTPException(status_code=403, detail="Akses ditolak: Jadwal berada di luar cluster Anda")
     # Fire immediately (insert pending_commands)
     try:
         fire_schedule(schedule_id)

@@ -373,6 +373,21 @@ export interface SchedulePreviewResponse {
 // CLUSTERS & MEMBERSHIPS (Multi-Cluster System)
 // ==========================================
 
+export interface ClusterRoomSummary {
+  id: string;
+  name: string;
+  device_count?: number;
+}
+
+export interface ClusterDeviceSummary {
+  dev_id: string;
+  dev_name: string;
+  dev_type: string;
+  is_active: boolean;
+  room_id?: string | null;
+  room_name?: string | null;
+}
+
 export interface Cluster {
   id: string;
   name: string;
@@ -385,12 +400,32 @@ export interface Cluster {
   device_count: number;
   room_count: number;
   member_count: number;
+  rooms?: ClusterRoomSummary[];
+  devices?: ClusterDeviceSummary[];
+}
+
+export interface UnassignedClusterResources {
+  rooms: { id: string; name: string }[];
+  devices: { dev_id: string; dev_name: string; dev_type: string; is_active: boolean }[];
+}
+
+export interface ClusterRoomCreatePayload {
+  name: string;
+}
+
+export interface ClusterRoomUpdatePayload {
+  name: string;
+}
+
+export interface ClusterDeviceUpdatePayload {
+  dev_name?: string;
+  room_id?: string | null;
 }
 
 export interface ClusterDetail extends Cluster {
   members: Membership[];
-  devices: DeviceResponse[];
-  rooms: RoomResponse[];
+  devices: any[];
+  rooms: any[];
   permissions: Record<string, Record<string, boolean>>;
 }
 

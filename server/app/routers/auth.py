@@ -96,6 +96,17 @@ def login(
         max_age=7200,
     )
 
+    # Auto-heal legacy or errant 'member' role in DB
+    if user.role == "member":
+        from modelsv5 import UserClusterMembership
+        mem = db.query(UserClusterMembership).filter(UserClusterMembership.user_id == user.id).first()
+        if mem and mem.role in ("admin", "operator", "viewer"):
+            user.role = mem.role
+        else:
+            user.role = "viewer"
+        db.commit()
+        db.refresh(user)
+
     return UserResponse.model_validate(user)
 
 
@@ -151,8 +162,39 @@ def get_csrf_token(
 @router.get("/api/auth/me", response_model=UserResponse)
 def get_me(
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    return UserResponse.model_validate(current_user)
+    # Auto-heal legacy or errant 'member' role in DB
+    if current_user.role == "member":
+        from modelsv5 import UserClusterMembership
+        mem = db.query(UserClusterMembership).filter(UserClusterMembership.user_id == current_user.id).first()
+        if mem and mem.role in ("admin", "operator", "viewer"):
+            current_user.role = mem.role
+        else:
+            current_user.role = "viewer"
+        db.commit()
+        db.refresh(current_user)
+
+    user_res = UserResponse.model_validate(current_user)
+    if current_user.role != "root":
+        from modelsv5 import UserClusterMembership, Cluster
+        memberships = (
+            db.query(UserClusterMembership, Cluster.name)
+            .join(Cluster, UserClusterMembership.cluster_id == Cluster.id)
+            .filter(UserClusterMembership.user_id == current_user.id)
+            .all()
+        )
+        user_res.cluster_memberships = [
+            {
+                "cluster_id": m[0].cluster_id,
+                "cluster_name": m[1],
+                "role": m[0].role
+            }
+            for m in memberships
+        ]
+    else:
+        user_res.cluster_memberships = []
+    return user_res
 
 
 # Tambahan: Endpoint Ganti Password Mandiri

@@ -3,12 +3,13 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from databasev5 import get_db
 from modelsv5 import User, dev_table, event_log, rooms
 from schemasv5 import AlertListResponse, AlertResponse
-from auth import get_current_user
+from auth import get_current_user, get_user_cluster_ids
 from app.core.rate_limit import limiter
 
 router = APIRouter(tags=["alerts"])
@@ -41,6 +42,7 @@ def get_alerts(
     room_param: Optional[str] = Query(None, alias="room"),
     devices_param: Optional[list[str]] = Query(None, alias="devices"),
     device_param: Optional[str] = Query(None, alias="device"),
+    cluster_filter: Optional[str] = Query(None, alias="cluster_id"),
     severity: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
     start_time: Optional[str] = Query(None),
@@ -59,6 +61,23 @@ def get_alerts(
         .outerjoin(dev_table, event_log.dev_id == dev_table.dev_id)
         .outerjoin(rooms, event_log.room_id == rooms.id)
     )
+
+    # Scoping by cluster
+    if current_user.role != "root":
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters:
+            if cluster_filter:
+                if cluster_filter not in user_clusters:
+                    return AlertListResponse(total=0, alerts=[])
+                query = query.filter(or_(dev_table.cluster_id == cluster_filter, rooms.cluster_id == cluster_filter))
+            else:
+                query = query.filter(or_(dev_table.cluster_id.in_(user_clusters), rooms.cluster_id.in_(user_clusters)))
+        else:
+            if cluster_filter:
+                query = query.filter(or_(dev_table.cluster_id == cluster_filter, rooms.cluster_id == cluster_filter))
+    else:
+        if cluster_filter:
+            query = query.filter(or_(dev_table.cluster_id == cluster_filter, rooms.cluster_id == cluster_filter))
 
     parsed_rooms = []
     if rooms_param:

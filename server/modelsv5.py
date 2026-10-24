@@ -37,9 +37,13 @@ class rooms(Base):
     floor_plan_image_path = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
+    # Cluster assignment (Cluster-Based Access Control)
+    cluster_id = Column(String, ForeignKey("clusters.id", ondelete="SET NULL"), nullable=True)
+
     # Relationships
     hub = relationship("hub_table", backref="assigned_rooms")
     devices = relationship("dev_table", back_populates="room")
+    cluster = relationship("Cluster", back_populates="rooms")
 
 
 class dev_table(Base):
@@ -61,9 +65,13 @@ class dev_table(Base):
     marker_x = Column(Float, nullable=True)
     marker_y = Column(Float, nullable=True)
 
+    # Cluster assignment (Cluster-Based Access Control)
+    cluster_id = Column(String, ForeignKey("clusters.id", ondelete="SET NULL"), nullable=True)
+
     # Relationships
     hub = relationship("hub_table", back_populates="devices")
     room = relationship("rooms", back_populates="devices")
+    cluster = relationship("Cluster", back_populates="devices")
     telemetry_data = relationship("data_table", back_populates="device", cascade="all, delete-orphan")
     temperature_records = relationship("temperature_data", back_populates="device", cascade="all, delete-orphan")
     ats_records = relationship("ats_data", back_populates="device", cascade="all, delete-orphan")
@@ -73,6 +81,7 @@ class dev_table(Base):
         Index("ix_dev_table_hub_id", "hub_id"),
         Index("ix_dev_table_room_id", "room_id"),
         Index("ix_dev_table_dev_name", "dev_name"),
+        Index("ix_dev_table_cluster_id", "cluster_id"),
     )
 
 
@@ -272,7 +281,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     display_name = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # admin or operator
+    role = Column(String, nullable=False)  # 'root' = super admin global; 'member' = scoped to cluster(s) via UserClusterMembership
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     lockout_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
@@ -365,6 +374,78 @@ class ActivityLog(Base):
 
     __table_args__ = (
         Index("ix_activity_logs_user_name_created", "user_name", "created_at"),
+    )
+
+
+class Cluster(Base):
+    """Represents a physical location/site that groups rooms, devices, and users."""
+    __tablename__ = "clusters"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, unique=True, nullable=False)
+    description = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False
+    )
+
+    # Relationships
+    memberships = relationship("UserClusterMembership", back_populates="cluster", cascade="all, delete-orphan")
+    devices = relationship("dev_table", back_populates="cluster")
+    rooms = relationship("rooms", back_populates="cluster")
+    permissions = relationship("ClusterRolePermission", back_populates="cluster", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_clusters_name", "name"),
+        Index("ix_clusters_is_active", "is_active"),
+    )
+
+
+class UserClusterMembership(Base):
+    """Maps a user to a cluster with a specific role (admin/operator/viewer)."""
+    __tablename__ = "user_cluster_memberships"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    cluster_id = Column(String, ForeignKey("clusters.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String, nullable=False)  # 'admin', 'operator', 'viewer'
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], backref="cluster_memberships")
+    cluster = relationship("Cluster", back_populates="memberships")
+    creator = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "cluster_id", name="uq_user_cluster"),
+        Index("ix_user_cluster_memberships_user_id", "user_id"),
+        Index("ix_user_cluster_memberships_cluster_id", "cluster_id"),
+    )
+
+
+class ClusterRolePermission(Base):
+    """Granular permission settings per role per cluster."""
+    __tablename__ = "cluster_role_permissions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    cluster_id = Column(String, ForeignKey("clusters.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String, nullable=False)       # 'admin', 'operator', 'viewer'
+    permission = Column(String, nullable=False)  # e.g. 'view_devices', 'control_devices'
+    granted = Column(Boolean, nullable=False, default=True)
+
+    # Relationships
+    cluster = relationship("Cluster", back_populates="permissions")
+
+    __table_args__ = (
+        UniqueConstraint("cluster_id", "role", "permission", name="uq_cluster_role_permission"),
+        Index("ix_cluster_role_permissions_cluster_role", "cluster_id", "role"),
     )
 
 

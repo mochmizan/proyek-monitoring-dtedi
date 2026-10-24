@@ -46,7 +46,7 @@ export const Route = createFileRoute('/activity-logs')({
     const user =
       (context as { user?: UserResponse }).user ??
       context.queryClient.getQueryData<UserResponse>(queryKeys.auth.me());
-    if (!user || user.role !== 'admin') {
+    if (!user || (user.role !== 'admin' && user.role !== 'root' && user.role !== 'super_admin')) {
       throw redirect({ to: '/' });
     }
   },

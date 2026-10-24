@@ -15,6 +15,10 @@ import {
   Trash2,
   UserPlus,
   ShieldCheck,
+  SlidersHorizontal,
+  Check,
+  Link as LinkIcon,
+  Unlink,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import {
@@ -29,12 +33,22 @@ import {
   fetchClusterPermissions,
   updateClusterRolePermissions,
   fetchAdminUsers,
+  fetchUnassignedClusterResources,
+  createClusterRoom,
+  updateClusterRoom,
+  deleteClusterRoom,
+  assignRoomToCluster,
+  unassignRoomFromCluster,
+  assignDeviceToCluster,
+  unassignDeviceFromCluster,
+  updateClusterDevice,
   ApiError,
 } from '../lib/api';
 import type {
   Cluster,
   Membership,
   UserResponse,
+  UnassignedClusterResources,
 } from '../types/api';
 
 export const Route = createFileRoute('/clusters')({
@@ -76,6 +90,7 @@ export function ClusterManagementPage() {
   const [editingCluster, setEditingCluster] = useState<Cluster | null>(null);
   const [membersCluster, setMembersCluster] = useState<Cluster | null>(null);
   const [permissionsCluster, setPermissionsCluster] = useState<Cluster | null>(null);
+  const [resourcesCluster, setResourcesCluster] = useState<Cluster | null>(null);
 
   // Form states
   const [formData, setFormData] = useState({ name: '', description: '', location: '' });
@@ -97,12 +112,27 @@ export function ClusterManagementPage() {
   const [permsLoading, setPermsLoading] = useState(false);
   const [activePermRole, setActivePermRole] = useState<'admin' | 'operator' | 'viewer'>('admin');
 
+  // Resources (Rooms & Devices) state
+  const [activeResourceTab, setActiveResourceTab] = useState<'rooms' | 'devices'>('rooms');
+  const [unassignedResources, setUnassignedResources] = useState<UnassignedClusterResources>({ rooms: [], devices: [] });
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [selectedAssignRoomId, setSelectedAssignRoomId] = useState('');
+  const [selectedAssignDevId, setSelectedAssignDevId] = useState('');
+  const [selectedAssignDevRoomId, setSelectedAssignDevRoomId] = useState('');
+  const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
+  const [editingRoomName, setEditingRoomName] = useState('');
+  const [editingDevId, setEditingDevId] = useState<string | null>(null);
+  const [editingDevName, setEditingDevName] = useState('');
+
   const loadClusters = useCallback(async () => {
     setLoading(true);
     setErrorMsg('');
     try {
       const res = await fetchClusters({ page_size: 100 });
       setClusters(res.items);
+      // If resources modal is currently open, refresh the selected cluster object
+      setResourcesCluster((prev) => (prev ? res.items.find((c) => c.id === prev.id) || prev : null));
     } catch (err: unknown) {
       if (err instanceof ApiError) setErrorMsg(err.message);
       else setErrorMsg('Gagal memuat data cluster');
@@ -128,6 +158,7 @@ export function ClusterManagementPage() {
       setAllUsers(usersRes.items);
     } catch (err) {
       console.error(err);
+      alert(err instanceof Error ? err.message : 'Gagal memuat anggota cluster');
     } finally {
       setMembersLoading(false);
     }
@@ -174,6 +205,144 @@ export function ClusterManagementPage() {
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Gagal mencabut anggota');
+    }
+  };
+
+  // Resources Modal (Rooms & Sensors)
+  const openResourcesModal = async (cluster: Cluster) => {
+    setResourcesCluster(cluster);
+    setResourcesLoading(true);
+    setEditingRoomId(null);
+    setEditingDevId(null);
+    try {
+      const unassigned = await fetchUnassignedClusterResources();
+      setUnassignedResources(unassigned);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setResourcesLoading(false);
+    }
+  };
+
+  const reloadResourcesData = async (clusterId: string) => {
+    setResourcesLoading(true);
+    try {
+      const [clustersRes, unassigned] = await Promise.all([
+        fetchClusters({ page_size: 100 }),
+        fetchUnassignedClusterResources(),
+      ]);
+      setClusters(clustersRes.items);
+      const updated = clustersRes.items.find((c) => c.id === clusterId);
+      if (updated) setResourcesCluster(updated);
+      setUnassignedResources(unassigned);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setResourcesLoading(false);
+    }
+  };
+
+  const handleCreateRoomInCluster = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resourcesCluster || !newRoomName.trim()) return;
+    try {
+      await createClusterRoom(resourcesCluster.id, { name: newRoomName.trim() });
+      setNewRoomName('');
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal membuat ruangan');
+    }
+  };
+
+  const handleAssignExistingRoom = async () => {
+    if (!resourcesCluster || !selectedAssignRoomId) return;
+    try {
+      await assignRoomToCluster(resourcesCluster.id, selectedAssignRoomId);
+      setSelectedAssignRoomId('');
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal menugaskan ruangan');
+    }
+  };
+
+  const handleUnassignRoom = async (roomId: string, roomName: string) => {
+    if (!resourcesCluster) return;
+    if (!confirm(`Lepas ruangan "${roomName}" dari cluster "${resourcesCluster.name}"?`)) return;
+    try {
+      await unassignRoomFromCluster(resourcesCluster.id, roomId);
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal melepas ruangan');
+    }
+  };
+
+  const handleSaveEditRoomName = async (roomId: string) => {
+    if (!resourcesCluster || !editingRoomName.trim()) return;
+    try {
+      await updateClusterRoom(resourcesCluster.id, roomId, { name: editingRoomName.trim() });
+      setEditingRoomId(null);
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal memperbarui nama ruangan');
+    }
+  };
+
+  const handleDeleteRoomInCluster = async (roomId: string, roomName: string) => {
+    if (!resourcesCluster) return;
+    if (!confirm(`Hapus permanen ruangan "${roomName}"? Pastikan tidak ada sensor yang terhubung.`)) return;
+    try {
+      await deleteClusterRoom(resourcesCluster.id, roomId);
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal menghapus ruangan');
+    }
+  };
+
+  const handleAssignDeviceToCluster = async () => {
+    if (!resourcesCluster || !selectedAssignDevId) return;
+    try {
+      await assignDeviceToCluster(
+        resourcesCluster.id,
+        selectedAssignDevId,
+        selectedAssignDevRoomId || null
+      );
+      setSelectedAssignDevId('');
+      setSelectedAssignDevRoomId('');
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal menugaskan sensor ke cluster');
+    }
+  };
+
+  const handleUnassignDevice = async (devId: string, devName: string) => {
+    if (!resourcesCluster) return;
+    if (!confirm(`Lepas sensor "${devName}" dari cluster "${resourcesCluster.name}"?`)) return;
+    try {
+      await unassignDeviceFromCluster(resourcesCluster.id, devId);
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal melepas sensor');
+    }
+  };
+
+  const handleChangeDeviceRoom = async (devId: string, roomId: string) => {
+    if (!resourcesCluster) return;
+    try {
+      await updateClusterDevice(resourcesCluster.id, devId, { room_id: roomId === 'none' ? null : roomId });
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal mengubah penugasan ruangan sensor');
+    }
+  };
+
+  const handleSaveEditDevName = async (devId: string) => {
+    if (!resourcesCluster || !editingDevName.trim()) return;
+    try {
+      await updateClusterDevice(resourcesCluster.id, devId, { dev_name: editingDevName.trim() });
+      setEditingDevId(null);
+      await reloadResourcesData(resourcesCluster.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal memperbarui nama sensor');
     }
   };
 
@@ -237,7 +406,7 @@ export function ClusterManagementPage() {
   };
 
   const handleDeleteCluster = async (cluster: Cluster) => {
-    if (!confirm(`Hapus cluster "${cluster.name}"? Ruangan dan perangkat di cluster ini akan menjadi unassigned.`)) {
+    if (!confirm(`Hapus cluster "${cluster.name}"? Pastikan tidak ada ruangan atau perangkat yang masih terhubung.`)) {
       return;
     }
     try {
@@ -274,7 +443,7 @@ export function ClusterManagementPage() {
             </span>
           </div>
           <p className="text-sm text-zinc-400 mt-1">
-            Kelola lokasi, pembagian akses pengguna, dan kontrol izin granular per cluster.
+            Kelola lokasi, pembagian akses pengguna, ruangan, dan sensor per cluster.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -372,7 +541,7 @@ export function ClusterManagementPage() {
               key={cluster.id}
               className="rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition flex flex-col justify-between p-5 space-y-4 shadow-sm"
             >
-              <div>
+              <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="font-bold text-lg text-zinc-100 truncate">{cluster.name}</h3>
@@ -395,15 +564,15 @@ export function ClusterManagementPage() {
                 </div>
 
                 {cluster.description && (
-                  <p className="text-xs text-zinc-400 mt-2.5 line-clamp-2">
+                  <p className="text-xs text-zinc-400 line-clamp-2">
                     {cluster.description}
                   </p>
                 )}
 
                 {/* Counters */}
-                <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-zinc-800/80">
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-800/80">
                   <div className="text-center p-2 rounded bg-zinc-950/50">
-                    <span className="text-[10px] uppercase font-semibold text-zinc-500 block">Device</span>
+                    <span className="text-[10px] uppercase font-semibold text-zinc-500 block">Sensor</span>
                     <span className="text-sm font-bold text-zinc-200">{cluster.device_count || 0}</span>
                   </div>
                   <div className="text-center p-2 rounded bg-zinc-950/50">
@@ -415,13 +584,84 @@ export function ClusterManagementPage() {
                     <span className="text-sm font-bold text-indigo-400">{cluster.member_count || 0}</span>
                   </div>
                 </div>
+
+                {/* Daftar Ruangan di Cluster */}
+                <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400">
+                    <span className="flex items-center gap-1">
+                      <Home className="h-3.5 w-3.5 text-amber-400" />
+                      Ruangan ({cluster.rooms?.length || 0})
+                    </span>
+                  </div>
+                  {cluster.rooms && cluster.rooms.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                      {cluster.rooms.map((r) => (
+                        <span
+                          key={r.id}
+                          className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-zinc-950 text-zinc-300 border border-zinc-800"
+                        >
+                          <Home className="h-2.5 w-2.5 text-amber-400/80" />
+                          <span>{r.name}</span>
+                          {r.device_count !== undefined && (
+                            <span className="text-[9px] text-zinc-500 font-mono">({r.device_count})</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-zinc-600 italic">Belum ada ruangan</p>
+                  )}
+                </div>
+
+                {/* Daftar Sensor / Perangkat di Cluster */}
+                <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400">
+                    <span className="flex items-center gap-1">
+                      <Cpu className="h-3.5 w-3.5 text-emerald-400" />
+                      Sensor / Perangkat ({cluster.devices?.length || 0})
+                    </span>
+                  </div>
+                  {cluster.devices && cluster.devices.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                      {cluster.devices.map((d) => (
+                        <span
+                          key={d.dev_id}
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md bg-zinc-950 text-zinc-300 border border-zinc-800"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              d.is_active ? 'bg-emerald-400' : 'bg-zinc-600'
+                            }`}
+                          />
+                          <span className="font-medium text-zinc-200">{d.dev_name || d.dev_id}</span>
+                          <span className="text-[9px] text-indigo-400 font-mono uppercase bg-indigo-950/50 px-1 rounded border border-indigo-500/20">
+                            {d.dev_type}
+                          </span>
+                          {d.room_name && (
+                            <span className="text-[9px] text-zinc-500">[{d.room_name}]</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-zinc-600 italic">Belum ada sensor</p>
+                  )}
+                </div>
               </div>
 
               {/* Actions */}
               <div className="pt-3 border-t border-zinc-800 flex items-center justify-between gap-1">
                 <button
+                  onClick={() => openResourcesModal(cluster)}
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 text-xs font-medium border border-amber-500/20 transition"
+                  title="Kelola Ruangan & Sensor Cluster"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  Ruang & Sensor
+                </button>
+                <button
                   onClick={() => openMembersModal(cluster)}
-                  className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 text-xs font-medium border border-indigo-500/20 transition"
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 text-xs font-medium border border-indigo-500/20 transition"
                   title="Kelola Pengguna Cluster"
                 >
                   <Users className="h-3.5 w-3.5" />
@@ -429,7 +669,7 @@ export function ClusterManagementPage() {
                 </button>
                 <button
                   onClick={() => openPermissionsModal(cluster)}
-                  className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition"
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition"
                   title="Matriks Izin Peran"
                 >
                   <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
@@ -525,6 +765,384 @@ export function ClusterManagementPage() {
         </div>
       )}
 
+      {/* Ruangan & Sensor Management Modal */}
+      {resourcesCluster && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl w-full max-w-3xl shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
+                  <SlidersHorizontal className="h-5 w-5 text-amber-400" />
+                  Pengaturan Ruangan & Sensor: {resourcesCluster.name}
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Tambah, edit, atau kurangi ruangan serta atur penugasan sensor pada cluster ini.
+                </p>
+              </div>
+              <button
+                onClick={() => setResourcesCluster(null)}
+                className="p-1 text-zinc-400 hover:text-zinc-200 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Tab Selector */}
+            <div className="flex border-b border-zinc-800 gap-2">
+              <button
+                onClick={() => setActiveResourceTab('rooms')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition flex items-center gap-1.5 ${
+                  activeResourceTab === 'rooms'
+                    ? 'border-amber-500 text-amber-400 font-bold'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Home className="h-4 w-4" />
+                Kelola Ruangan ({resourcesCluster.rooms?.length || 0})
+              </button>
+              <button
+                onClick={() => setActiveResourceTab('devices')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition flex items-center gap-1.5 ${
+                  activeResourceTab === 'devices'
+                    ? 'border-emerald-500 text-emerald-400 font-bold'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Cpu className="h-4 w-4" />
+                Kelola Sensor / Perangkat ({resourcesCluster.devices?.length || 0})
+              </button>
+            </div>
+
+            {/* TAB CONTENT: RUANGAN */}
+            {activeResourceTab === 'rooms' && (
+              <div className="space-y-4 flex-1 overflow-y-auto pr-1">
+                {/* 1. Tambah Ruangan Baru */}
+                <div className="bg-zinc-950/70 p-3.5 rounded-lg border border-zinc-800 space-y-3">
+                  <h4 className="text-xs font-semibold uppercase text-zinc-400 flex items-center gap-1.5">
+                    <Plus className="h-4 w-4 text-amber-400" />
+                    Tambah Ruangan ke Cluster
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Buat Ruangan Baru */}
+                    <form onSubmit={handleCreateRoomInCluster} className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        placeholder="Nama Ruangan Baru..."
+                        value={newRoomName}
+                        onChange={(e) => setNewRoomName(e.target.value)}
+                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!newRoomName.trim()}
+                        className="px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition whitespace-nowrap"
+                      >
+                        Buat Baru
+                      </button>
+                    </form>
+
+                    {/* Tugaskan Ruangan yang Belum Ada Cluster */}
+                    <div className="flex gap-2 items-center">
+                      <select
+                        value={selectedAssignRoomId}
+                        onChange={(e) => setSelectedAssignRoomId(e.target.value)}
+                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="">-- Pilih Ruangan Tanpa Cluster --</option>
+                        {unassignedResources.rooms.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleAssignExistingRoom}
+                        disabled={!selectedAssignRoomId}
+                        className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 rounded-lg text-xs font-medium transition whitespace-nowrap flex items-center gap-1"
+                      >
+                        <LinkIcon className="h-3 w-3" />
+                        Tugaskan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Daftar Ruangan di Cluster */}
+                <div className="border border-zinc-800 rounded-lg overflow-hidden">
+                  <div className="bg-zinc-950/80 px-4 py-2 border-b border-zinc-800 text-xs font-semibold text-zinc-400 uppercase">
+                    Daftar Ruangan Terdaftar
+                  </div>
+                  {resourcesLoading ? (
+                    <div className="flex justify-center p-8">
+                      <RefreshCw className="h-6 w-6 text-amber-400 animate-spin" />
+                    </div>
+                  ) : !resourcesCluster.rooms || resourcesCluster.rooms.length === 0 ? (
+                    <div className="p-8 text-center text-zinc-500 text-sm">
+                      Belum ada ruangan di cluster ini. Silakan tambahkan ruangan baru atau tugaskan ruangan yang ada di atas.
+                    </div>
+                  ) : (
+                    <table className="w-full text-left text-sm text-zinc-300">
+                      <thead className="bg-zinc-950/40 text-zinc-500 text-xs uppercase border-b border-zinc-800">
+                        <tr>
+                          <th className="py-2.5 px-4">Nama Ruangan</th>
+                          <th className="py-2.5 px-4">Jumlah Sensor</th>
+                          <th className="py-2.5 px-4 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800">
+                        {resourcesCluster.rooms.map((r) => (
+                          <tr key={r.id} className="hover:bg-zinc-800/40">
+                            <td className="py-2.5 px-4">
+                              {editingRoomId === r.id ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={editingRoomName}
+                                    onChange={(e) => setEditingRoomName(e.target.value)}
+                                    className="bg-zinc-950 border border-amber-500/60 rounded px-2 py-1 text-xs text-zinc-100"
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={() => handleSaveEditRoomName(r.id)}
+                                    className="p-1 text-emerald-400 hover:bg-zinc-800 rounded"
+                                    title="Simpan Nama"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingRoomId(null)}
+                                    className="p-1 text-zinc-500 hover:bg-zinc-800 rounded"
+                                    title="Batal"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Home className="h-4 w-4 text-amber-400/80 flex-shrink-0" />
+                                  <span className="font-medium text-zinc-100">{r.name}</span>
+                                  <button
+                                    onClick={() => {
+                                      setEditingRoomId(r.id);
+                                      setEditingRoomName(r.name);
+                                    }}
+                                    className="text-zinc-500 hover:text-zinc-300 p-0.5"
+                                    title="Edit Nama Ruangan"
+                                  >
+                                    <Edit2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4 text-xs font-mono text-zinc-400">
+                              {r.device_count ?? 0} sensor
+                            </td>
+                            <td className="py-2.5 px-4 text-right space-x-2">
+                              <button
+                                onClick={() => handleUnassignRoom(r.id, r.name)}
+                                className="inline-flex items-center gap-1 text-amber-400 hover:text-amber-300 text-xs px-2 py-1 rounded hover:bg-zinc-800 transition"
+                                title="Lepas ruangan dari cluster ini (ruangan tetap ada tapi unassigned)"
+                              >
+                                <Unlink className="h-3 w-3" />
+                                Lepas
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRoomInCluster(r.id, r.name)}
+                                disabled={(r.device_count ?? 0) > 0}
+                                className="inline-flex items-center gap-1 text-red-400 hover:text-red-300 disabled:opacity-40 text-xs px-2 py-1 rounded hover:bg-zinc-800 transition"
+                                title={(r.device_count ?? 0) > 0 ? 'Ruangan masih memiliki sensor' : 'Hapus ruangan secara permanen'}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Hapus
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: SENSOR / PERANGKAT */}
+            {activeResourceTab === 'devices' && (
+              <div className="space-y-4 flex-1 overflow-y-auto pr-1">
+                {/* 1. Tugaskan Sensor Baru */}
+                <div className="bg-zinc-950/70 p-3.5 rounded-lg border border-zinc-800 space-y-3">
+                  <h4 className="text-xs font-semibold uppercase text-zinc-400 flex items-center gap-1.5">
+                    <Plus className="h-4 w-4 text-emerald-400" />
+                    Tugaskan Sensor ke Cluster Ini
+                  </h4>
+                  <div className="flex flex-col sm:flex-row gap-2 items-end">
+                    <div className="flex-1">
+                      <label className="block text-[11px] text-zinc-500 mb-1">Pilih Sensor Tanpa Cluster</label>
+                      <select
+                        value={selectedAssignDevId}
+                        onChange={(e) => setSelectedAssignDevId(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="">-- Pilih Sensor / Perangkat --</option>
+                        {unassignedResources.devices.map((d) => (
+                          <option key={d.dev_id} value={d.dev_id}>
+                            {d.dev_name || d.dev_id} ({d.dev_type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-full sm:w-48">
+                      <label className="block text-[11px] text-zinc-500 mb-1">Tugaskan ke Ruangan</label>
+                      <select
+                        value={selectedAssignDevRoomId}
+                        onChange={(e) => setSelectedAssignDevRoomId(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="">-- Tanpa Ruangan --</option>
+                        {resourcesCluster.rooms?.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAssignDeviceToCluster}
+                      disabled={!selectedAssignDevId}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition whitespace-nowrap flex items-center gap-1"
+                    >
+                      <LinkIcon className="h-3 w-3" />
+                      Tugaskan Sensor
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Daftar Sensor di Cluster */}
+                <div className="border border-zinc-800 rounded-lg overflow-hidden">
+                  <div className="bg-zinc-950/80 px-4 py-2 border-b border-zinc-800 text-xs font-semibold text-zinc-400 uppercase">
+                    Daftar Sensor Terdaftar
+                  </div>
+                  {resourcesLoading ? (
+                    <div className="flex justify-center p-8">
+                      <RefreshCw className="h-6 w-6 text-emerald-400 animate-spin" />
+                    </div>
+                  ) : !resourcesCluster.devices || resourcesCluster.devices.length === 0 ? (
+                    <div className="p-8 text-center text-zinc-500 text-sm">
+                      Belum ada sensor / perangkat yang ditugaskan di cluster ini.
+                    </div>
+                  ) : (
+                    <table className="w-full text-left text-sm text-zinc-300">
+                      <thead className="bg-zinc-950/40 text-zinc-500 text-xs uppercase border-b border-zinc-800">
+                        <tr>
+                          <th className="py-2.5 px-4">Nama & ID Sensor</th>
+                          <th className="py-2.5 px-4">Tipe</th>
+                          <th className="py-2.5 px-4">Ruangan</th>
+                          <th className="py-2.5 px-4 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800">
+                        {resourcesCluster.devices.map((d) => (
+                          <tr key={d.dev_id} className="hover:bg-zinc-800/40">
+                            <td className="py-2.5 px-4">
+                              {editingDevId === d.dev_id ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={editingDevName}
+                                    onChange={(e) => setEditingDevName(e.target.value)}
+                                    className="bg-zinc-950 border border-emerald-500/60 rounded px-2 py-1 text-xs text-zinc-100"
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={() => handleSaveEditDevName(d.dev_id)}
+                                    className="p-1 text-emerald-400 hover:bg-zinc-800 rounded"
+                                    title="Simpan"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingDevId(null)}
+                                    className="p-1 text-zinc-500 hover:bg-zinc-800 rounded"
+                                    title="Batal"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="flex items-center gap-1.5 font-medium text-zinc-100">
+                                    <span
+                                      className={`h-2 w-2 rounded-full ${
+                                        d.is_active ? 'bg-emerald-400' : 'bg-zinc-600'
+                                      }`}
+                                    />
+                                    <span>{d.dev_name || d.dev_id}</span>
+                                    <button
+                                      onClick={() => {
+                                        setEditingDevId(d.dev_id);
+                                        setEditingDevName(d.dev_name || d.dev_id);
+                                      }}
+                                      className="text-zinc-500 hover:text-zinc-300 p-0.5"
+                                      title="Edit Nama Sensor"
+                                    >
+                                      <Edit2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                  <p className="text-[10px] text-zinc-500 font-mono mt-0.5">{d.dev_id}</p>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4">
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950/50 text-indigo-300 border border-indigo-500/20 uppercase">
+                                {d.dev_type}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4">
+                              <select
+                                value={d.room_id || 'none'}
+                                onChange={(e) => handleChangeDeviceRoom(d.dev_id, e.target.value)}
+                                className="bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                              >
+                                <option value="none">-- Tanpa Ruangan --</option>
+                                {resourcesCluster.rooms?.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-2.5 px-4 text-right">
+                              <button
+                                onClick={() => handleUnassignDevice(d.dev_id, d.dev_name || d.dev_id)}
+                                className="inline-flex items-center gap-1 text-red-400 hover:text-red-300 text-xs px-2.5 py-1 rounded hover:bg-zinc-800 transition"
+                                title="Lepas sensor dari cluster ini"
+                              >
+                                <Unlink className="h-3 w-3" />
+                                Lepas dari Cluster
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-zinc-800">
+              <button
+                onClick={() => setResourcesCluster(null)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition"
+              >
+                Selesai
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Members Management Modal */}
       {membersCluster && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -571,7 +1189,7 @@ export function ClusterManagementPage() {
                 <label className="block text-xs font-medium text-zinc-400 mb-1">Peran di Cluster</label>
                 <select
                   value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value as any)}
+                  onChange={(e) => setSelectedRole(e.target.value as 'admin' | 'operator' | 'viewer')}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="viewer">Viewer</option>
@@ -618,7 +1236,7 @@ export function ClusterManagementPage() {
                         <td className="py-2.5 px-4">
                           <select
                             value={m.role}
-                            onChange={(e) => handleUpdateMemberRole(m.id, e.target.value as any)}
+                            onChange={(e) => handleUpdateMemberRole(m.id, e.target.value as 'admin' | 'operator' | 'viewer')}
                             className="bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500"
                           >
                             <option value="admin">Admin (Akses Penuh)</option>

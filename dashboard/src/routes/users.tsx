@@ -75,9 +75,14 @@ function UserManagementPage() {
   useEffect(() => {
     fetchCurrentUser().then((u) => {
       setCurrentUser(u);
-      if (u?.role === 'root' || u?.role === 'super_admin') {
-        fetchClusters({ page_size: 100 }).then((res) => setClusters(res.items)).catch(() => {});
-      }
+      fetchClusters({ page_size: 100 })
+        .then((res) => {
+          setClusters(res.items);
+          if (u?.role !== 'root' && res.items.length > 0) {
+            setFormData((prev) => ({ ...prev, cluster_id: prev.cluster_id || res.items[0].id }));
+          }
+        })
+        .catch(() => {});
     });
   }, []);
 
@@ -153,7 +158,7 @@ function UserManagementPage() {
       alert('Role Admin tidak dapat diubah lewat halaman ini.');
       return;
     }
-    const roleLabel: Record<UserRole, string> = { root: 'Root Super Admin', admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
+    const roleLabel: Record<UserRole, string> = { super_admin: 'Root Super Admin', root: 'Root Super Admin', admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
     if (!confirm(`Ubah role ${user.username} dari ${roleLabel[user.role]} menjadi ${roleLabel[newRole]}?`)) return;
     try {
       await updateAdminUser(user.id, { role: newRole });
@@ -280,7 +285,7 @@ function UserManagementPage() {
           <option value="true">Aktif</option>
           <option value="false">Nonaktif</option>
         </select>
-        {currentUser?.role === 'root' && (
+        {(currentUser?.role === 'root' || clusters.length > 1) && (
           <select
             value={clusterFilter}
             onChange={(e) => {
@@ -475,7 +480,7 @@ function UserManagementPage() {
                   <option value="admin">Admin (Akses Penuh Management)</option>
                 </select>
               </div>
-              {currentUser?.role === 'root' && (
+              {currentUser?.role === 'root' ? (
                 <div>
                   <label className="block text-xs font-medium text-zinc-500 mb-1">Tugaskan ke Cluster (Opsional)</label>
                   <select
@@ -491,7 +496,28 @@ function UserManagementPage() {
                     ))}
                   </select>
                 </div>
-              )}
+              ) : clusters.length > 0 ? (
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Cluster Pengguna</label>
+                  {clusters.length === 1 ? (
+                    <div className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-300 font-medium">
+                      {clusters[0].name}
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.cluster_id || clusters[0].id}
+                      onChange={(e) => setFormData({ ...formData, cluster_id: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm focus:outline-none focus:border-indigo-500 text-zinc-300"
+                    >
+                      {clusters.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ) : null}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

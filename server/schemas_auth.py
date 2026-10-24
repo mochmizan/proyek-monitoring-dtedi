@@ -11,14 +11,6 @@ class UserLoginPayload(BaseModel):
     password: str
 
 
-class UserResponse(BaseModel):
-    username: str
-    display_name: str
-    role: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ------------------------------
 # SCHEMAS UNTUK USER MANAGEMENT 
 # ------------------------------
@@ -29,6 +21,8 @@ class UserCreate(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=100, description="Nama lengkap/tampilan")
     role: str = Field(..., description="Role user: admin, operator, atau viewer")
     temp_password: Optional[str] = Field(None, min_length=8, description="Password sementara opsional")
+    # Cluster assignment (optional — assign immediately on creation)
+    cluster_id: Optional[str] = Field(None, description="ID cluster yang ditugaskan")
 
     @field_validator('username')
     @classmethod
@@ -41,7 +35,7 @@ class UserCreate(BaseModel):
     @field_validator('role')
     @classmethod
     def validate_role(cls, v: str) -> str:
-        allowed = {"admin", "operator", "viewer"}
+        allowed = {"admin", "operator", "viewer", "root"}
         if v.lower() not in allowed:
             raise ValueError(f"Role harus salah satu dari: {', '.join(allowed)}")
         return v.lower()
@@ -80,9 +74,28 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    cluster_memberships: Optional[list] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("cluster_memberships", mode="before")
+    @classmethod
+    def serialize_cluster_memberships(cls, v):
+        if not v:
+            return []
+        result = []
+        for item in v:
+            if isinstance(item, dict):
+                result.append(item)
+            elif hasattr(item, "cluster_id"):
+                c_name = getattr(item.cluster, "name", None) if getattr(item, "cluster", None) else None
+                result.append({
+                    "id": getattr(item, "id", None),
+                    "cluster_id": item.cluster_id,
+                    "role": item.role,
+                    "cluster_name": c_name,
+                })
+        return result
 
 
 # 5. Schema Response Pembuatan/Reset User (Menampilkan Password Sementara 1x)
@@ -121,5 +134,122 @@ class AuditLogResponse(BaseModel):
     details: Optional[str]
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ─── CLUSTER SCHEMAS ──────────────────────────────────────────────────────────
+
+class ClusterCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    location: Optional[str] = Field(None, max_length=200)
+
+
+class ClusterUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    location: Optional[str] = Field(None, max_length=200)
+    is_active: Optional[bool] = None
+
+
+class ClusterResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    device_count: int = 0
+    room_count: int = 0
+    member_count: int = 0
+    rooms: List[dict] = []
+    devices: List[dict] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClusterDetailResponse(ClusterResponse):
+    members: list = []
+    devices: list = []
+    rooms: list = []
+    permissions: dict = {}
+
+
+class ClusterRoomCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class ClusterRoomUpdate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class ClusterDeviceUpdate(BaseModel):
+    dev_name: Optional[str] = None
+    name: Optional[str] = None
+    room_id: Optional[str] = None
+
+
+class ClusterListResponse(BaseModel):
+    items: List[ClusterResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class ClusterPermissionMatrix(BaseModel):
+    cluster_id: str
+    permissions: dict  # role -> permission -> bool
+
+
+class ClusterRolePermissionUpdate(BaseModel):
+    role: str = Field(..., description="Role: admin, operator, atau viewer")
+    permissions: dict[str, bool] = Field(..., description="Permission name -> granted")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in {"admin", "operator", "viewer"}:
+            raise ValueError("Role harus salah satu dari: admin, operator, viewer")
+        return v
+
+
+# ─── MEMBERSHIP SCHEMAS ───────────────────────────────────────────────────────
+
+class MembershipCreate(BaseModel):
+    user_id: str
+    cluster_id: str
+    role: str = Field(..., description="admin, operator, atau viewer")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in {"admin", "operator", "viewer"}:
+            raise ValueError("Role harus salah satu dari: admin, operator, viewer")
+        return v
+
+
+class MembershipUpdate(BaseModel):
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in {"admin", "operator", "viewer"}:
+            raise ValueError("Role harus salah satu dari: admin, operator, viewer")
+        return v
+
+
+class MembershipResponse(BaseModel):
+    id: str
+    user_id: str
+    username: Optional[str] = None
+    display_name: Optional[str] = None
+    cluster_id: str
+    cluster_name: Optional[str] = None
+    role: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+

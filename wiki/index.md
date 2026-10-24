@@ -34,6 +34,7 @@ Compiled project knowledge for the smsb IoT smart-building monitoring stack. Gov
 - [concept-edge-resilience.md](concept-edge-resilience.md) — MQTT bridge durability, offline WAL FIFO queueing, rate pacing, timestamp preservation, failure modes
 - [concept-command-path.md](concept-command-path.md) — Downlink: web command → pending_commands → hub poll → MQTT dispatch; field-device execution currently has no ACK
 - [concept-alert-engine.md](concept-alert-engine.md) — Threshold evaluation, debounce, hysteresis, ATS emergency auto-resolve
+- [concept-cluster-access-control.md](concept-cluster-access-control.md) — Cluster-Based Access Control (CBAC), multi-tenant site isolation, Root Super Admin, and per-cluster permission matrix
 - [concept-observability-monitoring.md](concept-observability-monitoring.md) — Structured JSON logging with X-Request-ID tracing, Prometheus/APM metrics void, health probe contracts, alert dispatching
 - [concept-production-readiness.md](concept-production-readiness.md) — Holistic production gap assessment across server, dashboard, edge, firmware, and ops
 - [concept-time-conventions.md](concept-time-conventions.md) — UTC storage, _hub_created_at replay epochs, Z-suffix contract, WIB rendering

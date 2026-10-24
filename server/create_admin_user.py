@@ -59,7 +59,7 @@ def main():
     parser.add_argument("--username", required=True, help="Username unik pengguna")
     parser.add_argument("--password", required=True, help="Password plain-text pengguna")
     parser.add_argument("--display-name", required=True, help="Nama tampilan pengguna")
-    parser.add_argument("--role", required=True, choices=["admin", "operator"], help="Peran pengguna (admin atau operator)")
+    parser.add_argument("--role", required=True, choices=["root", "admin", "operator", "viewer"], help="Peran pengguna (root, admin, operator, viewer)")
     
     args = parser.parse_args()
     

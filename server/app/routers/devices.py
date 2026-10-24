@@ -14,7 +14,7 @@ from modelsv5 import (
     temperature_hourly, temperature_monthly,
 )
 from schemasv5 import DevicePairRequest, DeviceResponse, ThresholdConfigSchema, ThresholdUpdateRequest, TelemetryHistoryPoint, DeviceHistoryResponse
-from auth import get_current_user, require_role
+from auth import get_current_user, require_role, get_user_cluster_ids
 from app.core.rate_limit import limiter
 from app.core.csrf import validate_csrf_request
 from app.routers.alerts import parse_datetime_param
@@ -32,7 +32,7 @@ def approve_device(
     request: Request,
     dev_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     clean_id = dev_id.strip()
     device = db.query(dev_table).filter(
@@ -65,7 +65,7 @@ def pair_device(
     dev_id: str,
     payload: DevicePairRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     clean_id = dev_id.strip()
     device = db.query(dev_table).filter(
@@ -92,6 +92,12 @@ def pair_device(
     device.marker_x = payload.marker_x
     device.marker_y = payload.marker_y
     device.is_active = True
+
+    # Assign cluster from payload or inherit from room
+    if payload.cluster_id:
+        device.cluster_id = payload.cluster_id
+    elif room.cluster_id:
+        device.cluster_id = room.cluster_id
 
     # Synchronize hub_id with room's assigned hub if missing or unassigned
     if room.hub_id and (not device.hub_id or device.hub_id != room.hub_id):
@@ -167,6 +173,8 @@ def pair_device(
         marker_y=device.marker_y,
         created_at=device.created_at,
         threshold_config=thresh_schema,
+        cluster_id=device.cluster_id,
+        cluster_name=device.cluster.name if device.cluster else None,
     )
 
 
@@ -176,7 +184,7 @@ def unpair_device(
     request: Request,
     dev_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     clean_id = dev_id.strip()
     device = db.query(dev_table).filter(
@@ -217,7 +225,7 @@ def update_device_thresholds(
     dev_id: str,
     payload: ThresholdUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     clean_id = dev_id.strip()
     device = db.query(dev_table).filter(
@@ -586,6 +594,14 @@ def get_device_history(
             detail="Device not found",
         )
 
+    if current_user.role != "root" and device.cluster_id:
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters and device.cluster_id not in user_clusters:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akses ditolak: Anda tidak memiliki akses ke perangkat di cluster ini",
+            )
+
     start_dt, end_dt, bucket_sec = _compute_time_window(
         db=db,
         dev_type=device.dev_type or "",
@@ -645,6 +661,7 @@ def get_device(
         .options(
             selectinload(dev_table.threshold_config),
             selectinload(dev_table.room),
+            selectinload(dev_table.cluster),
         )
         .where(or_(dev_table.dev_id == dev_id, dev_table.dev_name == dev_id))
     )
@@ -654,6 +671,14 @@ def get_device(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Device '{dev_id}' not found",
         )
+
+    if current_user.role != "root" and device.cluster_id:
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters and device.cluster_id not in user_clusters:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akses ditolak: Anda tidak memiliki akses ke perangkat di cluster ini",
+            )
 
     now_utc = datetime.now(UTC)
     cutoff = now_utc - timedelta(seconds=DEVICE_OFFLINE_WINDOW_SECONDS)
@@ -691,6 +716,8 @@ def get_device(
         created_at=device.created_at,
         threshold_config=thresh_schema,
         latest_reading=latest_reading,
+        cluster_id=device.cluster_id,
+        cluster_name=device.cluster.name if device.cluster else None,
     )
 
 
@@ -700,6 +727,7 @@ def get_devices(
     request: Request,
     status_filter: Optional[str] = Query(None, alias="status"),
     dev_type_filter: Optional[str] = Query(None, alias="dev_type"),
+    cluster_filter: Optional[str] = Query(None, alias="cluster_id"),
     x_hub_id: Optional[str] = Header(None, alias="X-Hub-ID"),
     x_hub_key: Optional[str] = Header(None, alias="X-Hub-Key"),
     db: Session = Depends(get_db),
@@ -765,6 +793,7 @@ def get_devices(
         .options(
             selectinload(dev_table.threshold_config),
             selectinload(dev_table.room),
+            selectinload(dev_table.cluster),
         )
     )
     if status_filter == "pending":
@@ -778,6 +807,23 @@ def get_devices(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid status filter. Use 'pending', 'active', or 'all'.",
         )
+
+    # Scoping by cluster
+    if _user.role != "root":
+        user_clusters = get_user_cluster_ids(_user, db)
+        if user_clusters:
+            if cluster_filter:
+                if cluster_filter not in user_clusters:
+                    return []
+                stmt = stmt.where(dev_table.cluster_id == cluster_filter)
+            else:
+                stmt = stmt.where(dev_table.cluster_id.in_(user_clusters))
+        else:
+            if cluster_filter:
+                stmt = stmt.where(dev_table.cluster_id == cluster_filter)
+    else:
+        if cluster_filter:
+            stmt = stmt.where(dev_table.cluster_id == cluster_filter)
 
     if dev_type_filter is not None:
         dt = dev_type_filter.strip().upper()
@@ -820,6 +866,8 @@ def get_devices(
                 created_at=d.created_at,
                 threshold_config=thresh_schema,
                 latest_reading=readings.get(d.dev_id),
+                cluster_id=d.cluster_id,
+                cluster_name=d.cluster.name if d.cluster else None,
             )
         )
     return results

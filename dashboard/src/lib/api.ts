@@ -43,7 +43,10 @@ import type {
   ClusterPermissionMatrix,
   PermissionDefinition,
   PermissionAuditLogItem,
-  ClusterPermissionCopyPayload,
+  UnassignedClusterResources,
+  ClusterRoomCreatePayload,
+  ClusterRoomUpdatePayload,
+  ClusterDeviceUpdatePayload,
 } from '../types/api';
 
 export class ApiError extends Error {
@@ -717,5 +720,79 @@ export async function fetchPermissionDefinitions(): Promise<PermissionDefinition
   const res = await apiFetch(`${BASE}/api/permissions`);
   return handleResponse<PermissionDefinition[]>(res);
 }
+
+// ----------------------------------------------------
+// Cluster Rooms & Devices Management API
+// ----------------------------------------------------
+
+export async function fetchUnassignedClusterResources(): Promise<UnassignedClusterResources> {
+  const res = await apiFetch(`${BASE}/api/clusters/unassigned-resources`);
+  return handleResponse<UnassignedClusterResources>(res);
+}
+
+export async function createClusterRoom(clusterId: string, payload: ClusterRoomCreatePayload): Promise<{ status: string; id: string; name: string; cluster_id: string }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/rooms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ status: string; id: string; name: string; cluster_id: string }>(res);
+}
+
+export async function updateClusterRoom(clusterId: string, roomId: string, payload: ClusterRoomUpdatePayload): Promise<{ status: string; id: string; name: string }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/rooms/${encodeURIComponent(roomId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ status: string; id: string; name: string }>(res);
+}
+
+export async function deleteClusterRoom(clusterId: string, roomId: string): Promise<{ status: string; message: string }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/rooms/${encodeURIComponent(roomId)}`, {
+    method: 'DELETE',
+  });
+  return handleResponse<{ status: string; message: string }>(res);
+}
+
+export async function assignRoomToCluster(clusterId: string, roomId: string): Promise<{ status: string; room_id: string; cluster_id: string }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/assign-room?room_id=${encodeURIComponent(roomId)}`, {
+    method: 'POST',
+  });
+  return handleResponse<{ status: string; room_id: string; cluster_id: string }>(res);
+}
+
+export async function unassignRoomFromCluster(clusterId: string, roomId: string): Promise<{ status: string; room_id: string; cluster_id: string | null }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/unassign-room?room_id=${encodeURIComponent(roomId)}`, {
+    method: 'POST',
+  });
+  return handleResponse<{ status: string; room_id: string; cluster_id: string | null }>(res);
+}
+
+export async function assignDeviceToCluster(clusterId: string, devId: string, roomId?: string | null): Promise<{ status: string; dev_id: string; cluster_id: string; room_id?: string | null }> {
+  let url = `${BASE}/api/clusters/${encodeURIComponent(clusterId)}/assign-device?dev_id=${encodeURIComponent(devId)}`;
+  if (roomId) url += `&room_id=${encodeURIComponent(roomId)}`;
+  const res = await apiFetch(url, {
+    method: 'POST',
+  });
+  return handleResponse<{ status: string; dev_id: string; cluster_id: string; room_id?: string | null }>(res);
+}
+
+export async function unassignDeviceFromCluster(clusterId: string, devId: string): Promise<{ status: string; dev_id: string; cluster_id: string | null }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/unassign-device?dev_id=${encodeURIComponent(devId)}`, {
+    method: 'POST',
+  });
+  return handleResponse<{ status: string; dev_id: string; cluster_id: string | null }>(res);
+}
+
+export async function updateClusterDevice(clusterId: string, devId: string, payload: ClusterDeviceUpdatePayload): Promise<{ status: string; dev_id: string; dev_name?: string; room_id?: string | null }> {
+  const res = await apiFetch(`${BASE}/api/clusters/${encodeURIComponent(clusterId)}/devices/${encodeURIComponent(devId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ status: string; dev_id: string; dev_name?: string; room_id?: string | null }>(res);
+}
+
 
 

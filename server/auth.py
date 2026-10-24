@@ -183,8 +183,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 def require_role(*allowed_roles: str):
     """
     FastAPI Dependency Factory untuk membatasi akses endpoint hanya untuk role tertentu.
+    Super Admin (root / super_admin) otomatis memiliki izin penuh ke seluruh endpoint.
     """
     def dependency(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role in ("root", "super_admin"):
+            return current_user
         if current_user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -192,6 +195,135 @@ def require_role(*allowed_roles: str):
             )
         return current_user
     return dependency
+
+
+# 5a. Root-only dependency
+def require_root(current_user: User = Depends(get_current_user)) -> User:
+    """Allows access only to users with role='root'."""
+    if current_user.role != "root":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses ditolak: hanya Root yang diizinkan"
+        )
+    return current_user
+
+
+# 5b. Root or admin helper (used by admin_users router for cluster admins)
+def require_root_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Allows access to root or legacy admin roles."""
+    if current_user.role not in ("root", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses ditolak: hanya Root atau Admin yang diizinkan"
+        )
+    return current_user
+
+
+# 5c. Get cluster IDs that the current user is a member of (for non-root users)
+def get_user_cluster_ids(current_user: User, db: Session) -> list[str]:
+    """Returns list of cluster IDs the user is member of. Root returns empty list (means all)."""
+    from modelsv5 import UserClusterMembership
+    memberships = db.query(UserClusterMembership).filter(
+        UserClusterMembership.user_id == current_user.id
+    ).all()
+    return [m.cluster_id for m in memberships]
+
+
+def get_user_role_in_cluster(current_user: User, cluster_id: str, db: Session) -> str | None:
+    """Returns the user's role in a specific cluster, or None if not a member."""
+    if current_user.role == "root":
+        return "root"
+    from modelsv5 import UserClusterMembership
+    membership = db.query(UserClusterMembership).filter(
+        UserClusterMembership.user_id == current_user.id,
+        UserClusterMembership.cluster_id == cluster_id,
+    ).first()
+    return membership.role if membership else None
+
+
+def check_cluster_permission(
+    current_user: User,
+    cluster_id: str,
+    permission: str,
+    db: Session,
+) -> bool:
+    """
+    Returns True if the user has the given permission in the cluster.
+    Root always has all permissions. Others are checked against cluster_role_permissions.
+    Default (no explicit row) follows DEFAULT_PERMISSIONS matrix.
+    """
+    if current_user.role == "root":
+        return True
+
+    role = get_user_role_in_cluster(current_user, cluster_id, db)
+    if not role:
+        return False
+
+    from modelsv5 import ClusterRolePermission
+    perm_row = db.query(ClusterRolePermission).filter(
+        ClusterRolePermission.cluster_id == cluster_id,
+        ClusterRolePermission.role == role,
+        ClusterRolePermission.permission == permission,
+    ).first()
+
+    if perm_row is not None:
+        return perm_row.granted
+
+    # Fall back to default matrix
+    return DEFAULT_PERMISSIONS.get(role, {}).get(permission, False)
+
+
+# Default permission matrix (fallback when no explicit ClusterRolePermission row exists)
+DEFAULT_PERMISSIONS: dict[str, dict[str, bool]] = {
+    "admin": {
+        "view_dashboard": True,
+        "view_devices": True,
+        "view_monitoring": True,
+        "view_history": True,
+        "view_alerts": True,
+        "view_reports": True,
+        "control_devices": True,
+        "pair_devices": True,
+        "edit_devices": True,
+        "delete_devices": True,
+        "manage_schedules": True,
+        "manage_rooms": True,
+        "manage_users": True,
+        "export_data": True,
+    },
+    "operator": {
+        "view_dashboard": True,
+        "view_devices": True,
+        "view_monitoring": True,
+        "view_history": True,
+        "view_alerts": True,
+        "view_reports": True,
+        "control_devices": True,
+        "pair_devices": False,
+        "edit_devices": False,
+        "delete_devices": False,
+        "manage_schedules": True,
+        "manage_rooms": False,
+        "manage_users": False,
+        "export_data": True,
+    },
+    "viewer": {
+        "view_dashboard": True,
+        "view_devices": True,
+        "view_monitoring": True,
+        "view_history": True,
+        "view_alerts": True,
+        "view_reports": True,
+        "control_devices": False,
+        "pair_devices": False,
+        "edit_devices": False,
+        "delete_devices": False,
+        "manage_schedules": False,
+        "manage_rooms": False,
+        "manage_users": False,
+        "export_data": False,
+    },
+}
 
 
 # 6. Lockout Rate Limiting (Database-Backed)

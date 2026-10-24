@@ -200,12 +200,14 @@ class RoomCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     hub_id: Optional[str] = None
     floor_plan_image_path: Optional[str] = None
+    cluster_id: Optional[str] = None
 
 
 class RoomUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     hub_id: Optional[str] = None
     floor_plan_image_path: Optional[str] = None
+    cluster_id: Optional[str] = None
 
 
 class RoomResponse(BaseModel):
@@ -215,6 +217,8 @@ class RoomResponse(BaseModel):
     floor_plan_image_path: Optional[str] = None
     device_count: int = 0
     created_at: OptionalUtcDateTime = None
+    cluster_id: Optional[str] = None
+    cluster_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -241,6 +245,7 @@ class DevicePairRequest(BaseModel):
     critical_threshold: Optional[float] = None
     hysteresis: Optional[float] = 0.5
     debounce_seconds: Optional[int] = 60
+    cluster_id: Optional[str] = None
 
 
 class DeviceResponse(BaseModel):
@@ -257,6 +262,8 @@ class DeviceResponse(BaseModel):
     created_at: OptionalUtcDateTime = None
     threshold_config: Optional[ThresholdConfigSchema] = None
     latest_reading: Optional[dict[str, Any]] = None
+    cluster_id: Optional[str] = None
+    cluster_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

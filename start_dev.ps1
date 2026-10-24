@@ -21,7 +21,7 @@ if (Test-Connection -ComputerName $piIP -Count 1 -Quiet) {
 
 # 3. Launch Backend HubGate V5
 Write-Host "[1/2] Starting HubGate V5 API on port 8000..." -ForegroundColor White
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$rootDir\server'; Write-Host '--- HubGate V5 Central Gateway (Port 8000) ---' -ForegroundColor Cyan; python -m uvicorn app.main:api --host 0.0.0.0 --port 8000"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$rootDir\server'; Write-Host '--- HubGate V5 Central Gateway (Port 8000) ---' -ForegroundColor Cyan; python -m uvicorn app.main:api --host 0.0.0.0 --port 8000 --reload"
 
 # 4. Launch Frontend Vite SPA
 Write-Host "[2/2] Starting Frontend SPA on port 5173..." -ForegroundColor White

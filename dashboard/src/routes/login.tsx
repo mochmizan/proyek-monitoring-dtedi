@@ -156,30 +156,39 @@ function LoginPage() {
       {import.meta.env.DEV && (
         <div className="mt-8 pt-6 border-t border-zinc-800/80">
           <p className="text-xs text-zinc-500 font-semibold text-center mb-4 uppercase tracking-wider">Quick Sign-In (Roles)</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-1.5">
             <button
               type="button"
-              onClick={() => handleQuickLogin('admin', 'admin')}
+              onClick={() => handleQuickLogin('root', 'root123')}
               disabled={loginMutation.isPending}
-              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 text-xs py-2 px-1.5 rounded text-center transition-colors cursor-pointer"
+              className="bg-indigo-950/60 hover:bg-indigo-900/60 border border-indigo-700/50 disabled:opacity-50 text-indigo-200 text-xs py-2 px-1 rounded text-center transition-colors cursor-pointer"
             >
-              <div className="font-semibold">Admin</div>
-              <div className="text-[10px] text-zinc-500">Full Access</div>
+              <div className="font-semibold text-indigo-300">Root</div>
+              <div className="text-[10px] text-indigo-400/80">Super Admin</div>
             </button>
             <button
               type="button"
-              onClick={() => handleQuickLogin('operator', 'operator')}
+              onClick={() => handleQuickLogin('admin_a', 'admina123')}
               disabled={loginMutation.isPending}
-              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 text-xs py-2 px-1.5 rounded text-center transition-colors cursor-pointer"
+              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 text-xs py-2 px-1 rounded text-center transition-colors cursor-pointer"
+            >
+              <div className="font-semibold">Admin A</div>
+              <div className="text-[10px] text-zinc-500">Cluster Admin</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('operator', 'operator123')}
+              disabled={loginMutation.isPending}
+              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 text-xs py-2 px-1 rounded text-center transition-colors cursor-pointer"
             >
               <div className="font-semibold">Operator</div>
-              <div className="text-[10px] text-zinc-500">Control Access</div>
+              <div className="text-[10px] text-zinc-500">Control</div>
             </button>
             <button
               type="button"
-              onClick={() => handleQuickLogin('viewer', 'viewer')}
+              onClick={() => handleQuickLogin('viewer1', 'viewer123')}
               disabled={loginMutation.isPending}
-              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 text-xs py-2 px-1.5 rounded text-center transition-colors cursor-pointer"
+              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 text-xs py-2 px-1 rounded text-center transition-colors cursor-pointer"
             >
               <div className="font-semibold">Viewer</div>
               <div className="text-[10px] text-zinc-500">Read-Only</div>

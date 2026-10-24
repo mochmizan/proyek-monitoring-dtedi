@@ -93,8 +93,8 @@ function RoomDetailPage() {
   const activeAlerts = (roomAlertsData?.alerts || []).filter((a) => !a.resolved_at);
 
   const role = currentUser?.role || 'viewer';
-  const canControl = role === 'admin' || role === 'operator';
-  const isAdmin = role === 'admin';
+  const isAdmin = role === 'admin' || role === 'root' || role === 'super_admin';
+  const canControl = isAdmin || role === 'operator';
 
   const handleOpenCommandModal = (device: RoomMapMarker) => {
     setSelectedDeviceForCmd(device);

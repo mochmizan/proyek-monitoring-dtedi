@@ -1,4 +1,4 @@
-﻿import React, { useState, Suspense } from "react"
+import React, { useState, Suspense } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { z } from "zod"
@@ -47,9 +47,9 @@ function SchedulesPage() {
     staleTime: 60000,
   })
   const role = currentUser?.role ?? "viewer"
-  const isAdmin = role === "admin"
+  const isAdmin = role === "admin" || role === "root" || role === "super_admin"
   const canWrite = isAdmin
-  const canRead = role === "admin" || role === "operator"
+  const canRead = isAdmin || role === "operator"
 
   const { data: devices = [] } = useQuery({
     queryKey: queryKeys.devices.list("all"),

@@ -17,7 +17,7 @@ from modelsv5 import (
     temperature_data, ats_data, pending_commands,
     User, UserSession, LoginAttempt,
     rooms, device_threshold_config, schedules,
-    ActivityLog
+    ActivityLog, Cluster, UserClusterMembership, ClusterRolePermission
 )
 
 # Konfigurasi logging
@@ -86,6 +86,9 @@ def migrate_additive_columns(bind_engine=None):
                 if "last_status" not in dev_cols:
                     logging.info("Migrasi: Menambahkan kolom 'last_status' ke dev_table...")
                     conn.execute(text("ALTER TABLE dev_table ADD COLUMN last_status VARCHAR DEFAULT 'offline';"))
+                if "cluster_id" not in dev_cols:
+                    logging.info("Migrasi: Menambahkan kolom 'cluster_id' ke dev_table...")
+                    conn.execute(text("ALTER TABLE dev_table ADD COLUMN cluster_id VARCHAR;"))
 
         # 2. event_log: dev_id, room_id, metric, severity, value, threshold, resolved_at
         if "event_log" in table_names:
@@ -125,6 +128,14 @@ def migrate_additive_columns(bind_engine=None):
                 if "status" not in hub_cols:
                     logging.info("Migrasi: Menambahkan kolom 'status' ke hub_table...")
                     conn.execute(text("ALTER TABLE hub_table ADD COLUMN status VARCHAR DEFAULT 'offline';"))
+
+        # 4. rooms: cluster_id
+        if "rooms" in table_names:
+            room_cols = [col["name"] for col in inspector.get_columns("rooms")]
+            with target_engine.begin() as conn:
+                if "cluster_id" not in room_cols:
+                    logging.info("Migrasi: Menambahkan kolom 'cluster_id' ke rooms...")
+                    conn.execute(text("ALTER TABLE rooms ADD COLUMN cluster_id VARCHAR;"))
     except Exception as e:
         logging.error(f"Gagal melakukan additive migration kolom: {e}")
         raise

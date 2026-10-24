@@ -123,7 +123,7 @@ function RootLayout() {
   }).length;
 
   const role = currentUser?.role || 'viewer';
-  const isAdmin = role === 'admin' || role === 'root';
+  const isAdmin = role === 'admin' || role === 'root' || role === 'super_admin';
 
   return (
     <TooltipProvider>

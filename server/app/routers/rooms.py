@@ -6,16 +6,16 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.orm import Session, joinedload
 
 from databasev5 import get_db
-from modelsv5 import User, dev_table, hub_table, rooms, temperature_data
+from modelsv5 import User, dev_table, hub_table, rooms, temperature_data, UserClusterMembership
 from schemasv5 import (
     RoomCreate, RoomUpdate, RoomResponse, RoomMapMarker, RoomMapResponse, FloorPlanUploadResponse,
     RoomSparklinePoint, RoomSparkline, RoomSparklinesResponse
 )
-from auth import get_current_user, require_role
+from auth import get_current_user, require_role, get_user_cluster_ids
 from app.core.rate_limit import limiter
 from app.core.csrf import validate_csrf_request
 from app.core.config import FLOORPLAN_UPLOAD_DIR, STATIC_DIR, ALLOWED_FLOORPLAN_TYPES, ALLOWED_FLOORPLAN_EXTENSIONS, MAX_FLOORPLAN_FILE_SIZE
@@ -54,15 +54,37 @@ def remove_floor_plan_file(path_or_url: Optional[str]) -> None:
 @limiter.limit("60/minute")
 def list_rooms(
     request: Request,
+    cluster_filter: Optional[str] = Query(None, alias="cluster_id"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     stmt = (
         select(rooms, func.count(dev_table.dev_id).label("device_count"))
         .outerjoin(dev_table, rooms.id == dev_table.room_id)
+        .options(joinedload(rooms.cluster))
         .group_by(rooms.id)
         .order_by(rooms.name)
     )
+
+    if current_user.role != "root":
+        user_has_mems = select(UserClusterMembership.id).where(UserClusterMembership.user_id == current_user.id).exists()
+        user_mems = select(UserClusterMembership.cluster_id).where(UserClusterMembership.user_id == current_user.id)
+        if cluster_filter:
+            stmt = stmt.where(
+                rooms.cluster_id == cluster_filter,
+                or_(~user_has_mems, cluster_filter.in_(user_mems))
+            )
+        else:
+            stmt = stmt.where(
+                or_(
+                    ~user_has_mems,
+                    rooms.cluster_id.in_(user_mems)
+                )
+            )
+    else:
+        if cluster_filter:
+            stmt = stmt.where(rooms.cluster_id == cluster_filter)
+
     rows = db.execute(stmt).all()
     results = [
         RoomResponse(
@@ -72,6 +94,8 @@ def list_rooms(
             floor_plan_image_path=r.floor_plan_image_path,
             device_count=dev_count,
             created_at=r.created_at,
+            cluster_id=r.cluster_id,
+            cluster_name=r.cluster.name if r.cluster else None,
         )
         for r, dev_count in rows
     ]
@@ -204,7 +228,7 @@ def create_room(
     request: Request,
     payload: RoomCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     clean_name = payload.name.strip()
     existing = db.query(rooms).filter(rooms.name == clean_name).first()
@@ -229,6 +253,7 @@ def create_room(
         name=clean_name,
         hub_id=payload.hub_id,
         floor_plan_image_path=payload.floor_plan_image_path,
+        cluster_id=payload.cluster_id,
         created_at=datetime.now(UTC),
     )
     db.add(new_room)
@@ -251,6 +276,8 @@ def create_room(
         floor_plan_image_path=new_room.floor_plan_image_path,
         device_count=0,
         created_at=new_room.created_at,
+        cluster_id=new_room.cluster_id,
+        cluster_name=new_room.cluster.name if new_room.cluster else None,
     )
 
 
@@ -261,7 +288,7 @@ def update_room(
     room_id: str,
     payload: RoomUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     room = db.get(rooms, room_id)
     if not room:
@@ -309,6 +336,9 @@ def update_room(
     if payload.floor_plan_image_path is not None:
         room.floor_plan_image_path = payload.floor_plan_image_path
 
+    if payload.cluster_id is not None:
+        room.cluster_id = payload.cluster_id if payload.cluster_id != "" else None
+
     log_user_activity(
         db,
         user=current_user,
@@ -330,6 +360,8 @@ def update_room(
         floor_plan_image_path=room.floor_plan_image_path,
         device_count=dev_count,
         created_at=room.created_at,
+        cluster_id=room.cluster_id,
+        cluster_name=room.cluster.name if room.cluster else None,
     )
 
 
@@ -339,7 +371,7 @@ def delete_room(
     request: Request,
     room_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     room = db.get(rooms, room_id)
     if not room:
@@ -378,7 +410,7 @@ def upload_floor_plan(
     room_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "root")),
 ):
     room = db.get(rooms, room_id)
     if not room:
@@ -483,6 +515,14 @@ def get_room_map(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Room '{room_id}' not found",
         )
+
+    if current_user.role != "root" and room.cluster_id:
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters and room.cluster_id not in user_clusters:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akses ditolak: Anda tidak memiliki akses ke ruangan di cluster ini",
+            )
 
     has_image = False
     floor_plan_url = None

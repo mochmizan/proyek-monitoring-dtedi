@@ -20,6 +20,8 @@ from app.routers import iot as iot_router
 from app.routers import commands as commands_router
 from app.routers import schedules as schedules_router
 from app.routers import admin_users as admin_users_router
+from app.routers import clusters as clusters_router
+from app.routers import memberships as memberships_router
 from app.services.scheduler import scheduler_lifespan
 
 # Ensure logging configured
@@ -88,3 +90,5 @@ api.include_router(iot_router.router)
 api.include_router(commands_router.router)
 api.include_router(schedules_router.router)
 api.include_router(admin_users_router.router)
+api.include_router(clusters_router.router)
+api.include_router(memberships_router.router)

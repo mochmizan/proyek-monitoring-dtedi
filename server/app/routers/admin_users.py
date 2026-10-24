@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
 from databasev5 import get_db
-from modelsv5 import User, UserSession, UserAuditLog, ActivityLog
-from auth import get_current_user, require_role, hash_password
+from modelsv5 import User, UserSession, UserAuditLog, ActivityLog, UserClusterMembership, Cluster
+from auth import get_current_user, require_role, require_root, get_user_cluster_ids, hash_password
 from schemas_auth import (
     UserCreate,
     UserUpdate,
@@ -27,6 +27,9 @@ router = APIRouter(
     tags=["admin-users"],
     dependencies=[Depends(validate_csrf_request)],
 )
+
+# Roles that can access user management endpoints (root or legacy admin)
+ALLOWED_ADMIN_ROLES = ("root", "admin")
 
 # Helper function untuk mencatat Audit Log
 def log_action(
@@ -73,6 +76,23 @@ def check_is_online(db: Session, user_id: str) -> bool:
     return active_session is not None
 
 
+def check_admin_target_access(current_user: User, target_user: User, db: Session):
+    """Enforce cluster boundary scoping for non-root admins managing users."""
+    if current_user.role == "root":
+        return
+    if target_user.role in ("root", "admin") and current_user.id != target_user.id:
+        raise HTTPException(status_code=403, detail="Tidak dapat mengelola akun Root atau Admin lain")
+    total_clusters = db.query(Cluster).count()
+    if total_clusters == 0:
+        return
+    admin_clusters = get_user_cluster_ids(current_user, db)
+    if not admin_clusters:
+        raise HTTPException(status_code=403, detail="Akses ditolak: Anda tidak memiliki cluster yang ditugaskan")
+    target_clusters = get_user_cluster_ids(target_user, db)
+    if not any(cid in admin_clusters for cid in target_clusters):
+        raise HTTPException(status_code=403, detail="Akses ditolak: Pengguna berada di luar cluster Anda")
+
+
 # ----------------------------------------------------
 # ENDPOINTS (KHUSUS ROLE ADMIN)
 # ----------------------------------------------------
@@ -83,12 +103,34 @@ def get_users(
     search: Optional[str] = Query(None, description="Cari nama atau username"),
     role: Optional[str] = Query(None, description="Filter berdasarkan role"),
     is_active: Optional[bool] = Query(None, description="Filter status aktif"),
+    cluster_id: Optional[str] = Query(None, description="Filter berdasarkan cluster (root only)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin"))
+    current_user: User = Depends(get_current_user)
 ):
+    if current_user.role not in ALLOWED_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Akses ditolak")
+
     query = db.query(User)
+
+    # Non-root admin can only see users in their own cluster(s)
+    if current_user.role != "root":
+        cluster_ids = get_user_cluster_ids(current_user, db)
+        if cluster_ids:
+            member_user_ids = db.query(UserClusterMembership.user_id).filter(
+                UserClusterMembership.cluster_id.in_(cluster_ids)
+            ).subquery()
+            query = query.filter(User.id.in_(member_user_ids))
+        else:
+            # Admin not assigned to any cluster — return empty
+            return UserListResponse(items=[], total=0, page=page, page_size=page_size)
+    elif cluster_id:
+        # Root filtering by cluster
+        member_user_ids = db.query(UserClusterMembership.user_id).filter(
+            UserClusterMembership.cluster_id == cluster_id
+        ).subquery()
+        query = query.filter(User.id.in_(member_user_ids))
 
     if search:
         search_term = f"%{search.strip().lower()}%"
@@ -114,6 +156,15 @@ def get_users(
     for u in users:
         u_dict = UserResponse.from_orm(u)
         u_dict.is_online = check_is_online(db, u.id)
+        # Attach cluster memberships info
+        memberships = db.query(UserClusterMembership).filter(
+            UserClusterMembership.user_id == u.id
+        ).all()
+        u_dict.cluster_memberships = [
+            {"cluster_id": m.cluster_id, "role": m.role,
+             "cluster_name": db.get(Cluster, m.cluster_id).name if db.get(Cluster, m.cluster_id) else None}
+            for m in memberships
+        ]
         items.append(u_dict)
 
     return UserListResponse(
@@ -130,8 +181,31 @@ def create_user(
     req: UserCreate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin"))
+    current_user: User = Depends(get_current_user)
 ):
+    if current_user.role not in ALLOWED_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Akses ditolak")
+
+    target_cluster_id = None
+    if current_user.role != "root":
+        # Only root can create root or admin users
+        if req.role in ("root", "admin"):
+            raise HTTPException(status_code=403, detail="Hanya Root yang berhak menambahkan akun Admin atau Root")
+        admin_clusters = get_user_cluster_ids(current_user, db)
+        if not admin_clusters:
+            total_clusters = db.query(Cluster).count()
+            if total_clusters > 0:
+                raise HTTPException(status_code=403, detail="Anda belum ditugaskan ke cluster manapun")
+        elif hasattr(req, 'cluster_id') and req.cluster_id:
+            if req.cluster_id not in admin_clusters:
+                raise HTTPException(status_code=403, detail="Anda hanya dapat menugaskan user ke cluster Anda")
+            target_cluster_id = req.cluster_id
+        else:
+            target_cluster_id = admin_clusters[0]
+    else:
+        if hasattr(req, 'cluster_id') and req.cluster_id:
+            target_cluster_id = req.cluster_id
+
     # Cek keunikan username
     existing = db.query(User).filter(func.lower(User.username) == req.username).first()
     if existing:
@@ -154,6 +228,21 @@ def create_user(
     db.add(new_user)
     db.flush()
 
+    # Auto-assign to cluster if specified
+    if target_cluster_id and req.role != "root":
+        from modelsv5 import UserClusterMembership as UCM
+        import uuid as _uuid
+        now_utc = datetime.now(UTC)
+        membership = UCM(
+            id=str(_uuid.uuid4()),
+            user_id=new_user.id,
+            cluster_id=target_cluster_id,
+            role=req.role,
+            created_at=now_utc,
+            created_by=current_user.id,
+        )
+        db.add(membership)
+
     log_action(
         db,
         current_user.id,
@@ -161,7 +250,7 @@ def create_user(
         new_user.id,
         "SUCCESS",
         request,
-        f"Created user {new_user.username} with role {new_user.role}",
+        f"Created user {new_user.username} with role {req.role}",
         commit=False,
     )
     log_user_activity(
@@ -169,13 +258,12 @@ def create_user(
         user=current_user,
         action="Menambahkan akun",
         category="account_management",
-        details={"target_username": new_user.username, "role": new_user.role, "display_name": new_user.display_name},
+        details={"target_username": new_user.username, "role": req.role, "display_name": new_user.display_name},
         request=request,
         commit=False,
     )
 
-    # Validate the complete response before committing. If response construction
-    # ever regresses, get_db will roll the whole transaction back.
+    # Validate the complete response before committing.
     resp = _user_with_temp_password_response(new_user, temp_pwd)
     db.commit()
     return resp
@@ -188,7 +276,22 @@ def get_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin"))
 ):
-    logs = db.query(UserAuditLog).order_by(UserAuditLog.timestamp.desc()).limit(limit).all()
+    q = db.query(UserAuditLog)
+    if current_user.role != "root":
+        cluster_ids = get_user_cluster_ids(current_user, db)
+        if cluster_ids:
+            member_user_ids = db.query(UserClusterMembership.user_id).filter(
+                UserClusterMembership.cluster_id.in_(cluster_ids)
+            ).subquery()
+            q = q.filter(or_(
+                UserAuditLog.actor_id.in_(member_user_ids),
+                UserAuditLog.target_user_id.in_(member_user_ids),
+            ))
+        else:
+            total_clusters = db.query(Cluster).count()
+            if total_clusters > 0:
+                return []
+    logs = q.order_by(UserAuditLog.timestamp.desc()).limit(limit).all()
     return logs
 
 
@@ -203,6 +306,18 @@ def get_user_activity_logs(
     current_user: User = Depends(require_role("admin"))
 ):
     q = db.query(ActivityLog)
+    if current_user.role != "root":
+        cluster_ids = get_user_cluster_ids(current_user, db)
+        if cluster_ids:
+            member_user_ids = db.query(UserClusterMembership.user_id).filter(
+                UserClusterMembership.cluster_id.in_(cluster_ids)
+            ).subquery()
+            q = q.filter(ActivityLog.user_id.in_(member_user_ids))
+        else:
+            total_clusters = db.query(Cluster).count()
+            if total_clusters > 0:
+                return {"items": [], "total": 0, "page": page, "page_size": limit}
+
     if username:
         q = q.filter(func.lower(ActivityLog.user_name) == username.strip().lower())
     if role:
@@ -237,6 +352,7 @@ def get_user_detail(
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    check_admin_target_access(current_user, target_user, db)
 
     resp = UserResponse.from_orm(target_user)
     resp.is_online = check_is_online(db, target_user.id)
@@ -250,18 +366,26 @@ def update_user(
     req: UserUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin"))
+    current_user: User = Depends(get_current_user)
 ):
+    if current_user.role not in ALLOWED_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Akses ditolak")
+
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    check_admin_target_access(current_user, target_user, db)
+
+    # Guard: non-root admin cannot modify root users
+    if target_user.role == "root" and current_user.role != "root":
+        raise HTTPException(status_code=403, detail="Tidak dapat mengubah akun Root")
 
     # Guard 1: Admin tidak bisa menurunkan rolenya sendiri
-    if current_user.id == target_user.id and req.role and req.role != "admin":
+    if current_user.id == target_user.id and req.role and req.role not in ("admin", "root"):
         raise HTTPException(status_code=400, detail="Anda tidak dapat menurunkan role Anda sendiri")
 
-    # Guard 2: Mencegah penurunan role admin terakhir
-    if req.role and req.role != "admin" and target_user.role == "admin":
+    # Guard 2: Mencegah penurunan role admin terakhir (hanya cek untuk non-root)
+    if req.role and req.role not in ("admin", "root") and target_user.role == "admin":
         admin_count = db.query(User).filter(User.role == "admin", User.is_active == True).count()
         if admin_count <= 1:
             raise HTTPException(status_code=400, detail="Tidak dapat mengubah role admin terakhir di sistem")
@@ -269,6 +393,8 @@ def update_user(
     if req.display_name is not None:
         target_user.display_name = req.display_name
     if req.role is not None:
+        if req.role in ("root", "admin") and current_user.role != "root":
+            raise HTTPException(status_code=403, detail="Hanya Root yang berhak menetapkan role Admin atau Root")
         target_user.role = req.role
 
     target_user.updated_at = datetime.now(UTC)
@@ -298,19 +424,29 @@ def update_user_status(
     req: UserStatusUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin"))
+    current_user: User = Depends(get_current_user)
 ):
+    if current_user.role not in ALLOWED_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Akses ditolak")
+
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    check_admin_target_access(current_user, target_user, db)
+
+    # Guard: Cannot deactivate root
+    if target_user.role == "root" and not req.is_active and current_user.role != "root":
+        raise HTTPException(status_code=403, detail="Tidak dapat menonaktifkan akun Root")
 
     # Guard: Admin tidak bisa menonaktifkan akunnya sendiri
     if current_user.id == target_user.id and not req.is_active:
         raise HTTPException(status_code=400, detail="Anda tidak dapat menonaktifkan akun Anda sendiri")
 
     # Guard: Mencegah menonaktifkan admin terakhir
-    if not req.is_active and target_user.role == "admin":
-        active_admin_count = db.query(User).filter(User.role == "admin", User.is_active == True).count()
+    if not req.is_active and target_user.role in ("admin", "root"):
+        active_admin_count = db.query(User).filter(
+            User.role.in_(["admin", "root"]), User.is_active == True
+        ).count()
         if active_admin_count <= 1:
             raise HTTPException(status_code=400, detail="Tidak dapat menonaktifkan admin terakhir di sistem")
 
@@ -352,6 +488,7 @@ def reset_user_password(
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    check_admin_target_access(current_user, target_user, db)
 
     temp_pwd = secrets.token_urlsafe(10)
     target_user.password_hash = hash_password(temp_pwd)
@@ -397,6 +534,7 @@ def revoke_user_sessions(
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    check_admin_target_access(current_user, target_user, db)
 
     deleted_count = db.query(UserSession).filter(UserSession.user_id == target_user.id).delete()
     db.commit()
@@ -425,6 +563,7 @@ def delete_user(
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    check_admin_target_access(current_user, target_user, db)
 
     # Guard: Admin tidak bisa menghapus dirinya sendiri
     if current_user.id == target_user.id:
