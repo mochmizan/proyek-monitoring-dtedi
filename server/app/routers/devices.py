@@ -819,8 +819,7 @@ def get_devices(
             else:
                 stmt = stmt.where(dev_table.cluster_id.in_(user_clusters))
         else:
-            if cluster_filter:
-                stmt = stmt.where(dev_table.cluster_id == cluster_filter)
+            return []
     else:
         if cluster_filter:
             stmt = stmt.where(dev_table.cluster_id == cluster_filter)

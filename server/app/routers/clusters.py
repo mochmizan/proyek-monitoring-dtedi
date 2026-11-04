@@ -96,10 +96,17 @@ def list_clusters(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_root),
+    current_user: User = Depends(get_current_user),
 ):
-    """[Root] List all clusters with pagination."""
+    """List clusters (root sees all; non-root sees only clusters they belong to)."""
     q = db.query(Cluster)
+    if current_user.role != "root":
+        from auth import get_user_cluster_ids
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters:
+            q = q.filter(Cluster.id.in_(user_clusters))
+        else:
+            return ClusterListResponse(items=[], total=0, page=page, page_size=page_size)
     if search:
         term = f"%{search.strip().lower()}%"
         q = q.filter(or_(

@@ -13,7 +13,7 @@ from databasev5 import get_db
 from modelsv5 import dev_table, hub_table
 from schemasv5 import HubRegisterPayload, HubResponse, HubDeviceSummary, HubPairRequest, GatewayRoomAssign
 from modelsv5 import User, rooms
-from auth import get_current_user, require_role
+from auth import get_current_user, require_role, get_user_cluster_ids
 from app.core.rate_limit import limiter
 from app.core.csrf import validate_csrf_request
 from app.dependencies import hub_auth_cache
@@ -67,13 +67,23 @@ def list_hubs(
     now_utc = datetime.now(UTC)
     cutoff = now_utc - timedelta(seconds=HUB_ONLINE_WINDOW_SECONDS)
 
-    # Query 1: Hubs with SQL-aggregated device count
+    user_clusters = None
+    if current_user.role != "root":
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if not user_clusters:
+            return []
+
+    # Query 1: Hubs with SQL-aggregated device count (filtered to user cluster if non-root)
+    join_cond = (dev_table.hub_id == hub_table.hub_id)
+    if user_clusters is not None:
+        join_cond = join_cond & (dev_table.cluster_id.in_(user_clusters))
+
     hub_stmt = (
         select(
             hub_table,
             func.count(dev_table.dev_id).label("device_count"),
         )
-        .outerjoin(dev_table, dev_table.hub_id == hub_table.hub_id)
+        .outerjoin(dev_table, join_cond)
         .group_by(hub_table.hub_id)
         .order_by(hub_table.created_at.asc())
     )
@@ -90,6 +100,8 @@ def list_hubs(
         )
         .where(dev_table.hub_id.isnot(None))
     )
+    if user_clusters is not None:
+        dev_stmt = dev_stmt.where(dev_table.cluster_id.in_(user_clusters))
     devices_by_hub: dict[str, list[HubDeviceSummary]] = defaultdict(list)
     for row in db.execute(dev_stmt).mappings():
         devices_by_hub[row["hub_id"]].append(

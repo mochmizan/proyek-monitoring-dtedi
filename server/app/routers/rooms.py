@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status, Query
 from sqlalchemy import func, select, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from databasev5 import get_db
 from modelsv5 import User, dev_table, hub_table, rooms, temperature_data, UserClusterMembership
@@ -61,26 +61,22 @@ def list_rooms(
     stmt = (
         select(rooms, func.count(dev_table.dev_id).label("device_count"))
         .outerjoin(dev_table, rooms.id == dev_table.room_id)
-        .options(joinedload(rooms.cluster))
+        .options(selectinload(rooms.cluster))
         .group_by(rooms.id)
         .order_by(rooms.name)
     )
 
     if current_user.role != "root":
-        user_has_mems = select(UserClusterMembership.id).where(UserClusterMembership.user_id == current_user.id).exists()
-        user_mems = select(UserClusterMembership.cluster_id).where(UserClusterMembership.user_id == current_user.id)
-        if cluster_filter:
-            stmt = stmt.where(
-                rooms.cluster_id == cluster_filter,
-                or_(~user_has_mems, cluster_filter.in_(user_mems))
-            )
+        user_clusters = get_user_cluster_ids(current_user, db)
+        if user_clusters:
+            if cluster_filter:
+                if cluster_filter not in user_clusters:
+                    return []
+                stmt = stmt.where(rooms.cluster_id == cluster_filter)
+            else:
+                stmt = stmt.where(rooms.cluster_id.in_(user_clusters))
         else:
-            stmt = stmt.where(
-                or_(
-                    ~user_has_mems,
-                    rooms.cluster_id.in_(user_mems)
-                )
-            )
+            return []
     else:
         if cluster_filter:
             stmt = stmt.where(rooms.cluster_id == cluster_filter)
