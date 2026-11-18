@@ -222,11 +222,15 @@ def init_db(bind_engine=None):
 
 def seed_default_hub(bind_engine=None):
     """Memastikan minimal ada 1 Hub resmi awal terdaftar di database."""
+    # Obvious non-secret dev placeholder; real HUB_KEY must come from env in prod.
+    _hub_key_dev_default = "dev-insecure-change-me"
     # Fail-fast: default HUB_KEY only allowed when ENV != prod
-    if os.getenv("HUB_KEY", "rahasia_hub_01_xyz") == "rahasia_hub_01_xyz" and os.getenv("ENV") == "prod":
-        raise RuntimeError("HUB_KEY default 'rahasia_hub_01_xyz' is not allowed when ENV=prod — set a secure HUB_KEY")
+    if os.getenv("HUB_KEY", _hub_key_dev_default) == _hub_key_dev_default and os.getenv("ENV") == "prod":
+        raise RuntimeError(
+            f"HUB_KEY default '{_hub_key_dev_default}' is not allowed when ENV=prod — set a secure HUB_KEY"
+        )
     if os.getenv("HUB_KEY") is None and os.getenv("ENV") != "prod":
-        logging.warning("HUB_KEY not set — using default 'rahasia_hub_01_xyz' (only allowed when ENV!=prod)")
+        logging.warning("HUB_KEY not set — using insecure dev default (only allowed when ENV!=prod)")
     target_engine = bind_engine or engine
     if bind_engine is not None:
         CustomSession = sessionmaker(autoflush=False, autocommit=False, bind=target_engine)
@@ -235,7 +239,7 @@ def seed_default_hub(bind_engine=None):
         db = SessionLocal()
     try:
         default_hub_id = os.getenv("HUB_NAME", "RASPI_HUB_01")
-        default_hub_key = os.getenv("HUB_KEY", "rahasia_hub_01_xyz")
+        default_hub_key = os.getenv("HUB_KEY", _hub_key_dev_default)
 
         exist = db.get(hub_table, default_hub_id)
         if not exist:

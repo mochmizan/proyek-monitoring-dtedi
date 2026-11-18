@@ -2,8 +2,9 @@
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
@@ -27,6 +28,7 @@ def send_device_command(
     body: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin", "operator")),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     is_reset = body.get("reset") is not None
     if is_reset and current_user.role != "admin":
@@ -48,8 +50,26 @@ def send_device_command(
         from fastapi.exceptions import RequestValidationError
         raise RequestValidationError(err.errors())
 
+    # F-17: Idempotency. When the client supplies an Idempotency-Key, derive a
+    # deterministic command_id from it (scoped to the device). Replaying the same
+    # key returns the already-queued command instead of creating a duplicate,
+    # preventing command replay/duplication.
+    if idempotency_key is not None and idempotency_key.strip():
+        command_id = str(
+            uuid.uuid5(uuid.NAMESPACE_OID, f"cmd:{device.dev_id}:{idempotency_key.strip()}")
+        )
+        existing = db.get(pending_commands, command_id)
+        if existing is not None:
+            return {
+                "status": existing.status,
+                "command_id": existing.command_id,
+                "idempotent_replay": True,
+            }
+    else:
+        command_id = str(uuid.uuid4())
+
     new_cmd = pending_commands(
-        command_id=str(uuid.uuid4()),
+        command_id=command_id,
         dev_id=device.dev_id,
         hub_id=device.hub_id,
         payload=validated_command.model_dump(mode="json"),
@@ -90,7 +110,19 @@ def send_device_command(
         commit=False,
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent request with the same idempotency key won the race.
+        db.rollback()
+        existing = db.get(pending_commands, command_id)
+        if existing is not None:
+            return {
+                "status": existing.status,
+                "command_id": existing.command_id,
+                "idempotent_replay": True,
+            }
+        raise
     return {"status": "queued", "command_id": new_cmd.command_id}
 
 

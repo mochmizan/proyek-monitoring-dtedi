@@ -15,6 +15,7 @@ from auth import (
 )
 from schemas_auth import UserLoginPayload, UserResponse, ChangePasswordRequest
 from app.core.rate_limit import limiter
+from app.core.config import COOKIE_SECURE
 from app.core.csrf import create_csrf_token, require_csrf, validate_login_request
 from app.services.activity_logger import log_user_activity
 
@@ -85,12 +86,13 @@ def login(
         request=request,
     )
 
-    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    # F-16: Secure flag is driven by server configuration (COOKIE_SECURE),
+    # never by a client-supplied X-Forwarded-Proto header which can be forged.
     response.set_cookie(
         key="session_id",
         value=session.session_id,
         httponly=True,
-        secure=is_secure,
+        secure=COOKIE_SECURE,
         samesite="lax",
         path="/",
         max_age=7200,
@@ -131,8 +133,8 @@ def logout(
         request=request,
     )
 
-    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
-    response.delete_cookie("session_id", httponly=True, secure=is_secure, samesite="lax", path="/")
+    # F-16: Secure flag driven by server config, not client header.
+    response.delete_cookie("session_id", httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
     return {"status": "logged_out"}
 
 
@@ -232,8 +234,8 @@ def change_password(
     db.query(UserSession).filter(UserSession.user_id == current_user.id).delete()
 
     # 5. Hapus cookie session dari browser[cite: 1]
-    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
-    response.delete_cookie("session_id", httponly=True, secure=is_secure, samesite="lax", path="/")
+    # F-16: Secure flag driven by server config, not client header.
+    response.delete_cookie("session_id", httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
 
     # 6. Catat ke Audit Log[cite: 1]
     ip_addr = request.client.host if request.client else None

@@ -29,4 +29,15 @@ def get_forwarded_address(request: Request) -> str:
     return client_host
 
 
+def get_hub_rate_key(request: Request) -> str:
+    """F-04: Rate-limit key for IoT ingestion endpoints keyed on the hub identity
+    (X-Hub-ID header) so one flooding hub cannot exhaust the shared IP budget and
+    a spoofed source IP cannot bypass the limit. Falls back to the resolved client
+    IP when no hub id is present (e.g. malformed/unauthenticated requests)."""
+    hub_id = request.headers.get("X-Hub-ID")
+    if hub_id and hub_id.strip():
+        return f"hub:{hub_id.strip()}"
+    return f"ip:{get_forwarded_address(request)}"
+
+
 limiter = Limiter(key_func=get_forwarded_address)

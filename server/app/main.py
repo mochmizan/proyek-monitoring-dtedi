@@ -9,8 +9,10 @@ from slowapi import _rate_limit_exceeded_handler
 
 from auth import SessionExpired, session_expired_handler
 from app.core.config import CORS_ALLOWED_ORIGINS, STATIC_DIR, FLOORPLAN_UPLOAD_DIR
+from app.core.config import ENABLE_DOCS
 from app.core.logging import configure_logging, StructuredLoggingMiddleware
 from app.core.rate_limit import limiter
+from app.core.security_middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 from app.routers import auth as auth_router
 from app.routers import hubs as hubs_router
 from app.routers import rooms as rooms_router
@@ -34,10 +36,24 @@ os.makedirs(FLOORPLAN_UPLOAD_DIR, exist_ok=True)
 # Import fail-fast checks from config (already executed on import)
 import app.core.config  # noqa: F401
 
-api = FastAPI(title="HubGate V5 - Secure API Gateway", lifespan=scheduler_lifespan)
+api = FastAPI(
+    title="HubGate V5 - Secure API Gateway",
+    lifespan=scheduler_lifespan,
+    # F-14: Only expose interactive docs & schema when ENABLE_DOCS is true
+    # (defaults to off in production). Prevents endpoint/schema disclosure.
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
+)
 api.state.limiter = limiter
 api.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 api.add_exception_handler(SessionExpired, session_expired_handler)
+
+# F-13: Security response headers (HSTS/CSP/X-Content-Type-Options/etc.)
+api.add_middleware(SecurityHeadersMiddleware)
+
+# F-05: Reject oversized request bodies (413) before they are processed.
+api.add_middleware(BodySizeLimitMiddleware)
 
 # Structured JSON request logging middleware
 api.add_middleware(StructuredLoggingMiddleware)

@@ -1,5 +1,5 @@
 # app/routers/iot.py
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any, Union
 import uuid
@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limiter, get_hub_rate_key
+from app.core.config import (
+    MAX_FUTURE_TIMESTAMP_SECONDS,
+    MAX_PAST_TIMESTAMP_SECONDS,
+    IOT_RATE_LIMIT_PER_HUB,
+    IOT_BATCH_RATE_LIMIT_PER_HUB,
+)
 from app.dependencies import verify_hub_identity
 from app.services.alert_engine import evaluate_device_thresholds
 from app.services.presence import resolve_offline_on_telemetry
@@ -28,7 +34,11 @@ router = APIRouter(tags=["iot"])
 
 def _parse_event_time(item: Any, fallback_utc: datetime) -> datetime:
     """Extract event timestamp from payload (HUB_TS, _hub_created_at, or timestamp).
-    Preserves microsecond precision and ensures UTC timezone."""
+    Preserves microsecond precision and ensures UTC timezone.
+    Applies boundary protection [-35 days, +24 hours] to protect partitioned tables without DEFAULT."""
+    if fallback_utc.tzinfo is None:
+        fallback_utc = fallback_utc.replace(tzinfo=UTC)
+
     hub_ts_raw = None
     try:
         if hasattr(item, "HUB_TS") and getattr(item, "HUB_TS") is not None:
@@ -49,22 +59,51 @@ def _parse_event_time(item: Any, fallback_utc: datetime) -> datetime:
     except Exception:
         hub_ts_raw = None
 
+    parsed_dt = None
     if hub_ts_raw is not None:
         try:
             if isinstance(hub_ts_raw, (int, float)):
-                return datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
+                parsed_dt = datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
             elif isinstance(hub_ts_raw, str):
                 try:
                     dt = datetime.fromisoformat(hub_ts_raw)
-                    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+                    parsed_dt = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
                 except ValueError:
-                    return datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
+                    parsed_dt = datetime.fromtimestamp(float(hub_ts_raw), tz=UTC)
             elif isinstance(hub_ts_raw, datetime):
-                return hub_ts_raw if hub_ts_raw.tzinfo is not None else hub_ts_raw.replace(tzinfo=UTC)
+                parsed_dt = hub_ts_raw if hub_ts_raw.tzinfo is not None else hub_ts_raw.replace(tzinfo=UTC)
         except Exception:
-            pass
+            parsed_dt = None
 
-    return fallback_utc
+    if parsed_dt is None:
+        return fallback_utc
+
+    # Ensure parsed_dt is timezone-aware UTC for safe comparisons
+    if parsed_dt.tzinfo is None:
+        parsed_dt = parsed_dt.replace(tzinfo=UTC)
+
+    # F-06: Reject timestamps too far in the FUTURE. A telemetry event cannot
+    # legitimately originate after "now" (plus a small clock-skew tolerance).
+    # Accepting future timestamps corrupts history/alerts, so we reject with 422
+    # instead of silently rewriting the value.
+    future_bound = fallback_utc + timedelta(seconds=MAX_FUTURE_TIMESTAMP_SECONDS)
+    if parsed_dt > future_bound:
+        logging.warning(
+            f"Rejected telemetry: event timestamp {parsed_dt.isoformat()} is beyond the "
+            f"allowed future window (now + {MAX_FUTURE_TIMESTAMP_SECONDS}s = {future_bound.isoformat()})."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Event timestamp is too far in the future "
+                f"(max allowed skew: {MAX_FUTURE_TIMESTAMP_SECONDS}s)."
+            ),
+        )
+
+    # Past boundary: preserve the pentest base behaviour (no clamping) so that
+    # legitimate historical backfill is ingested unchanged. F-06 only concerns
+    # rejecting FUTURE timestamps, which is handled above.
+    return parsed_dt
 
 
 def _generate_deterministic_id(dev_id: str, ts: datetime) -> str:
@@ -147,7 +186,7 @@ def bulk_insert_or_ignore(
 
 
 @router.post("/api/iot/unapproved")
-@limiter.limit("60/minute")
+@limiter.limit("60/minute", key_func=get_hub_rate_key)
 def receive_unapproved_alert(
     request: Request,
     payload: UnapprovedDeviceAlert,
@@ -186,7 +225,7 @@ def receive_unapproved_alert(
 
 
 @router.post("/api/iot")
-@limiter.limit("1200/minute")
+@limiter.limit(IOT_RATE_LIMIT_PER_HUB, key_func=get_hub_rate_key)
 def receive_iot(
     request: Request,
     device: IotPayload,
@@ -284,7 +323,7 @@ def receive_iot(
 
 
 @router.post("/api/iot/batch", response_model=IotBatchResponse)
-@limiter.limit("60/minute")
+@limiter.limit(IOT_BATCH_RATE_LIMIT_PER_HUB, key_func=get_hub_rate_key)
 def receive_iot_batch(
     request: Request,
     payload: Union[IotBatchRequest, list[IotPayload]],

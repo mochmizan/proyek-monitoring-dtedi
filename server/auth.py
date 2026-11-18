@@ -56,8 +56,10 @@ async def session_expired_handler(request: Request, exc: SessionExpired):
         status_code=status.HTTP_401_UNAUTHORIZED,
         content={"detail": "Session expired or invalid. Please login again."}
     )
-    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
-    response.delete_cookie("session_id", path="/", httponly=True, secure=is_secure, samesite="lax")
+    # F-16: Secure flag driven by server config (COOKIE_SECURE), not the
+    # client-controlled x-forwarded-proto header which can be spoofed.
+    from app.core.config import COOKIE_SECURE
+    response.delete_cookie("session_id", path="/", httponly=True, secure=COOKIE_SECURE, samesite="lax")
     origin = request.headers.get("origin")
     if origin:
         cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "")
