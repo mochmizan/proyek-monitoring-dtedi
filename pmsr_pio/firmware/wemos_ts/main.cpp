@@ -21,6 +21,7 @@
 #ifndef WIFI_PASS
 #error "WIFI_PASS not defined. Check secrets.h."
 #endif
+#include "mqtt_tls.h"   // MQTT over TLS (8883) + pin public key broker
 
 //========================
 // OLED Display Config
@@ -55,7 +56,7 @@ const char* MQTT_IP     = MQTT_HOST;   // IP Raspberry Pi Hub (from secrets.h)
 #ifdef MQTT_PORT
 #undef MQTT_PORT
 #endif
-const int   MQTT_PORT   = 1883;
+const int   MQTT_PORT   = MQTT_TLS_PORT;   // 8883 (TLS)
 const char* DATA_TOPIC  = "hs109rs/ts/data";
 
 //========================
@@ -105,7 +106,7 @@ unsigned long lastMqttAttempt = 0;
 float temperature = NAN;
 float humidity    = NAN;
 
-WiFiClient   wifiClient;
+BearSSL::WiFiClientSecure wifiClient;
 PubSubClient mqtt(wifiClient);
 String       mqttClientId;
 
@@ -314,6 +315,7 @@ void setup()
 
     connectWiFi();
 
+    mqttTlsConfigure(wifiClient);
     mqtt.setServer(MQTT_IP, MQTT_PORT);
     mqtt.setKeepAlive(30);
     mqtt.setSocketTimeout(5);

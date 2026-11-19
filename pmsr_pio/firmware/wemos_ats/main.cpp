@@ -21,6 +21,7 @@
 #ifndef WIFI_PASS
 #error "WIFI_PASS not defined. Check secrets.h."
 #endif
+#include "mqtt_tls.h"   // MQTT over TLS (8883) + pin public key broker
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
@@ -28,11 +29,9 @@ const char* password = WIFI_PASS;
 // MQTT Broker (Hub)
 const char* mqtt_server = MQTT_HOST;
 #ifdef MQTT_PORT
-const uint16_t mqtt_port = MQTT_PORT;
-#undef MQTT_PORT
-#else
-const uint16_t mqtt_port = 1883;
+#undef MQTT_PORT   // port dari secrets.h (1883) diabaikan; node wajib TLS
 #endif
+const uint16_t mqtt_port = MQTT_TLS_PORT;   // 8883 (TLS)
 const char* mqtt_topic_data = "hs109rs/ats/data";
 const char* mqtt_topic_command = "hs109rs/ats/command";
 char device_name[16];  // Derived at boot: ATS-last4ofMAC bounded snprintf
@@ -43,7 +42,7 @@ const char* DEV_TYPE = "ATS";
 const char* mqtt_user = MQTT_USER;
 const char* mqtt_pass = MQTT_PASS;
 
-WiFiClient espClient;
+BearSSL::WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
 // Non-blocking MQTT reconnect backoff
@@ -244,7 +243,9 @@ void setup() {
            bootMac[12], bootMac[13], bootMac[15], bootMac[16]);
 
   setup_wifi();
+  mqttTlsConfigure(espClient);
   client.setServer(mqtt_server, mqtt_port);
+  client.setSocketTimeout(5);
   client.setCallback(callback);
   client.setBufferSize(512);
 
