@@ -6,6 +6,7 @@ import threading
 import logging
 import re
 import sqlite3
+import ssl
 import requests
 import urllib3
 import paho.mqtt.client as mqtt
@@ -51,6 +52,10 @@ MQTT_HOST  = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT  = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USER  = os.getenv("MQTT_USER", "hubadmin")
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "hs109rs/#")
+# MQTT over TLS (opsional; default off karena broker lokal di loopback). Aktifkan: MQTT_TLS=true,
+# MQTT_PORT=8883, MQTT_CA_CERT=<path ca.crt dari tools/gen_mqtt_tls.sh>
+MQTT_TLS     = os.getenv("MQTT_TLS", "false").lower() in ("true", "1", "yes")
+MQTT_CA_CERT = os.getenv("MQTT_CA_CERT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "ca.crt")
 
 # Topic khusus Downlink Command AC (legacy compatibility)
 AC_COMMAND_TOPIC = "hs109rs/ac/command"
@@ -731,6 +736,13 @@ def main():
     # 3. Inisialisasi MQTT Client with CallbackAPIVersion.VERSION1
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=f"HubGateway_{HUB_ID}")
     client.username_pw_set(MQTT_USER, MQTT_PASS)
+    if MQTT_TLS:
+        if not os.path.isfile(MQTT_CA_CERT):
+            logging.error(f"[SECURITY FATAL] MQTT_TLS=true tapi CA tidak ditemukan di '{MQTT_CA_CERT}'. Refusing to start.")
+            sys.exit(1)
+        # Verifikasi chain + hostname/IP (SAN) broker; TLS 1.2+
+        client.tls_set(ca_certs=MQTT_CA_CERT, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+        logging.info(f"[SECURITY] MQTT TLS aktif (CA: {MQTT_CA_CERT}).")
     client.on_connect = on_connect
     client.on_message = on_message
 
