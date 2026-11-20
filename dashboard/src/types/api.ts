@@ -315,7 +315,7 @@ export interface HubResponse {
   hub_id: string;
   hub_name: string;
   room?: string | null;
-  status: 'online' | 'offline';
+  status: 'online' | 'offline' | 'pending_approval' | 'blocked' | 'revoked';
   is_active?: boolean;
   last_seen?: string | null;
   device_count: number;
