@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
-import { fetchCurrentUser, fetchHubs, approveHub, revokeHub } from '../lib/api';
+import { fetchCurrentUser, fetchHubs, approveHub, declineHub, revokeHub } from '../lib/api';
 import { POLL_TIER3_PRESENCE_MS, STALE_TIER3_PRESENCE_MS } from '../lib/constants';
 import { getJitteredInterval } from '../lib/jitter';
 import { cn } from '../lib/utils';
@@ -49,14 +49,26 @@ function HubCard({
   hub,
   isAdmin,
   onApprove,
+  onDecline,
   onRevoke,
 }: {
   hub: HubResponse;
   isAdmin: boolean;
   onApprove: (hubId: string) => void;
+  onDecline: (hubId: string) => void;
   onRevoke: (hubId: string) => void;
 }) {
+  const isPending = hub.status === 'pending_approval';
+  const isBlocked = hub.status === 'blocked';
   const online = hub.status === 'online';
+
+  const statusConfig = isPending
+    ? { tone: 'amber' as const, label: 'Pending Approval', pulse: true }
+    : isBlocked
+    ? { tone: 'red' as const, label: 'Blocked', pulse: false }
+    : online
+    ? { tone: 'emerald' as const, label: 'Online', pulse: true }
+    : { tone: 'zinc' as const, label: 'Offline', pulse: false };
 
   return (
     <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col justify-between">
@@ -70,9 +82,9 @@ function HubCard({
             </p>
           </div>
           <StatusDot
-            tone={online ? 'emerald' : 'red'}
-            label={online ? 'Online' : 'Offline'}
-            pulse={online}
+            tone={statusConfig.tone}
+            label={statusConfig.label}
+            pulse={statusConfig.pulse}
             className="mt-1.5"
           />
         </div>
@@ -93,22 +105,51 @@ function HubCard({
         </span>
         {isAdmin && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onApprove(hub.hub_id)}
-              disabled={hub.is_active ?? online}
-              title={(hub.is_active ?? online) ? 'Hub already active' : 'Approve hub'}
-              className="px-2 py-1 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/40 rounded text-[10px] font-semibold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              Approve
-            </button>
-            <button
-              onClick={() => onRevoke(hub.hub_id)}
-              disabled={hub.is_active === false}
-              title="Revoke hub access"
-              className="px-2 py-1 bg-red-950/30 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded text-[10px] font-semibold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              Revoke
-            </button>
+            {isPending ? (
+              <>
+                <button
+                  onClick={() => onApprove(hub.hub_id)}
+                  title="Approve hub access"
+                  className="px-2 py-1 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/40 rounded text-[10px] font-semibold cursor-pointer"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => onDecline(hub.hub_id)}
+                  title="Decline and block this hub"
+                  className="px-2 py-1 bg-red-950/30 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded text-[10px] font-semibold cursor-pointer"
+                >
+                  Decline
+                </button>
+              </>
+            ) : isBlocked ? (
+              <button
+                onClick={() => onApprove(hub.hub_id)}
+                title="Unblock / Approve hub access"
+                className="px-2 py-1 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/40 rounded text-[10px] font-semibold cursor-pointer"
+              >
+                Unblock
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => onApprove(hub.hub_id)}
+                  disabled={hub.is_active ?? online}
+                  title={(hub.is_active ?? online) ? 'Hub already active' : 'Approve hub'}
+                  className="px-2 py-1 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/40 rounded text-[10px] font-semibold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => onRevoke(hub.hub_id)}
+                  disabled={hub.is_active === false}
+                  title="Revoke hub access"
+                  className="px-2 py-1 bg-red-950/30 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded text-[10px] font-semibold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Revoke
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -189,9 +230,23 @@ function HubsPage() {
     onError: (err: Error) => setActionError(err.message),
   });
 
+  const declineMutation = useMutation({
+    mutationFn: declineHub,
+    onSuccess: invalidateHubs,
+    onError: (err: Error) => setActionError(err.message),
+  });
+
   const handleApprove = (hubId: string) => {
     setActionError(null);
     approveMutation.mutate(hubId);
+  };
+
+  const handleDecline = (hubId: string) => {
+    if (!window.confirm(`Decline and block hub "${hubId}"? Incoming telemetry from this hub will be blocked.`)) {
+      return;
+    }
+    setActionError(null);
+    declineMutation.mutate(hubId);
   };
 
   const handleRevoke = (hubId: string) => {
@@ -277,6 +332,7 @@ function HubsPage() {
                 hub={hub}
                 isAdmin={isAdmin}
                 onApprove={handleApprove}
+                onDecline={handleDecline}
                 onRevoke={handleRevoke}
               />
             ))}
@@ -291,7 +347,7 @@ function HubsPage() {
         </>
       )}
 
-      {(approveMutation.isPending || revokeMutation.isPending) && (
+      {(approveMutation.isPending || revokeMutation.isPending || declineMutation.isPending) && (
         <div className="fixed bottom-6 right-6 bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 flex items-center gap-2 shadow-2xl">
           <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
           <span className="text-xs text-zinc-300">Applying hub action...</span>

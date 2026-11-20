@@ -541,6 +541,13 @@ export async function approveHub(hubId: string): Promise<HubActionResponse> {
   return handleResponse<HubActionResponse>(res);
 }
 
+export async function declineHub(hubId: string): Promise<HubActionResponse> {
+  const res = await apiFetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/decline`, {
+    method: 'POST',
+  });
+  return handleResponse<HubActionResponse>(res);
+}
+
 export async function revokeHub(hubId: string): Promise<HubActionResponse> {
   const res = await apiFetch(`${BASE}/api/hubs/${encodeURIComponent(hubId)}/revoke`, {
     method: 'POST',

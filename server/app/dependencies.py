@@ -1,16 +1,21 @@
 # app/dependencies.py — shared FastAPI dependencies
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import re
 import secrets
 import threading
 import time
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from databasev5 import get_db
 from modelsv5 import hub_table
+
+HUB_ID_REGEX = re.compile(r"^[a-zA-Z0-9_\-\.]{3,64}$")
+MAX_PENDING_HUBS = 50
 
 
 @dataclass
@@ -18,6 +23,7 @@ class HubCacheEntry:
     hub_name: str
     hub_key: str
     is_active: bool
+    status: str
     last_db_persist_ts: float  # monotonic epoch
 
 
@@ -54,6 +60,7 @@ class HubAuthCache:
                 hub_name=hub.hub_name or "",
                 hub_key=hub.hub_key or "",
                 is_active=bool(hub.is_active),
+                status=hub.status or "offline",
                 last_db_persist_ts=0.0,  # 0.0 ensures first request qualifies for DB persist
             )
             self._cache[hub_id] = entry
@@ -103,19 +110,86 @@ def stage_hub_heartbeat(hub: hub_table) -> bool:
     return False
 
 
+def _handle_new_hub_knock(x_hub_id: str, x_hub_key: str, db: Session) -> None:
+    """Auto-quarantine / Knock handler: Automatically registers an unknown hub
+    as pending_approval in the dashboard instead of blocking permanently upfront.
+    Returns HTTP 403 Forbidden with pending explanation."""
+    if not HUB_ID_REGEX.match(x_hub_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Format X-Hub-ID tidak valid (harus 3-64 karakter alfanumerik, _, -, .)",
+        )
+
+    pending_count = (
+        db.query(func.count(hub_table.hub_id))
+        .filter(hub_table.status == "pending_approval")
+        .scalar()
+        or 0
+    )
+    if pending_count >= MAX_PENDING_HUBS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Antrean persetujuan hub penuh. Hubungi administrator.",
+        )
+
+    existing = db.get(hub_table, x_hub_id)
+    now_utc = datetime.now(UTC)
+    if not existing:
+        new_hub = hub_table(
+            hub_id=x_hub_id,
+            hub_name=x_hub_id,
+            hub_key=x_hub_key if len((x_hub_key or "").strip()) >= 16 else secrets.token_hex(32),
+            is_active=False,
+            status="pending_approval",
+            created_at=now_utc,
+            last_seen=now_utc,
+        )
+        db.add(new_hub)
+        db.commit()
+
+    hub_auth_cache.invalidate(x_hub_id)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Hub terdaftar dan sedang menunggu persetujuan Admin (Pending Approval).",
+    )
+
+
 def verify_hub_identity(
     x_hub_id: str = Header(..., alias="X-Hub-ID"),
     x_hub_key: str = Header(..., alias="X-Hub-Key"),
     db: Session = Depends(get_db),
 ) -> hub_table:
     """[V5] Verifies hub credentials using HubAuthCache and stages heartbeat without committing.
-    Eliminates auth double-commit (CRIT-01): Telemetry and heartbeat commit atomically in endpoint handlers."""
+    Supports Lecturer Knock Requirement:
+    - Unknown hubs auto-register into 'pending_approval' (HTTP 403).
+    - Declined/blocked hubs are strictly rejected (HTTP 403).
+    - Pending hubs update last_seen (throttled) and remain 403 until approved by Admin.
+    - Approved/active hubs pass authentication with staged heartbeat."""
     entry = hub_auth_cache.get_or_load(x_hub_id, db)
-    if not entry or not entry.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Akses Ditolak: Hub tidak terdaftar atau non-aktif!",
-        )
+    if entry is None:
+        _handle_new_hub_knock(x_hub_id, x_hub_key, db)
+
+    if not entry.is_active:
+        if entry.status == "blocked":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akses Ditolak: Hub ini telah diblokir oleh Admin.",
+            )
+        elif entry.status == "pending_approval":
+            if hub_auth_cache.should_persist_heartbeat(x_hub_id):
+                hub = db.get(hub_table, x_hub_id)
+                if hub:
+                    hub.last_seen = datetime.now(UTC)
+                    db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Hub sedang menunggu persetujuan Admin (Pending Approval).",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Akses Ditolak: Hub tidak terdaftar atau non-aktif!",
+            )
 
     if not secrets.compare_digest(entry.hub_key, x_hub_key):
         raise HTTPException(

@@ -116,7 +116,14 @@ def list_hubs(
     results = []
     for h, dev_count in hub_rows:
         h_seen = h.last_seen if (h.last_seen and h.last_seen.tzinfo is not None) else (h.last_seen.replace(tzinfo=UTC) if h.last_seen else None)
-        hub_status = "online" if (h_seen and h_seen >= cutoff) else "offline"
+        
+        if not h.is_active:
+            if h.status in ("pending_approval", "blocked", "revoked"):
+                hub_status = h.status
+            else:
+                hub_status = "offline"
+        else:
+            hub_status = "online" if (h_seen and h_seen >= cutoff) else "offline"
 
         results.append(
             HubResponse(
@@ -143,6 +150,12 @@ def pair_hub(
 ):
     existing = db.get(hub_table, payload.hub_id)
     now_utc = datetime.now(UTC)
+
+    if existing and existing.status == "blocked":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses Ditolak: Hub ini telah diblokir oleh Admin.",
+        )
 
     if existing and existing.is_active:
         stored_key = existing.hub_key or ""
@@ -175,11 +188,12 @@ def pair_hub(
             hub_id=payload.hub_id,
             hub_name=clean_name,
             # A pending hub must never inherit the shared bootstrap credential.
-            # This unusable random value is replaced exactly once on approval.
+            # This unusable random value is replaced on approval.
             hub_key=secrets.token_urlsafe(48),
             is_active=False,
-            status="offline",
+            status="pending_approval",
             created_at=now_utc,
+            last_seen=now_utc,
         )
         db.add(new_hub)
         db.commit()
@@ -206,9 +220,13 @@ def approve_hub(
             detail="Hub sudah aktif; gunakan rotasi kredensial untuk mengganti key",
         )
 
-    permanent_hub_key = secrets.token_hex(32)
-    hub.hub_key = permanent_hub_key
+    # Pertahankan key yang sudah dimiliki hub jika sudah ada dan valid (>= 16 char)
+    # Ini memungkinkan Zero-Touch Onboarding tanpa harus ubah .env di Raspberry Pi
+    if not hub.hub_key or len(hub.hub_key.strip()) < 16:
+        hub.hub_key = secrets.token_hex(32)
+
     hub.is_active = True
+    hub.status = "online"
     log_user_activity(
         db,
         user=current_user,
@@ -223,9 +241,36 @@ def approve_hub(
     return {
         "status": "approved",
         "hub_id": hub_id,
-        # Returned once so the administrator can provision the edge .env.
-        "hub_key": permanent_hub_key,
+        "hub_key": hub.hub_key,
     }
+
+
+@router.post("/api/hubs/{hub_id}/decline", dependencies=[Depends(validate_csrf_request)])
+@limiter.limit("30/minute")
+def decline_hub(
+    request: Request,
+    hub_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    hub = db.get(hub_table, hub_id)
+    if not hub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hub tidak ditemukan")
+
+    hub.is_active = False
+    hub.status = "blocked"
+    log_user_activity(
+        db,
+        user=current_user,
+        action="Menolak dan memblokir gateway hub (Decline)",
+        category="config",
+        details={"hub_id": hub_id, "hub_name": hub.hub_name},
+        request=request,
+        commit=False,
+    )
+    db.commit()
+    hub_auth_cache.invalidate(hub_id)
+    return {"status": "blocked", "hub_id": hub_id}
 
 
 @router.post("/api/hubs/{hub_id}/revoke", dependencies=[Depends(validate_csrf_request)])
