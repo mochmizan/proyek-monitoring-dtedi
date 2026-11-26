@@ -13,18 +13,30 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// Secrets (gitignored) — copy firmware/common/secrets.h.example to firmware/common/secrets.h
-// For Arduino IDE: copy firmware/common/secrets.h into this sketch folder and use #include "secrets.h"
-#if __has_include("../common/secrets.h")
-#include "../common/secrets.h"
-#elif __has_include("secrets.h")
+// Secrets configuration:
+// 1. Sketch-local secrets.h (preferred for Arduino IDE out-of-the-box compile)
+// 2. Monorepo common/secrets.h (for CLI / multi-sketch builds)
+#if __has_include("secrets.h")
 #include "secrets.h"
+#elif __has_include("../common/secrets.h")
+#include "../common/secrets.h"
+#elif __has_include("common/secrets.h")
+#include "common/secrets.h"
 #else
-#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#error "secrets.h missing. Ensure secrets.h exists in this sketch folder or in firmware/common/."
 #endif
 #ifndef WIFI_PASS
-#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
+#error "WIFI_PASS not defined. Check secrets.h."
 #endif
+#if __has_include("mqtt_tls.h")
+#include "mqtt_tls.h"
+#elif __has_include("../common/mqtt_tls.h")
+#include "../common/mqtt_tls.h"
+#elif __has_include("common/mqtt_tls.h")
+#include "common/mqtt_tls.h"
+#else
+#error "mqtt_tls.h missing. Ensure mqtt_tls.h exists in firmware/common/."
+#endif   // MQTT over TLS (8883) + pin public key broker
 
 //========================
 // OLED Display Config
@@ -53,6 +65,15 @@ const uint16_t IR1_PIN = D5;
 const uint16_t IR2_PIN = D6;
 
 //========================
+// Magnetic Sensor Pins
+//========================
+const uint16_t MAG1_PIN = D0;
+const uint16_t MAG2_PIN = D7;
+
+bool isAC1ON    = false;
+bool isAC2ON    = false;
+
+//========================
 // WiFi Config
 //========================
 const char* NAMA_WIFI     = WIFI_SSID;
@@ -62,7 +83,10 @@ const char* NAMA_PASSWORD = WIFI_PASS;
 // MQTT Broker Config (Hub)
 //========================
 const char*     MQTT_IP       = MQTT_HOST;   // IP Raspberry Pi Hub (from secrets.h)
-const uint16_t  MQTT_PORT     = 1883;
+#ifdef MQTT_PORT
+#undef MQTT_PORT
+#endif
+const uint16_t  MQTT_PORT     = MQTT_TLS_PORT;   // 8883 (TLS)
 const char*     DATA_TOPIC    = "hs109rs/ac/data";
 const char*     COMMAND_TOPIC = "hs109rs/ac/command";
 
@@ -83,16 +107,32 @@ const char* MQTT_USER = _MQTT_USER_VAL;
 const char* MQTT_PASS = _MQTT_PASS_VAL;
 
 //========================
-// Timing & Intervals (ms)
+// Timing & Cadence (ms)
 //========================
-const unsigned long PUBLISH_INTERVAL_MS = 5000;
+const unsigned long HEARTBEAT_INTERVAL_MS   = 120000; // 120s (2m) steady-state heartbeat
+const unsigned long MIN_PUBLISH_INTERVAL_MS = 5000;   // 5s rate-limit
+const unsigned long OLED_INTERVAL_MS        = 1000;   // 1 Hz display refresh
+const unsigned long SENSOR_INTERVAL_MS      = 2000;   // 2s sensor sampling
+
+//========================
+// Deadband Thresholds
+//========================
+const float DEADBAND_TEMP  = 0.5f;  // delta_temp >= 0.5°C
+const float DEADBAND_HUMID = 2.0f;  // delta_hum  >= 2.0%
+
 unsigned long lastPublish = 0;
-
-const unsigned long OLED_INTERVAL_MS = 1000;
 unsigned long lastOLED = 0;
-
-const unsigned long SENSOR_INTERVAL_MS = 1000;
 unsigned long lastSensorRead = 0;
+
+float lastPublishedTemp = NAN;
+float lastPublishedHumid = NAN;
+bool lastSensorError = false;
+bool hasPublishedOnce = false;
+
+bool lastPublishedAc1Power = false;
+uint8_t lastPublishedAc1Temp = 0;
+bool lastPublishedAc2Power = false;
+uint8_t lastPublishedAc2Temp = 0;
 
 const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;
 unsigned long mqttRetryDelay = 3000;
@@ -104,7 +144,7 @@ float humidity    = NAN;
 
 String mqttClientId;
 
-WiFiClient wemosClient;
+BearSSL::WiFiClientSecure wemosClient;
 PubSubClient client(wemosClient);
 
 IRGreeAC ac1(IR1_PIN);
@@ -318,15 +358,11 @@ void printHelp()
     Serial.println(F("============================="));
 }
 
-void publishACStatus(const IRGreeAC *ac1_inst, const IRGreeAC *ac2_inst)
+bool publishACStatus(const IRGreeAC *ac1_inst, const IRGreeAC *ac2_inst)
 {
-    if (!isShtPresent || isnan(temperature) || isnan(humidity))
-    {
-        Serial.println(F("Skip publish: sensor read failure (NaN/absent)"));
-        return;
-    }
+    if (!client.connected()) return false;
 
-    JsonDocument doc;
+    StaticJsonDocument<256> doc;
     doc["HUB_NAME"]  = HUB_NAME;
     doc["DEV_ID"]    = WiFi.macAddress();
     doc["DEV_NAME"]  = DEV_NAME;
@@ -335,8 +371,22 @@ void publishACStatus(const IRGreeAC *ac1_inst, const IRGreeAC *ac2_inst)
     doc["AC1_TEMP"]  = ac1_inst->getTemp();
     doc["AC2_POWER"] = ac2_inst->getPower() ? "ON" : "OFF";
     doc["AC2_TEMP"]  = ac2_inst->getTemp();
-    doc["TEMP"]      = serialized(String(temperature, 1));
-    doc["HUMID"]     = serialized(String(humidity, 1));
+    doc["IS_AC1_ON"]  = isAC1ON ? "ON" : "OFF";
+    doc["IS_AC2_ON"]  = isAC2ON ? "ON" : "OFF";
+
+    bool sensorError = (!isShtPresent || isnan(temperature) || isnan(humidity));
+    if (sensorError)
+    {
+        doc["TEMP"]   = nullptr;
+        doc["HUMID"]  = nullptr;
+        doc["STATUS"] = "SENSOR_ERROR";
+    }
+    else
+    {
+        doc["TEMP"]   = serialized(String(temperature, 1));
+        doc["HUMID"]  = serialized(String(humidity, 1));
+        doc["STATUS"] = "OK";
+    }
 
     char buffer[256];
     serializeJson(doc, buffer, sizeof(buffer));
@@ -345,10 +395,21 @@ void publishACStatus(const IRGreeAC *ac1_inst, const IRGreeAC *ac2_inst)
     {
         Serial.print(F("[PUB] "));
         Serial.println(buffer);
+        lastPublish = millis();
+        hasPublishedOnce = true;
+        lastPublishedTemp = temperature;
+        lastPublishedHumid = humidity;
+        lastSensorError = sensorError;
+        lastPublishedAc1Power = ac1_inst->getPower();
+        lastPublishedAc1Temp  = ac1_inst->getTemp();
+        lastPublishedAc2Power = ac2_inst->getPower();
+        lastPublishedAc2Temp  = ac2_inst->getTemp();
+        return true;
     }
     else
     {
         Serial.println(F("Publish Failed"));
+        return false;
     }
 }
 
@@ -372,7 +433,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     memcpy(msg, payload, length);
     msg[length] = '\0';
 
-    JsonDocument doc;
+    StaticJsonDocument<256> doc;
     DeserializationError error = deserializeJson(doc, msg);
     if (error) {
         Serial.print(F("JSON error: "));
@@ -486,7 +547,19 @@ void setup()
     Wire.begin(D2, D1);
     Wire.setClock(100000);
 
+    pinMode(MAG1_PIN, INPUT);
+    pinMode(MAG2_PIN, INPUT);
+
+    isAC1ON = digitalRead(MAG1_PIN);
+    isAC2ON = digitalRead(MAG2_PIN);
+
     scanAndInitI2C();
+
+    if (isShtPresent) {
+        temperature = sht30.readTemperature();
+        humidity    = sht30.readHumidity();
+    }
+    lastSensorError = (!isShtPresent || isnan(temperature) || isnan(humidity));
 
     String bootMac = WiFi.macAddress();
     snprintf(DEV_NAME, sizeof(DEV_NAME), "%s-%c%c%c%c", DEV_TYPE,
@@ -496,6 +569,7 @@ void setup()
 
     connect_wifi();
 
+    mqttTlsConfigure(wemosClient);
     client.setServer(MQTT_IP, MQTT_PORT);
     client.setCallback(callback);
     client.setKeepAlive(30);
@@ -518,6 +592,16 @@ void loop()
     client.loop();
 
     unsigned long now = millis();
+
+    bool newIsAC1ON = digitalRead(MAG1_PIN);
+    bool newIsAC2ON = digitalRead(MAG2_PIN);
+
+    bool acStatusChanged =
+        (newIsAC1ON != isAC1ON) ||
+        (newIsAC2ON != isAC2ON);
+
+    isAC1ON = newIsAC1ON;
+    isAC2ON = newIsAC2ON;
 
     // 1. Throttled Sensor Reading
     if (now - lastSensorRead >= SENSOR_INTERVAL_MS)
@@ -613,16 +697,34 @@ void loop()
         }
     }
 
-    // 3. Throttled Publish to MQTT Hub
-    if (now - lastPublish >= PUBLISH_INTERVAL_MS)
-    {
-        lastPublish = now;
+    // 3. Cadenced & Deadband Telemetry Publishing
+    bool sensorStatusChanged = (sensorError != lastSensorError);
+    bool minIntervalElapsed = (!hasPublishedOnce || (now - lastPublish >= MIN_PUBLISH_INTERVAL_MS));
 
-        if (sensorError)
-        {
-            Serial.println(F("Skip publish: sensor read failure (NaN/absent)"));
+    bool deadbandExceeded = false;
+    if (!sensorError) {
+        if (isnan(lastPublishedTemp) || isnan(lastPublishedHumid)) {
+            deadbandExceeded = true;
+        } else {
+            float deltaT = fabs(temperature - lastPublishedTemp);
+            float deltaH = fabs(humidity - lastPublishedHumid);
+            if (deltaT >= DEADBAND_TEMP || deltaH >= DEADBAND_HUMID) {
+                deadbandExceeded = true;
+            }
         }
-        else if (client.connected())
+    }
+
+    bool heartbeatExpired = (!hasPublishedOnce || (now - lastPublish >= HEARTBEAT_INTERVAL_MS));
+
+    bool shouldPublish = false;
+    if ((minIntervalElapsed && (heartbeatExpired || sensorStatusChanged || deadbandExceeded)) || acStatusChanged)
+    {
+        shouldPublish = true;
+    }
+
+    if (shouldPublish)
+    {
+        if (client.connected())
         {
             publishACStatus(&ac1, &ac2);
         }

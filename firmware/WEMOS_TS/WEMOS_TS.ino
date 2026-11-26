@@ -1,24 +1,35 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-
-// Secrets (gitignored) — copy firmware/common/secrets.h.example to firmware/common/secrets.h
-// For Arduino IDE: copy firmware/common/secrets.h into this sketch folder and use #include "secrets.h"
-#if __has_include("../common/secrets.h")
-#include "../common/secrets.h"
-#elif __has_include("secrets.h")
-#include "secrets.h"
-#else
-#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
-#endif
-#ifndef WIFI_PASS
-#error "copy firmware/common/secrets.h.example to firmware/common/secrets.h and set WIFI_PASS/MQTT_PASS"
-#endif
-
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_SHT31.h>
+
+// Secrets configuration:
+// 1. Sketch-local secrets.h (preferred for Arduino IDE out-of-the-box compile)
+// 2. Monorepo common/secrets.h (for CLI / multi-sketch builds)
+#if __has_include("secrets.h")
+#include "secrets.h"
+#elif __has_include("../common/secrets.h")
+#include "../common/secrets.h"
+#elif __has_include("common/secrets.h")
+#include "common/secrets.h"
+#else
+#error "secrets.h missing. Ensure secrets.h exists in this sketch folder or in firmware/common/."
+#endif
+#ifndef WIFI_PASS
+#error "WIFI_PASS not defined. Check secrets.h."
+#endif
+#if __has_include("mqtt_tls.h")
+#include "mqtt_tls.h"
+#elif __has_include("../common/mqtt_tls.h")
+#include "../common/mqtt_tls.h"
+#elif __has_include("common/mqtt_tls.h")
+#include "common/mqtt_tls.h"
+#else
+#error "mqtt_tls.h missing. Ensure mqtt_tls.h exists in firmware/common/."
+#endif   // MQTT over TLS (8883) + pin public key broker
 
 //========================
 // OLED Display Config
@@ -50,7 +61,10 @@ const char* NAMA_PASSWORD = WIFI_PASS;
 // MQTT Broker Config (Hub)
 //========================
 const char* MQTT_IP     = MQTT_HOST;   // IP Raspberry Pi Hub (from secrets.h)
-const int   MQTT_PORT   = 1883;
+#ifdef MQTT_PORT
+#undef MQTT_PORT
+#endif
+const int   MQTT_PORT   = MQTT_TLS_PORT;   // 8883 (TLS)
 const char* DATA_TOPIC  = "hs109rs/ts/data";
 
 //========================
@@ -70,16 +84,27 @@ const char* MQTT_USER = _MQTT_USER_VAL;
 const char* MQTT_PASS = _MQTT_PASS_VAL;
 
 //========================
-// Timing & Intervals (ms)
+// Timing & Cadence (ms)
 //========================
-const unsigned long PUBLISH_INTERVAL_MS = 5000;
+const unsigned long HEARTBEAT_INTERVAL_MS   = 300000; // 5 minutes (300s) steady-state heartbeat
+const unsigned long MIN_PUBLISH_INTERVAL_MS = 5000;   // 5 seconds rate-limit
+const unsigned long OLED_INTERVAL_MS        = 1000;   // 1 Hz display refresh
+const unsigned long SENSOR_INTERVAL_MS      = 2000;   // 2 seconds sensor sampling
+
+//========================
+// Deadband Thresholds
+//========================
+const float DEADBAND_TEMP  = 0.2f;  // delta_temp >= 0.2°C
+const float DEADBAND_HUMID = 2.0f;  // delta_hum  >= 2.0%
+
 unsigned long lastPublish = 0;
-
-const unsigned long OLED_INTERVAL_MS = 1000;
 unsigned long lastOLED = 0;
-
-const unsigned long SENSOR_INTERVAL_MS = 1000;
 unsigned long lastSensorRead = 0;
+
+float lastPublishedTemp = NAN;
+float lastPublishedHumid = NAN;
+bool lastSensorError = false;
+bool hasPublishedOnce = false;
 
 const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;
 unsigned long mqttRetryDelay = 3000;
@@ -89,7 +114,7 @@ unsigned long lastMqttAttempt = 0;
 float temperature = NAN;
 float humidity    = NAN;
 
-WiFiClient   wifiClient;
+BearSSL::WiFiClientSecure wifiClient;
 PubSubClient mqtt(wifiClient);
 String       mqttClientId;
 
@@ -241,14 +266,26 @@ void connectMQTT()
 //========================
 void buildPayload(char *buffer, size_t bufferSize)
 {
-    JsonDocument doc;
+    StaticJsonDocument<256> doc;
 
     doc["HUB_NAME"] = HUB_NAME;
     doc["DEV_ID"]   = WiFi.macAddress();
     doc["DEV_NAME"] = DEV_NAME;
     doc["DEV_TYPE"] = DEV_TYPE;
-    doc["TEMP"]     = serialized(String(temperature, 1));
-    doc["HUMID"]    = serialized(String(humidity, 1));
+
+    bool sensorError = (isnan(temperature) || isnan(humidity) || !isShtPresent);
+    if (sensorError)
+    {
+        doc["TEMP"]   = nullptr;
+        doc["HUMID"]  = nullptr;
+        doc["STATUS"] = "SENSOR_ERROR";
+    }
+    else
+    {
+        doc["TEMP"]   = serialized(String(temperature, 1));
+        doc["HUMID"]  = serialized(String(humidity, 1));
+        doc["STATUS"] = "OK";
+    }
 
     serializeJson(doc, buffer, bufferSize);
 }
@@ -272,6 +309,12 @@ void setup()
 
     scanAndInitI2C();
 
+    if (isShtPresent) {
+        temperature = sht30.readTemperature();
+        humidity    = sht30.readHumidity();
+    }
+    lastSensorError = (isnan(temperature) || isnan(humidity) || !isShtPresent);
+
     String bootMac = WiFi.macAddress();
     snprintf(DEV_NAME, sizeof(DEV_NAME), "%s-%c%c%c%c", DEV_TYPE,
              bootMac[12], bootMac[13], bootMac[15], bootMac[16]);
@@ -280,6 +323,7 @@ void setup()
 
     connectWiFi();
 
+    mqttTlsConfigure(wifiClient);
     mqtt.setServer(MQTT_IP, MQTT_PORT);
     mqtt.setKeepAlive(30);
     mqtt.setSocketTimeout(5);
@@ -384,17 +428,36 @@ void loop()
         display.display();
     }
 
-    // 3. Throttled Publish to MQTT Hub
-    if (now - lastPublish >= PUBLISH_INTERVAL_MS)
-    {
-        lastPublish = now;
+    // 3. Cadenced & Deadband MQTT Telemetry Publishing
+    bool sensorStatusChanged = (sensorError != lastSensorError);
+    bool minIntervalElapsed = (!hasPublishedOnce || (now - lastPublish >= MIN_PUBLISH_INTERVAL_MS));
 
-        if (sensorError)
-        {
-            Serial.println(F("Skip publish: sensor read failure (NaN/absent)"));
+    bool deadbandExceeded = false;
+    if (!sensorError) {
+        if (isnan(lastPublishedTemp) || isnan(lastPublishedHumid)) {
+            deadbandExceeded = true;
+        } else {
+            float deltaT = fabs(temperature - lastPublishedTemp);
+            float deltaH = fabs(humidity - lastPublishedHumid);
+            if (deltaT >= DEADBAND_TEMP || deltaH >= DEADBAND_HUMID) {
+                deadbandExceeded = true;
+            }
         }
-        else if (mqtt.connected())
-        {   
+    }
+
+    bool heartbeatExpired = (!hasPublishedOnce || (now - lastPublish >= HEARTBEAT_INTERVAL_MS));
+
+    // Evaluate publish triggers
+    bool shouldPublish = false;
+    if (minIntervalElapsed && (heartbeatExpired || sensorStatusChanged || deadbandExceeded))
+    {
+        shouldPublish = true;
+    }
+
+    if (shouldPublish)
+    {
+        if (mqtt.connected())
+        {
             char payload[256];
             buildPayload(payload, sizeof(payload));
 
@@ -404,6 +467,11 @@ void loop()
             if (mqtt.publish(DATA_TOPIC, payload))
             {
                 Serial.println(F("Publish Success"));
+                lastPublish = now;
+                hasPublishedOnce = true;
+                lastPublishedTemp = temperature;
+                lastPublishedHumid = humidity;
+                lastSensorError = sensorError;
             }
             else
             {
